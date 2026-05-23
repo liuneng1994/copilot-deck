@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { type ToolCallContentBlock, type ToolCallStatus, useUIStore } from "../stores/ui-store";
+import { normalizeContentBlock } from "./normalize-content";
 import { connectWs, onWsMessage } from "./ws-client";
 
 // Lightweight typed view over the ACP SessionNotification.update payload we care about.
@@ -43,33 +44,12 @@ interface AcpUpdate {
   [k: string]: unknown;
 }
 
-function inferKindFromAcp(
-  raw: { type?: string; content?: { type?: string } } | undefined,
-): ToolCallContentBlock["kind"] {
-  if (!raw) return "other";
-  const t = raw.type ?? raw.content?.type;
-  if (t === "diff") return "diff";
-  if (t === "terminal" || t === "terminal_output") return "terminal";
-  if (t === "text") return "text";
-  if (t === "image") return "image";
-  return "other";
-}
-
 function blocksFromUpdate(u: AcpUpdate): ToolCallContentBlock[] {
   const out: ToolCallContentBlock[] = [];
   const arr = Array.isArray(u.content) ? u.content : null;
   if (arr) {
     for (const c of arr) {
-      const kind = inferKindFromAcp(c);
-      const block: ToolCallContentBlock = { kind, raw: c };
-      const inner = (c as { content?: { type?: string; text?: string } }).content;
-      if (inner?.type === "text" && typeof inner.text === "string") block.text = inner.text;
-      if (kind === "diff") {
-        block.path = c.path;
-        block.oldText = c.oldText;
-        block.newText = c.newText;
-      }
-      out.push(block);
+      out.push(normalizeContentBlock(c));
     }
   }
   if (u.diff) {

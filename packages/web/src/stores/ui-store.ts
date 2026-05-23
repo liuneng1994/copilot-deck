@@ -6,6 +6,7 @@ import type {
   TraceEventDTO,
 } from "@agent-view/shared";
 import { create } from "zustand";
+import { normalizeContentBlocks } from "../lib/normalize-content";
 
 export type SessionStatus = "idle" | "streaming" | "awaiting_perm" | "error";
 export type MessageRole = "user" | "agent" | "system";
@@ -644,7 +645,7 @@ export const useUIStore = create<UIState>((set) => ({
             status: (c.status as ToolCallStatus) ?? "completed",
             rawInput: c.rawInput,
             rawOutput: c.rawOutput,
-            content: (c.content as ToolCallContentBlock[]) ?? [],
+            content: normalizeContentBlocks(c.content),
             locations: c.locations ?? undefined,
             startedAt: c.startedAt,
             finishedAt: c.finishedAt ?? undefined,

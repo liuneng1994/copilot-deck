@@ -1,3 +1,4 @@
+import { diffLines } from "diff";
 import { ExternalLink, Eye, FileText, Pencil } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { highlightToHtml } from "../../lib/shiki";
@@ -14,6 +15,10 @@ interface FileTouch {
   lastTs: number;
   /** Distinct tool call ids that touched the file. */
   callCount: number;
+  /** Total added lines across all diff blocks for this file. */
+  added: number;
+  /** Total removed lines across all diff blocks for this file. */
+  removed: number;
 }
 
 function pickPath(input: unknown, fields: string[]): string | undefined {
@@ -44,27 +49,99 @@ function touchForCall(call: ToolCallState): Touch {
   return "other";
 }
 
+function diffStatsForBlock(block: { oldText?: string; newText?: string }): {
+  added: number;
+  removed: number;
+} {
+  const oldT = block.oldText ?? "";
+  const newT = block.newText ?? "";
+  if (!oldT && !newT) return { added: 0, removed: 0 };
+  if (!oldT) {
+    // Pure create.
+    return { added: newT.split("\n").filter((l) => l.length > 0).length || 1, removed: 0 };
+  }
+  if (!newT) {
+    return { added: 0, removed: oldT.split("\n").filter((l) => l.length > 0).length || 1 };
+  }
+  let added = 0;
+  let removed = 0;
+  for (const p of diffLines(oldT, newT)) {
+    const lines = p.value.split("\n");
+    if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+    if (p.added) added += lines.length;
+    else if (p.removed) removed += lines.length;
+  }
+  return { added, removed };
+}
+
 function aggregateFiles(calls: ToolCallState[]): FileTouch[] {
   const map = new Map<string, FileTouch>();
   for (const c of calls) {
     const seen = new Set<string>();
+    const perPathStats = new Map<string, { added: number; removed: number }>();
     if (Array.isArray(c.locations)) {
       for (const loc of c.locations) {
         if (typeof loc.path === "string") seen.add(loc.path);
       }
     }
     for (const b of c.content) {
-      if (b.kind === "diff" && b.path) seen.add(b.path);
+      if (b.kind === "diff" && b.path) {
+        seen.add(b.path);
+        const stats = diffStatsForBlock({ oldText: b.oldText, newText: b.newText });
+        const prev = perPathStats.get(b.path) ?? { added: 0, removed: 0 };
+        perPathStats.set(b.path, {
+          added: prev.added + stats.added,
+          removed: prev.removed + stats.removed,
+        });
+      }
     }
     const rawPath = pickPath(c.rawInput, ["path", "file_path", "filename", "file"]);
     if (rawPath) seen.add(rawPath);
 
+    // Fall back to rawInput {content, old_content} for write/edit tools that
+    // don't ship explicit diff content blocks (e.g. simple create calls).
+    if (rawPath && !perPathStats.has(rawPath)) {
+      const k = (c.kind || "").toLowerCase();
+      const looksWrite =
+        k.includes("write") ||
+        k.includes("edit") ||
+        k.includes("create") ||
+        k.includes("patch") ||
+        k.includes("modify");
+      if (looksWrite) {
+        const raw = c.rawInput as Record<string, unknown> | null;
+        const newC = raw && typeof raw === "object" ? raw : null;
+        const newText =
+          (typeof newC?.content === "string" && newC.content) ||
+          (typeof newC?.new_content === "string" && newC.new_content) ||
+          (typeof newC?.newContent === "string" && newC.newContent) ||
+          "";
+        const oldText =
+          (typeof newC?.old_content === "string" && newC.old_content) ||
+          (typeof newC?.oldContent === "string" && newC.oldContent) ||
+          "";
+        if (newText || oldText) {
+          const stats = diffStatsForBlock({ oldText, newText });
+          perPathStats.set(rawPath, stats);
+        }
+      }
+    }
+
     if (seen.size === 0) continue;
     const t = touchForCall(c);
     for (const p of seen) {
+      const stats = perPathStats.get(p) ?? { added: 0, removed: 0 };
       const prev = map.get(p);
       if (!prev) {
-        map.set(p, { path: p, touch: t, lastCallId: c.id, lastTs: c.ts, callCount: 1 });
+        map.set(p, {
+          path: p,
+          touch: t,
+          lastCallId: c.id,
+          lastTs: c.ts,
+          callCount: 1,
+          added: stats.added,
+          removed: stats.removed,
+        });
       } else {
         // Prefer write > exec > read > other for display badge.
         const rank = (x: Touch) => ({ write: 3, exec: 2, read: 1, other: 0 })[x];
@@ -76,6 +153,8 @@ function aggregateFiles(calls: ToolCallState[]): FileTouch[] {
           lastCallId: newer ? c.id : prev.lastCallId,
           lastTs: newer ? c.ts : prev.lastTs,
           callCount: prev.callCount + 1,
+          added: prev.added + stats.added,
+          removed: prev.removed + stats.removed,
         });
       }
     }
@@ -227,10 +306,24 @@ export function FilesTab({ session, toolCalls }: Props) {
         lastCallId: "",
         lastTs: Date.now(),
         callCount: 0,
+        added: 0,
+        removed: 0,
       },
       ...files,
     ];
   }, [files, selected]);
+
+  const totals = useMemo(() => {
+    let added = 0;
+    let removed = 0;
+    let changedFiles = 0;
+    for (const f of allFiles) {
+      added += f.added;
+      removed += f.removed;
+      if (f.added > 0 || f.removed > 0) changedFiles += 1;
+    }
+    return { added, removed, changedFiles, total: allFiles.length };
+  }, [allFiles]);
 
   if (allFiles.length === 0) {
     return (
@@ -242,6 +335,23 @@ export function FilesTab({ session, toolCalls }: Props) {
 
   return (
     <div className="space-y-2 px-1 py-1">
+      <div className="flex items-center justify-between rounded border border-border bg-panel-elevated px-2 py-1 text-[10px] text-muted-foreground">
+        <span>
+          {totals.total} file{totals.total === 1 ? "" : "s"}
+          {totals.changedFiles > 0 && (
+            <span className="text-foreground/80">
+              {" · "}
+              {totals.changedFiles} changed
+            </span>
+          )}
+        </span>
+        {(totals.added > 0 || totals.removed > 0) && (
+          <span className="font-mono">
+            <span className="text-emerald-400">+{totals.added}</span>{" "}
+            <span className="text-rose-400">−{totals.removed}</span>
+          </span>
+        )}
+      </div>
       <ul className="space-y-0.5">
         {allFiles.map((f) => (
           <li
@@ -270,10 +380,18 @@ export function FilesTab({ session, toolCalls }: Props) {
                   <span className="text-muted-foreground">{dirname(f.path)}</span>
                   <span className="font-medium">{basename(f.path)}</span>
                 </span>
-                <span className="text-[10px] text-muted-foreground">
-                  {f.callCount > 0
-                    ? `${f.touch} · ${f.callCount} call${f.callCount > 1 ? "s" : ""}`
-                    : "opened from message"}
+                <span className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                  <span>
+                    {f.callCount > 0
+                      ? `${f.touch} · ${f.callCount} call${f.callCount > 1 ? "s" : ""}`
+                      : "opened from message"}
+                  </span>
+                  {(f.added > 0 || f.removed > 0) && (
+                    <span className="font-mono">
+                      <span className="text-emerald-400">+{f.added}</span>{" "}
+                      <span className="text-rose-400">−{f.removed}</span>
+                    </span>
+                  )}
                 </span>
               </span>
             </button>
