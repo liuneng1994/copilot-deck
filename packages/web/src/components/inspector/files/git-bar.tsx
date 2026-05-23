@@ -33,6 +33,7 @@ export function GitBar({ cwd, status }: GitBarProps) {
   }
 
   const dirtyCount = status.files.length;
+  const untrackedCount = status.files.filter((file) => file.x === "?" || file.y === "?").length;
   const agentPaths = agentEntries.map((entry) => entry.path);
 
   async function restoreAgentChanges() {
@@ -94,7 +95,7 @@ export function GitBar({ cwd, status }: GitBarProps) {
         {status.ahead > 0 && <span className="font-medium text-foreground">↑{status.ahead}</span>}
         {status.behind > 0 && <span className="font-medium text-foreground">↓{status.behind}</span>}
         <span className="text-muted-foreground">
-          {dirtyCount} dirty · {agentEntries.length} agent
+          {dirtyCount} dirty · {untrackedCount} untracked · {agentEntries.length} agent
         </span>
         <div className="ml-auto flex items-center gap-1.5">
           <button

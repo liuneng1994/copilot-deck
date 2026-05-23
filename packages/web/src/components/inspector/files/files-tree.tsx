@@ -267,6 +267,7 @@ export function FilesTree({ entries, session }: FilesTreeProps) {
           entry={row.entry}
           depth={row.depth}
           selected={key === selectedFilePath}
+          session={session}
           onClick={() => setSelectedFilePath(key)}
         />
       );
