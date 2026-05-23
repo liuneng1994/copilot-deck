@@ -57,6 +57,41 @@ export const wsHandlers: HandlerMap = {
     manager.deleteSession(msg.sessionId);
   },
 
+  rename_session(msg, { manager, send }) {
+    const ok = manager.renameSession(msg.sessionId, msg.title);
+    if (!ok) {
+      send({
+        type: "error",
+        sessionId: msg.sessionId,
+        message: "Rename failed: empty title or unknown session.",
+      });
+    }
+  },
+
+  async duplicate_session(msg, { manager, send }) {
+    const src = manager.getStoredSession(msg.sessionId);
+    if (!src) {
+      send({ type: "error", sessionId: msg.sessionId, message: "Session not found." });
+      return;
+    }
+    const { sessionId, modes } = await manager.createSession(src.cwd);
+    send({
+      type: "session_created",
+      sessionId,
+      cwd: src.cwd,
+      modes: modes
+        ? {
+            currentModeId: modes.currentModeId,
+            availableModes: modes.availableModes.map((m) => ({
+              id: m.id,
+              name: m.name,
+              description: m.description ?? undefined,
+            })),
+          }
+        : undefined,
+    });
+  },
+
   request_trace(msg, { manager, send }) {
     const events = manager.listTrace({
       sessionId: msg.sessionId,

@@ -178,6 +178,12 @@ export class Store {
       .run(detached ? 1 : 0, Date.now(), sessionId);
   }
 
+  renameSession(sessionId: string, title: string) {
+    this.db
+      .prepare("UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?")
+      .run(title, Date.now(), sessionId);
+  }
+
   markAllDetached() {
     this.db.prepare("UPDATE sessions SET detached = 1").run();
   }

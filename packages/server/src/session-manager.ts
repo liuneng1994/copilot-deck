@@ -37,6 +37,7 @@ export type ModelChangeListener = (ev: {
   model: string;
   sessionIds: string[];
 }) => void;
+export type SessionRenameListener = (ev: { sessionId: string; title: string }) => void;
 
 interface SessionEntry {
   id: string;
@@ -78,6 +79,8 @@ export class SessionManager {
   private modelByCwd = new Map<string, string>();
   /** Listeners for model changes per cwd. */
   private modelListeners = new Set<ModelChangeListener>();
+  /** Listeners for session renames. */
+  private renameListeners = new Set<SessionRenameListener>();
   /** Default model read from ~/.copilot/settings.json (or env). */
   private readonly defaultModel: string;
 
@@ -117,6 +120,11 @@ export class SessionManager {
   onModelChange(l: ModelChangeListener) {
     this.modelListeners.add(l);
     return () => this.modelListeners.delete(l);
+  }
+
+  onSessionRename(l: SessionRenameListener) {
+    this.renameListeners.add(l);
+    return () => this.renameListeners.delete(l);
   }
 
   getDefaultModel(): string {
@@ -229,6 +237,33 @@ export class SessionManager {
     this.detachedSessions.delete(sessionId);
     this.streams.delete(sessionId);
     this.store.deleteSession(sessionId);
+  }
+
+  renameSession(sessionId: string, title: string): boolean {
+    const trimmed = title.trim().slice(0, 200);
+    if (!trimmed) return false;
+    const existing = this.store.getSession(sessionId);
+    if (!existing) return false;
+    this.store.renameSession(sessionId, trimmed);
+    for (const l of this.renameListeners) {
+      try {
+        l({ sessionId, title: trimmed });
+      } catch (e) {
+        console.error("rename listener error", e);
+      }
+    }
+    return true;
+  }
+
+  /** Read-only access for export endpoints. */
+  getStoredSession(sessionId: string) {
+    return this.store.getSession(sessionId);
+  }
+  listStoredMessages(sessionId: string) {
+    return this.store.listMessages(sessionId);
+  }
+  listStoredToolCalls(sessionId: string) {
+    return this.store.listToolCalls(sessionId);
   }
 
   private emit(sessionId: string, update: acp.SessionNotification) {

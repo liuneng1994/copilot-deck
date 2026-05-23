@@ -25,6 +25,8 @@ export type ClientToServer =
   | { type: "cancel"; sessionId: string }
   | { type: "set_mode"; sessionId: string; modeId: string }
   | { type: "delete_session"; sessionId: string }
+  | { type: "rename_session"; sessionId: string; title: string }
+  | { type: "duplicate_session"; sessionId: string }
   | { type: "request_trace"; sessionId?: string; sinceId?: number; limit?: number }
   | { type: "list_models" }
   | { type: "set_model"; cwd: string; model: string }
@@ -107,6 +109,12 @@ export type ServerToClient =
       // loadSession. Client should clear the detached flag locally.
       type: "session_reattached";
       sessionId: string;
+    }
+  | {
+      // A session was renamed (broadcast to all attached clients).
+      type: "session_renamed";
+      sessionId: string;
+      title: string;
     };
 
 export interface TraceEventDTO {

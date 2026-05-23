@@ -231,4 +231,52 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
       return { events };
     },
   );
+
+  app.get<{ Params: { id: string }; Querystring: { format?: string } }>(
+    "/api/sessions/:id/export",
+    async (req, reply) => {
+      const id = req.params.id;
+      const sess = manager.getStoredSession(id);
+      if (!sess) {
+        reply.code(404);
+        return { error: "session not found" };
+      }
+      const messages = manager.listStoredMessages(id);
+      const tools = manager.listStoredToolCalls(id);
+      const format = (req.query.format ?? "md").toLowerCase();
+      const safeTitle = (sess.title || `session-${id.slice(0, 8)}`).replace(/[^\w.-]+/g, "_");
+
+      if (format === "json") {
+        reply
+          .header("content-type", "application/json; charset=utf-8")
+          .header("content-disposition", `attachment; filename="${safeTitle}.json"`);
+        return JSON.stringify({ session: sess, messages, toolCalls: tools }, null, 2);
+      }
+
+      let md = `# ${sess.title ?? "(untitled session)"}\n\n`;
+      md += `- **id**: \`${sess.id}\`\n`;
+      md += `- **cwd**: \`${sess.cwd}\`\n`;
+      md += `- **created**: ${new Date(sess.createdAt).toISOString()}\n`;
+      md += `- **updated**: ${new Date(sess.updatedAt).toISOString()}\n`;
+      if (sess.modeName) md += `- **mode**: ${sess.modeName}\n`;
+      md += "\n---\n\n";
+      for (const m of messages) {
+        const who = m.role === "user" ? "🧑 User" : m.role === "agent" ? "🤖 Agent" : "⚙️ System";
+        md += `### ${who} — ${new Date(m.ts).toISOString()}\n\n${m.text}\n\n`;
+      }
+      if (tools.length > 0) {
+        md += "\n---\n\n## Tool calls\n\n";
+        for (const t of tools) {
+          md += `### ${t.kind}: ${t.title} — \`${t.status}\`\n\n`;
+          if (t.rawInput != null) {
+            md += `\`\`\`json\n${JSON.stringify(t.rawInput, null, 2)}\n\`\`\`\n\n`;
+          }
+        }
+      }
+      reply
+        .header("content-type", "text/markdown; charset=utf-8")
+        .header("content-disposition", `attachment; filename="${safeTitle}.md"`);
+      return md;
+    },
+  );
 }

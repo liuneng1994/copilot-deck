@@ -271,6 +271,10 @@ export function useWsBridge() {
           store.setSessionStatus(msg.sessionId, "idle");
           break;
         }
+        case "session_renamed": {
+          store.upsertSession({ id: msg.sessionId, title: msg.title });
+          break;
+        }
       }
     });
     return () => {

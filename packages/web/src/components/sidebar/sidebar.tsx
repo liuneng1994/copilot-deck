@@ -3,12 +3,13 @@ import {
   FolderOpen,
   FolderPlus,
   MessageSquare,
+  Pencil,
   Plus,
   RotateCcw,
   Search,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { sendWs } from "../../lib/ws-client";
 import { type SessionState, useUIStore } from "../../stores/ui-store";
@@ -173,72 +174,14 @@ export function Sidebar() {
                 </span>
               </div>
               <ul className="space-y-0.5">
-                {list.map((s) => {
-                  const dot = statusToDot(s.status);
-                  const isActive = s.id === active;
-                  return (
-                    <li key={s.id} className="group/item relative">
-                      <button
-                        type="button"
-                        onClick={() => setActive(s.id)}
-                        className={cn(
-                          "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 pr-7 text-left text-xs transition-colors",
-                          isActive
-                            ? "bg-panel-elevated text-foreground"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                          s.detached && !isActive && "opacity-60",
-                        )}
-                        title={
-                          s.detached ? "Detached — child exited; history is read-only" : undefined
-                        }
-                      >
-                        <StatusDot status={dot.status} pulse={dot.pulse} />
-                        <MessageSquare className="h-3 w-3 shrink-0 opacity-50" />
-                        <span className="flex-1 truncate">
-                          {s.title}
-                          {s.detached && (
-                            <span className="ml-1 rounded bg-muted px-1 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground">
-                              detached
-                            </span>
-                          )}
-                        </span>
-                        {isActive && <ChevronRight className="h-3 w-3 opacity-60" />}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          const ok = await confirmDialog({
-                            title: "Delete session?",
-                            description: `“${s.title}” and its full history will be removed. This cannot be undone.`,
-                            confirmLabel: "Delete",
-                            tone: "danger",
-                          });
-                          if (!ok) return;
-                          sendWs({ type: "delete_session", sessionId: s.id });
-                          useUIStore.getState().removeSession(s.id);
-                        }}
-                        className="absolute right-1.5 top-1/2 hidden -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive group-hover/item:block"
-                        title="Delete session"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                      {s.detached && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            sendWs({ type: "reattach_session", sessionId: s.id });
-                          }}
-                          className="absolute right-7 top-1/2 hidden -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-warn/20 hover:text-warn group-hover/item:block"
-                          title="Reattach session"
-                        >
-                          <RotateCcw className="h-3 w-3" />
-                        </button>
-                      )}
-                    </li>
-                  );
-                })}
+                {list.map((s) => (
+                  <SidebarSessionItem
+                    key={s.id}
+                    session={s}
+                    isActive={s.id === active}
+                    onActivate={() => setActive(s.id)}
+                  />
+                ))}
               </ul>
             </div>
           ))}
@@ -255,5 +198,148 @@ export function SidebarRail({ onExpand }: { onExpand: () => void }) {
         <ChevronRight className="h-4 w-4" />
       </Button>
     </aside>
+  );
+}
+
+function SidebarSessionItem({
+  session: s,
+  isActive,
+  onActivate,
+}: {
+  session: SessionState;
+  isActive: boolean;
+  onActivate: () => void;
+}) {
+  const dot = statusToDot(s.status);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(s.title);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (editing) {
+      setDraft(s.title);
+      setTimeout(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }, 0);
+    }
+  }, [editing, s.title]);
+
+  const commit = () => {
+    const trimmed = draft.trim();
+    setEditing(false);
+    if (!trimmed || trimmed === s.title) return;
+    sendWs({ type: "rename_session", sessionId: s.id, title: trimmed });
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (!editing && e.key === "F2") {
+      e.preventDefault();
+      setEditing(true);
+    }
+  };
+
+  return (
+    <li className="group/item relative" onKeyDown={onKeyDown}>
+      {editing ? (
+        <div className="flex w-full items-center gap-2 rounded-md bg-panel-elevated px-2 py-1">
+          <StatusDot status={dot.status} pulse={dot.pulse} />
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commit();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setEditing(false);
+              }
+            }}
+            maxLength={200}
+            className="flex-1 bg-transparent text-xs text-foreground outline-none"
+          />
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onActivate}
+          onDoubleClick={() => setEditing(true)}
+          className={cn(
+            "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 pr-12 text-left text-xs transition-colors",
+            isActive
+              ? "bg-panel-elevated text-foreground"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            s.detached && !isActive && "opacity-60",
+          )}
+          title={
+            s.detached
+              ? "Detached — child exited; history is read-only (F2 to rename)"
+              : "Double-click or F2 to rename"
+          }
+        >
+          <StatusDot status={dot.status} pulse={dot.pulse} />
+          <MessageSquare className="h-3 w-3 shrink-0 opacity-50" />
+          <span className="flex-1 truncate">
+            {s.title}
+            {s.detached && (
+              <span className="ml-1 rounded bg-muted px-1 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground">
+                detached
+              </span>
+            )}
+          </span>
+          {isActive && <ChevronRight className="h-3 w-3 opacity-60" />}
+        </button>
+      )}
+      {!editing && (
+        <>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditing(true);
+            }}
+            className="absolute right-7 top-1/2 hidden -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground group-hover/item:block"
+            title="Rename session"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+          <button
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation();
+              const ok = await confirmDialog({
+                title: "Delete session?",
+                description: `“${s.title}” and its full history will be removed. This cannot be undone.`,
+                confirmLabel: "Delete",
+                tone: "danger",
+              });
+              if (!ok) return;
+              sendWs({ type: "delete_session", sessionId: s.id });
+              useUIStore.getState().removeSession(s.id);
+            }}
+            className="absolute right-1.5 top-1/2 hidden -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive group-hover/item:block"
+            title="Delete session"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+          {s.detached && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                sendWs({ type: "reattach_session", sessionId: s.id });
+              }}
+              className="absolute right-12 top-1/2 hidden -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-warn/20 hover:text-warn group-hover/item:block"
+              title="Reattach session"
+            >
+              <RotateCcw className="h-3 w-3" />
+            </button>
+          )}
+        </>
+      )}
+    </li>
   );
 }

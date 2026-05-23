@@ -74,6 +74,13 @@ async function main() {
             sessionIds: ev.sessionIds,
           });
         }),
+        manager.onSessionRename((ev) => {
+          send({
+            type: "session_renamed",
+            sessionId: ev.sessionId,
+            title: ev.title,
+          });
+        }),
       ];
 
       socket.on("close", () => {
