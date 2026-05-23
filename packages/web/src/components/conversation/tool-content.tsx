@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { ansiToHtml } from "../../lib/ansi";
 import { cn } from "../../lib/cn";
 import { classify } from "../../lib/content-renderer/classify";
-import { renderContent } from "../../lib/content-renderer/render";
+import { renderContent, useHoistArtifacts } from "../../lib/content-renderer/render";
 
 const TOP_LINES = 30;
 const BOTTOM_LINES = 12;
@@ -91,8 +91,10 @@ export function ClassifiedToolText({
   callId: string;
 }) {
   const items = useMemo(() => classify(text), [text]);
+  const msgId = `tool:${callId}`;
+  useHoistArtifacts(items, sessionId, msgId);
   if (items.length === 0) return null;
-  return <>{items.map((it) => renderContent({ item: it, sessionId, msgId: `tool:${callId}` }))}</>;
+  return <>{items.map((it) => renderContent({ item: it, sessionId, msgId }))}</>;
 }
 
 /**

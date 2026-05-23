@@ -1,5 +1,6 @@
 import { Download, ExternalLink, Maximize2, Minimize2, Pin, PinOff, X } from "lucide-react";
 import { useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { cn } from "../../lib/cn";
 import { renderContent } from "../../lib/content-renderer/render";
 import { CsvChart } from "../../lib/content-renderer/renderers/csv-chart";
@@ -19,7 +20,7 @@ import { useUIStore } from "../../stores/ui-store";
  * for tables, source toggle + larger canvas for mermaid, full-tree JSON, etc).
  */
 export function ArtifactPane({ sessionId, width }: { sessionId: string; width: number }) {
-  const items = useArtifactStore((s) => selectSessionArtifacts(s, sessionId));
+  const items = useArtifactStore(useShallow((s) => selectSessionArtifacts(s, sessionId)));
   const activeId = useArtifactStore((s) => s.activeBySession[sessionId]);
   const focus = useArtifactStore((s) => s.focus);
   const closePane = useArtifactStore((s) => s.closePane);

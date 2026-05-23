@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CodeBlock } from "../../components/conversation/code-block";
@@ -13,6 +13,20 @@ import { SvgSafe } from "./renderers/svg-safe";
 import { TableInline } from "./renderers/table";
 import { shouldHoist } from "./thresholds";
 import type { ContentItem } from "./types";
+
+/**
+ * Side-effect: upsert every hoist-worthy item into the artifact store. Called
+ * from a `useEffect` in the host component (MessageBubble's ClassifiedBody)
+ * so it doesn't trigger setState during render.
+ */
+export function useHoistArtifacts(items: ContentItem[], sessionId: string, msgId: string): void {
+  useEffect(() => {
+    const upsert = useArtifactStore.getState().upsertFromItem;
+    for (const item of items) {
+      if (shouldHoist(item)) upsert(sessionId, msgId, item);
+    }
+  }, [items, sessionId, msgId]);
+}
 
 function linkifyChildren(children: ReactNode): ReactNode {
   if (typeof children === "string") return <LinkifyPaths>{children}</LinkifyPaths>;
@@ -70,13 +84,14 @@ function MarkdownText({ text }: { text: string }) {
 
 /**
  * Render a single classified content item. Streamed messages call this once per
- * item produced by `classify(text)`. Hoist-worthy items are upserted into the
- * artifact store and the inline node becomes a thumbnail with an "open" button.
+ * item produced by `classify(text)`. Hoist-worthy items become a thumbnail with
+ * an "open" button; the actual upsert into the artifact store is a separate
+ * side-effect performed by `useHoistArtifacts` (so render stays pure).
  */
 export function renderContent({
   item,
   sessionId,
-  msgId,
+  msgId: _msgId,
   full,
 }: {
   item: ContentItem;
@@ -85,11 +100,6 @@ export function renderContent({
   full?: boolean;
 }): ReactNode {
   const hoisted = !full && shouldHoist(item);
-  if (hoisted) {
-    // Side-effect upsert — keeping it here means callers (MessageBubble, ToolCallCard)
-    // don't need to know about the policy.
-    useArtifactStore.getState().upsertFromItem(sessionId, msgId, item);
-  }
 
   switch (item.kind) {
     case "text":

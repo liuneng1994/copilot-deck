@@ -2,7 +2,7 @@ import { Bot, Copy, Pencil, RefreshCw, User } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
 import { classify } from "../../lib/content-renderer/classify";
-import { renderContent } from "../../lib/content-renderer/render";
+import { renderContent, useHoistArtifacts } from "../../lib/content-renderer/render";
 import { sendWs } from "../../lib/ws-client";
 import { type Message, useUIStore } from "../../stores/ui-store";
 
@@ -31,6 +31,7 @@ function ClassifiedBody({
   streaming?: boolean;
 }) {
   const items = useMemo(() => classify(text), [text]);
+  useHoistArtifacts(items, sessionId, msgId);
   if (items.length === 0) {
     return streaming ? <span className="text-muted-foreground">…</span> : null;
   }
