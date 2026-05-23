@@ -6,6 +6,8 @@
 import type { ClientToServer, ServerToClient } from "@agent-view/shared";
 import fastifyWebsocket from "@fastify/websocket";
 import Fastify from "fastify";
+import { registerPluginRoutes } from "./extensions/routes-plugins.js";
+import { registerSkillsRoutes } from "./extensions/routes-skills.js";
 import { registerRoutes } from "./routes.js";
 import { SessionManager } from "./session-manager.js";
 import { Store } from "./store.js";
@@ -20,8 +22,14 @@ async function main() {
 
   const store = new Store();
   const manager = new SessionManager(store);
+  const clients = new Set<(msg: ServerToClient) => void>();
+  const broadcast = (msg: ServerToClient) => {
+    for (const send of clients) send(msg);
+  };
 
   registerRoutes(app, { manager });
+  registerPluginRoutes(app, { broadcast });
+  registerSkillsRoutes(app, { manager, broadcast });
 
   app.register(async (instance) => {
     instance.get("/ws", { websocket: true }, (socket) => {
@@ -32,6 +40,7 @@ async function main() {
           app.log.warn({ err: e }, "ws send failed");
         }
       };
+      clients.add(send);
       const ctx: WsContext = { manager, send, log: app.log };
 
       // Push the persisted snapshot first so the client paints history immediately.
@@ -91,6 +100,7 @@ async function main() {
       ];
 
       socket.on("close", () => {
+        clients.delete(send);
         for (const u of unsubs) u();
       });
 
