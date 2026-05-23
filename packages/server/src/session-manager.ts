@@ -862,6 +862,8 @@ export class SessionManager {
    * will be re-injected on the next prompt (useful if the user changed mind).
    */
   setRenderHintMode(sessionId: string, mode: RenderHintMode): void {
+    const persisted = this.store.getSession(sessionId);
+    if (!persisted) throw new Error(`unknown session ${sessionId}`);
     this.store.setSessionRenderHintMode(sessionId, mode);
     if (mode === "prompt") this.store.setSessionFirstPromptSent(sessionId, false);
   }

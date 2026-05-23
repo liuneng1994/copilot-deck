@@ -108,7 +108,8 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
   app.post<{ Params: { id: string } }>("/api/sessions/:id/agents-md", async (req, reply) => {
     try {
       const result = await manager.writeAgentsMd(req.params.id);
-      return { ok: true, ...result };
+      const status = result.created ? "created" : result.updated ? "updated" : "noop";
+      return { ok: true, status, path: result.filePath };
     } catch (e) {
       reply.code(404);
       return { error: e instanceof Error ? e.message : String(e) };

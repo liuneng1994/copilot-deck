@@ -93,8 +93,10 @@ export async function upsertAgentsMd(cwd: string): Promise<{
       `${escapeRe(RENDER_HINT_BEGIN)}[\\s\\S]*?${escapeRe(RENDER_HINT_END)}`,
       "g",
     );
-    const next = existing.replace(re, block);
-    if (next === existing) {
+    const replaced = existing.replace(re, () => block);
+    const next = replaced.endsWith("\n") ? replaced : `${replaced}\n`;
+    const cur = existing.endsWith("\n") ? existing : `${existing}\n`;
+    if (next === cur) {
       return { filePath, created: false, updated: false };
     }
     await fs.writeFile(filePath, next, "utf8");
