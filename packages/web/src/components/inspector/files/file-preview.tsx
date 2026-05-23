@@ -366,8 +366,24 @@ export function FilePreview({ path, cwd }: FilePreviewProps) {
   if (loading) return <Skeleton />;
 
   if (error && !state) {
+    const isMissing = /ENOENT|no such file|not found/i.test(error);
     return (
-      <div className="px-3 py-2 text-[11px] text-destructive">Error loading preview: {error}</div>
+      <div className="px-3 py-3 text-[12px]">
+        {isMissing ? (
+          <div className="space-y-1">
+            <div className="font-medium text-foreground">File no longer exists on disk</div>
+            <div className="text-[11px] text-muted-foreground">
+              <span className="font-mono">{path}</span> was removed (likely by
+              <span className="font-mono"> git stash</span>,
+              <span className="font-mono"> git checkout</span>, or an external delete). The
+              agent-touch record is kept for history; switch to "vs HEAD" diff above to see what was
+              removed.
+            </div>
+          </div>
+        ) : (
+          <div className="text-destructive">Error loading preview: {error}</div>
+        )}
+      </div>
     );
   }
 
