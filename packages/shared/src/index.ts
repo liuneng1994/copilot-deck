@@ -223,9 +223,20 @@ export interface UnmarkReviewedMsg {
   path: string;
 }
 
+export interface PromptAttachment {
+  /** Stable id assigned by the client for dedupe/rendering. */
+  id: string;
+  name: string;
+  mimeType: string;
+  /** Bytes, used to enforce server-side size caps. */
+  size: number;
+  /** base64-encoded payload (no `data:` prefix). */
+  data: string;
+}
+
 export type ClientToServer =
   | { type: "create_session"; cwd: string }
-  | { type: "prompt"; sessionId: string; text: string }
+  | { type: "prompt"; sessionId: string; text: string; attachments?: PromptAttachment[] }
   | { type: "cancel"; sessionId: string }
   | { type: "set_mode"; sessionId: string; modeId: string }
   | { type: "delete_session"; sessionId: string }
@@ -394,6 +405,15 @@ export interface PlanEntrySnapshot {
   status?: "pending" | "in_progress" | "completed";
 }
 
+export interface MessageAttachmentSnapshot {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  /** data URL the client can render directly. */
+  dataUrl: string;
+}
+
 export interface HydratedSession {
   id: string;
   cwd: string;
@@ -412,7 +432,13 @@ export interface HydratedSession {
   updatedAt: number;
   detached: boolean;
   reviewed: ReviewedFileSnapshot[];
-  messages: { id: string; role: string; text: string; ts: number }[];
+  messages: {
+    id: string;
+    role: string;
+    text: string;
+    ts: number;
+    attachments?: MessageAttachmentSnapshot[];
+  }[];
   toolCalls: {
     id: string;
     kind: string;

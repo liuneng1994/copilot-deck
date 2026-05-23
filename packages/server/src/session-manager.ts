@@ -284,6 +284,7 @@ export class SessionManager {
         role: m.role,
         text: m.text,
         ts: m.ts,
+        attachments: m.attachments,
       })),
       toolCalls: this.store.listToolCalls(s.id).map((c) => ({
         id: c.id,
@@ -804,9 +805,50 @@ export class SessionManager {
     return { sessionId };
   }
 
-  async prompt(sessionId: string, text: string): Promise<acp.PromptResponse> {
+  async prompt(
+    sessionId: string,
+    text: string,
+    opts?: {
+      attachments?: Array<{
+        id: string;
+        name: string;
+        mimeType: string;
+        size: number;
+        /** base64 payload (no data: prefix) */
+        data: string;
+      }>;
+    },
+  ): Promise<acp.PromptResponse> {
     const entry = this.sessions.get(sessionId);
     if (!entry) throw new Error(`unknown session ${sessionId}`);
+
+    const attachments = (opts?.attachments ?? []).filter((a) => a.mimeType.startsWith("image/"));
+    const MAX_PER_ATTACHMENT = 8 * 1024 * 1024;
+    const MAX_TOTAL_ATTACHMENTS = 16 * 1024 * 1024;
+    let totalSize = 0;
+    for (const a of attachments) {
+      // size is client-reported but we re-derive from the base64 payload to be safe.
+      const decoded = Math.floor((a.data.length * 3) / 4);
+      if (decoded > MAX_PER_ATTACHMENT) {
+        throw new Error(
+          `attachment ${a.name} exceeds per-image cap (${MAX_PER_ATTACHMENT / 1024 / 1024} MB)`,
+        );
+      }
+      totalSize += decoded;
+    }
+    if (totalSize > MAX_TOTAL_ATTACHMENTS) {
+      throw new Error(
+        `attachments total ${(totalSize / 1024 / 1024).toFixed(1)} MB exceeds cap (${MAX_TOTAL_ATTACHMENTS / 1024 / 1024} MB)`,
+      );
+    }
+    const persistedAttachments = attachments.map((a) => ({
+      id: a.id,
+      name: a.name,
+      mimeType: a.mimeType,
+      size: a.size,
+      dataUrl: `data:${a.mimeType};base64,${a.data}`,
+    }));
+
     // Persist the user message + flush any prior in-flight agent buffer.
     const now = Date.now();
     const userMsgId = randomUUID();
@@ -816,6 +858,7 @@ export class SessionManager {
       role: "user",
       text,
       ts: now,
+      attachments: persistedAttachments.length > 0 ? persistedAttachments : undefined,
     });
 
     // Best-effort git checkpoint *before* the agent touches anything.
@@ -879,12 +922,27 @@ export class SessionManager {
       cwd: entry.cwd,
       direction: "out",
       kind: "prompt",
-      payload: { text, injectedHint: outboundText !== text },
+      payload: {
+        text,
+        injectedHint: outboundText !== text,
+        attachmentCount: attachments.length,
+      },
       ts: now,
     });
+    const promptBlocks: acp.ContentBlock[] = [{ type: "text", text: outboundText }];
+    if (attachments.length > 0) {
+      if (!entry.agent.supportsImagePrompts()) {
+        console.warn(
+          `[prompt] agent for ${entry.cwd} does not advertise image prompt capability; sending images anyway`,
+        );
+      }
+      for (const a of attachments) {
+        promptBlocks.push({ type: "image", data: a.data, mimeType: a.mimeType });
+      }
+    }
     const res = await entry.agent.connection.prompt({
       sessionId,
-      prompt: [{ type: "text", text: outboundText }],
+      prompt: promptBlocks,
     });
     this.store.touchSession(sessionId, "idle");
     this.trace({

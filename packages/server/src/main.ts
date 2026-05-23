@@ -29,7 +29,12 @@ const HOST = process.env.HOST ?? "127.0.0.1";
 
 async function main() {
   const app = Fastify({ logger: { level: "info" } });
-  await app.register(fastifyWebsocket);
+  await app.register(fastifyWebsocket, {
+    options: {
+      // Allow large prompts with image attachments (≤ 16 MB raw / ~21 MB after base64 framing).
+      maxPayload: 25 * 1024 * 1024,
+    },
+  });
 
   const store = new Store();
   const manager = new SessionManager(store);

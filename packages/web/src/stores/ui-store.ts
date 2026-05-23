@@ -20,6 +20,14 @@ export type { FilesSlice };
 export type SessionStatus = "idle" | "streaming" | "awaiting_perm" | "reloading" | "error";
 export type MessageRole = "user" | "agent" | "system";
 
+export interface MessageAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  dataUrl: string;
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
@@ -27,6 +35,7 @@ export interface Message {
   ts: number;
   /** Stop reason populated when this message was cut short (e.g. user cancelled). */
   stopReason?: "cancelled" | "error";
+  attachments?: MessageAttachment[];
 }
 
 export type ToolCallStatus = "pending" | "in_progress" | "completed" | "failed";
@@ -209,7 +218,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   hydrate: (sessions: HydratedSession[]) => void;
   markSessionDetached: (sessionId: string, detached: boolean) => void;
   setReattaching: (sessionId: string, reattaching: boolean) => void;
-  appendUserMessage: (sessionId: string, text: string) => string;
+  appendUserMessage: (sessionId: string, text: string, attachments?: MessageAttachment[]) => string;
   appendAgentChunk: (sessionId: string, chunk: string) => void;
   appendSystemMessage: (sessionId: string, text: string) => void;
   setSessionStatus: (sessionId: string, status: SessionStatus) => void;
@@ -588,7 +597,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
       };
     }),
 
-  appendUserMessage: (sessionId, text) => {
+  appendUserMessage: (sessionId, text, attachments) => {
     const id = nowId();
     set((state) => {
       const s = state.sessions[sessionId];
@@ -598,7 +607,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
           ...state.sessions,
           [sessionId]: {
             ...s,
-            messages: [...s.messages, { id, role: "user", text, ts: Date.now() }],
+            messages: [...s.messages, { id, role: "user", text, ts: Date.now(), attachments }],
             updatedAt: Date.now(),
             title: s.messages.length === 0 ? text.slice(0, 60) : s.title,
           },
@@ -884,6 +893,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
           role: m.role as MessageRole,
           text: m.text,
           ts: m.ts,
+          attachments: m.attachments,
         }));
         const toolCallIds: string[] = [];
         for (const c of h.toolCalls) {

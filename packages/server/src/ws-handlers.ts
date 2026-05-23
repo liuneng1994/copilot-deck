@@ -41,7 +41,7 @@ export const wsHandlers: HandlerMap = {
   },
 
   async prompt(msg, { manager, send }) {
-    const res = await manager.prompt(msg.sessionId, msg.text);
+    const res = await manager.prompt(msg.sessionId, msg.text, { attachments: msg.attachments });
     send({ type: "prompt_done", sessionId: msg.sessionId, stopReason: res.stopReason });
   },
 

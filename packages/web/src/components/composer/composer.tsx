@@ -1,4 +1,4 @@
-import { Paperclip, RotateCcw, Send, Square } from "lucide-react";
+import { Paperclip, RotateCcw, Send, Square, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   BUILTIN_BY_NAME,
@@ -9,11 +9,47 @@ import {
 import { cn } from "../../lib/cn";
 import { sendWs } from "../../lib/ws-client";
 import { useCheckpointStore } from "../../stores/checkpoint-store";
-import { type SessionState, useUIStore } from "../../stores/ui-store";
+import { type MessageAttachment, type SessionState, useUIStore } from "../../stores/ui-store";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/input";
 import { MentionPopover } from "./mention-popover";
 import { type SlashItem, SlashPopover } from "./slash-popover";
+
+const MAX_PER_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_TOTAL_IMAGE_BYTES = 16 * 1024 * 1024;
+
+/** Internal composer state for an attached image — carries both base64 (for send) and dataUrl (for preview). */
+interface PendingAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  /** base64 payload without `data:...;base64,` prefix. */
+  data: string;
+  /** data: URL for inline preview. */
+  dataUrl: string;
+}
+
+function fileToAttachment(file: File): Promise<PendingAttachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+    reader.onload = () => {
+      const dataUrl = String(reader.result ?? "");
+      const idx = dataUrl.indexOf(",");
+      const data = idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl;
+      resolve({
+        id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: file.name || "image",
+        mimeType: file.type || "image/png",
+        size: file.size,
+        data,
+        dataUrl,
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 export function Composer({ session }: { session: SessionState }) {
   const draft = useUIStore((s) => s.drafts[session.id] ?? "");
@@ -30,6 +66,56 @@ export function Composer({ session }: { session: SessionState }) {
   const sessionsMap = useUIStore((s) => s.sessions);
   // History recall: -1 = composing fresh; 0..N-1 = recalled from the end.
   const historyIdxRef = useRef<number>(-1);
+
+  // Pending image attachments for the next send. Lives only in the composer —
+  // we attach them at send time, then clear.
+  const [pending, setPending] = useState<PendingAttachment[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const totalAttachedBytes = useMemo(() => pending.reduce((sum, p) => sum + p.size, 0), [pending]);
+
+  const reportNotice = (text: string, kind: "info" | "warn" = "warn") => {
+    useUIStore.getState().setNotice({
+      id: `att-${Date.now()}`,
+      kind,
+      text,
+      ts: Date.now(),
+    });
+  };
+
+  /** Add image files to the pending list, enforcing size caps. */
+  const addFiles = async (files: File[] | FileList) => {
+    const list = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (list.length === 0) return;
+    const accepted: PendingAttachment[] = [];
+    let running = totalAttachedBytes;
+    for (const f of list) {
+      if (f.size > MAX_PER_IMAGE_BYTES) {
+        reportNotice(`"${f.name}" exceeds the 8 MB per-image limit and was skipped.`);
+        continue;
+      }
+      if (running + f.size > MAX_TOTAL_IMAGE_BYTES) {
+        reportNotice(`Total attachments would exceed 16 MB — "${f.name}" was skipped.`);
+        continue;
+      }
+      try {
+        const att = await fileToAttachment(f);
+        accepted.push(att);
+        running += f.size;
+      } catch (err) {
+        console.error("attachment read failed", err);
+        reportNotice(`Could not read "${f.name}".`);
+      }
+    }
+    if (accepted.length > 0) {
+      setPending((prev) => [...prev, ...accepted]);
+    }
+  };
+
+  const removePending = (id: string) => {
+    setPending((prev) => prev.filter((p) => p.id !== id));
+  };
 
   // Restore draft when switching sessions OR when an external action bumps
   // the load epoch (e.g. Edit & resend from a message bubble). loadEpoch is
@@ -134,16 +220,37 @@ export function Composer({ session }: { session: SessionState }) {
 
   const send = () => {
     const trimmed = text.trim();
-    if (!trimmed || streaming || reloading) return;
+    const hasAttachments = pending.length > 0;
+    if ((!trimmed && !hasAttachments) || streaming || reloading) return;
     // Intercept built-in slash commands before they go to the agent.
-    const parsed = parseSlash(trimmed);
+    const parsed = trimmed ? parseSlash(trimmed) : null;
     if (parsed) {
       const builtin = BUILTIN_BY_NAME.get(parsed.name);
       if (builtin) {
+        if (hasAttachments) {
+          reportNotice("Slash commands do not accept attachments — clear them first.");
+          return;
+        }
         void runBuiltin(builtin, parsed.args);
         return;
       }
     }
+    // Snapshot attachments now so we can clear local state immediately.
+    const sendAttachments = pending;
+    const wireAttachments = sendAttachments.map((p) => ({
+      id: p.id,
+      name: p.name,
+      mimeType: p.mimeType,
+      size: p.size,
+      data: p.data,
+    }));
+    const localAttachments: MessageAttachment[] = sendAttachments.map((p) => ({
+      id: p.id,
+      name: p.name,
+      mimeType: p.mimeType,
+      size: p.size,
+      dataUrl: p.dataUrl,
+    }));
     // Fan-out: if ≥2 sessions selected, broadcast to all of them. Slash
     // commands are excluded above; permission-blocked / detached / reloading
     // sessions are skipped (they'll just no-op).
@@ -155,15 +262,21 @@ export function Composer({ session }: { session: SessionState }) {
       if (target.detached || target.status === "reloading" || target.status === "streaming") {
         continue;
       }
-      appendUser(sid, trimmed);
+      appendUser(sid, trimmed, localAttachments.length > 0 ? localAttachments : undefined);
       setStatus(sid, "streaming");
-      sendWs({ type: "prompt", sessionId: sid, text: trimmed });
+      sendWs({
+        type: "prompt",
+        sessionId: sid,
+        text: trimmed,
+        attachments: wireAttachments.length > 0 ? wireAttachments : undefined,
+      });
       setTimeout(() => useCheckpointStore.getState().invalidate(sid), 400);
     }
-    pushHistory(session.id, trimmed);
+    if (trimmed) pushHistory(session.id, trimmed);
     historyIdxRef.current = -1;
     setText("");
     setDraft(session.id, "");
+    setPending([]);
     if (broadcastTargets.length > 1) {
       useUIStore.getState().setNotice({
         id: `fanout-${Date.now()}`,
@@ -270,7 +383,36 @@ export function Composer({ session }: { session: SessionState }) {
             </Button>
           </div>
         )}
-        <div className="relative">
+        <div
+          className="relative"
+          onDragEnter={(e) => {
+            if (Array.from(e.dataTransfer.types).includes("Files")) {
+              e.preventDefault();
+              setDragOver(true);
+            }
+          }}
+          onDragOver={(e) => {
+            if (Array.from(e.dataTransfer.types).includes("Files")) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "copy";
+              setDragOver(true);
+            }
+          }}
+          onDragLeave={(e) => {
+            // Only clear when leaving the actual container, not bubbling from children.
+            if (e.currentTarget === e.target) setDragOver(false);
+          }}
+          onDrop={(e) => {
+            if (Array.from(e.dataTransfer.types).includes("Files")) {
+              e.preventDefault();
+              setDragOver(false);
+              const files = Array.from(e.dataTransfer.files).filter((f) =>
+                f.type.startsWith("image/"),
+              );
+              if (files.length > 0) void addFiles(files);
+            }
+          }}
+        >
           <SlashPopover
             open={slashOpen}
             commands={agentCommands}
@@ -286,11 +428,68 @@ export function Composer({ session }: { session: SessionState }) {
             onPick={pickMention}
             onClose={() => setText((t) => t.replace(/@[\w./\-]*$/, ""))}
           />
+          {dragOver && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-accent bg-accent/10 text-xs text-accent">
+              Drop images to attach
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = e.target.files;
+              if (files && files.length > 0) void addFiles(files);
+              // Reset so the same file can be picked again later.
+              e.target.value = "";
+            }}
+          />
           <div className="rounded-xl border border-border bg-panel-elevated focus-within:ring-2 focus-within:ring-ring">
+            {pending.length > 0 && (
+              <div className="flex flex-wrap items-start gap-2 border-b border-border/60 px-3 pt-3 pb-2">
+                {pending.map((p) => (
+                  <div
+                    key={p.id}
+                    className="group relative h-16 w-16 overflow-hidden rounded-md border border-border bg-muted"
+                    title={`${p.name} · ${(p.size / 1024).toFixed(0)} KB`}
+                  >
+                    <img src={p.dataUrl} alt={p.name} className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removePending(p.id)}
+                      className="absolute right-0.5 top-0.5 hidden h-4 w-4 items-center justify-center rounded-full bg-black/70 text-white hover:bg-black/90 group-hover:flex"
+                      aria-label={`Remove ${p.name}`}
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </div>
+                ))}
+                <span className="ml-1 self-center text-[10px] text-muted-foreground">
+                  {pending.length} image{pending.length === 1 ? "" : "s"} ·{" "}
+                  {(totalAttachedBytes / 1024).toFixed(0)} KB
+                </span>
+              </div>
+            )}
             <Textarea
               ref={taRef}
               value={text}
               onChange={(e) => setText(e.target.value)}
+              onPaste={(e) => {
+                const items = Array.from(e.clipboardData.items ?? []);
+                const files: File[] = [];
+                for (const it of items) {
+                  if (it.kind === "file") {
+                    const f = it.getAsFile();
+                    if (f?.type.startsWith("image/")) files.push(f);
+                  }
+                }
+                if (files.length > 0) {
+                  e.preventDefault();
+                  void addFiles(files);
+                }
+              }}
               placeholder={
                 detached
                   ? "Session detached — create a new session to continue"
@@ -342,7 +541,14 @@ export function Composer({ session }: { session: SessionState }) {
             />
             <div className="flex items-center justify-between gap-2 border-t border-border px-2.5 py-1.5">
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="h-7 w-7" title="Attach (todo)">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  title="Attach images"
+                  disabled={streaming || awaitingPerm || reloading || detached}
+                  onClick={() => fileInputRef.current?.click()}
+                >
                   <Paperclip className="h-3.5 w-3.5" />
                 </Button>
                 {(agentCommands.length > 0 || true) && (
@@ -370,7 +576,12 @@ export function Composer({ session }: { session: SessionState }) {
                     <Button
                       size="sm"
                       onClick={send}
-                      disabled={!text.trim() || awaitingPerm || reloading || detached}
+                      disabled={
+                        (!text.trim() && pending.length === 0) ||
+                        awaitingPerm ||
+                        reloading ||
+                        detached
+                      }
                       className="h-7 gap-1.5"
                     >
                       <Send className="h-3 w-3" />

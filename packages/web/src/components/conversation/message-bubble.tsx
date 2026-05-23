@@ -90,6 +90,22 @@ export function MessageBubble({
             <span>{relativeTime(message.ts)}</span>
           </div>
           <div className="prose prose-invert prose-sm max-w-none prose-pre:m-0 prose-pre:bg-transparent prose-pre:border-0 prose-pre:p-0 prose-code:before:content-none prose-code:after:content-none">
+            {message.attachments && message.attachments.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-2 not-prose">
+                {message.attachments.map((att) => (
+                  <a
+                    key={att.id}
+                    href={att.dataUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={`${att.name} · ${(att.size / 1024).toFixed(0)} KB`}
+                    className="block h-24 w-24 overflow-hidden rounded-md border border-border bg-muted transition hover:opacity-90"
+                  >
+                    <img src={att.dataUrl} alt={att.name} className="h-full w-full object-cover" />
+                  </a>
+                ))}
+              </div>
+            )}
             <ClassifiedBody
               text={message.text}
               sessionId={sessionId}

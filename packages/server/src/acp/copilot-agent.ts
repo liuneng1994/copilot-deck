@@ -65,6 +65,11 @@ export class CopilotAgent {
     return this.initResponse?.agentCapabilities?.loadSession === true;
   }
 
+  /** True if the agent advertises ContentBlock::Image support in prompts. */
+  supportsImagePrompts(): boolean {
+    return this.initResponse?.agentCapabilities?.promptCapabilities?.image === true;
+  }
+
   isInitialized() {
     return this.initialized;
   }

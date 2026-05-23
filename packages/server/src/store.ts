@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS messages (
   role TEXT NOT NULL,
   text TEXT NOT NULL,
   ts INTEGER NOT NULL,
+  /** JSON array of attachments (images today, future media). Nullable. */
+  attachments TEXT,
   FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, ts);
@@ -164,12 +166,22 @@ export interface PersistedSession {
   firstPromptSent: boolean;
 }
 
+export interface PersistedAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  /** data URL or http(s) reference for rendering. */
+  dataUrl: string;
+}
+
 export interface PersistedMessage {
   id: string;
   sessionId: string;
   role: string;
   text: string;
   ts: number;
+  attachments?: PersistedAttachment[];
 }
 
 export interface PersistedToolCall {
@@ -234,6 +246,7 @@ export class Store {
     this.ensureColumn("session_files", "reviewed_at", "INTEGER");
     this.ensureColumn("session_files", "last_diff_hash", "TEXT");
     this.ensureColumn("sessions", "fork_prefix", "TEXT");
+    this.ensureColumn("messages", "attachments", "TEXT");
     this.backfillMessagesFts();
   }
 
@@ -406,9 +419,16 @@ export class Store {
   insertMessage(m: PersistedMessage) {
     this.db
       .prepare(
-        "INSERT OR REPLACE INTO messages (id, session_id, role, text, ts) VALUES (?, ?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO messages (id, session_id, role, text, ts, attachments) VALUES (?, ?, ?, ?, ?, ?)",
       )
-      .run(m.id, m.sessionId, m.role, m.text, m.ts);
+      .run(
+        m.id,
+        m.sessionId,
+        m.role,
+        m.text,
+        m.ts,
+        m.attachments && m.attachments.length > 0 ? JSON.stringify(m.attachments) : null,
+      );
   }
 
   updateMessageText(id: string, text: string) {
@@ -418,16 +438,26 @@ export class Store {
   listMessages(sessionId: string): PersistedMessage[] {
     const rows = this.db
       .prepare(
-        "SELECT id, session_id, role, text, ts FROM messages WHERE session_id = ? ORDER BY ts ASC",
+        "SELECT id, session_id, role, text, ts, attachments FROM messages WHERE session_id = ? ORDER BY ts ASC",
       )
       .all(sessionId) as Record<string, unknown>[];
-    return rows.map((r) => ({
-      id: r.id as string,
-      sessionId: r.session_id as string,
-      role: r.role as string,
-      text: r.text as string,
-      ts: r.ts as number,
-    }));
+    return rows.map((r) => {
+      const out: PersistedMessage = {
+        id: r.id as string,
+        sessionId: r.session_id as string,
+        role: r.role as string,
+        text: r.text as string,
+        ts: r.ts as number,
+      };
+      if (typeof r.attachments === "string" && r.attachments.length > 0) {
+        try {
+          out.attachments = JSON.parse(r.attachments) as PersistedAttachment[];
+        } catch {
+          // ignore malformed attachments JSON
+        }
+      }
+      return out;
+    });
   }
 
   // ───── tool calls ─────
