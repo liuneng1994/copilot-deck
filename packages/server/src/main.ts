@@ -14,6 +14,7 @@ import {
 } from "./extensions/routes-plugins.js";
 import { invalidateSkillsCache, registerSkillsRoutes } from "./extensions/routes-skills.js";
 import { startExtensionWatchers } from "./extensions/watchers.js";
+import { registerGitRoutes } from "./git/routes.js";
 import { registerRoutes } from "./routes.js";
 import { SessionManager } from "./session-manager.js";
 import { Store } from "./store.js";
@@ -49,6 +50,7 @@ async function main() {
   registerMcpRoutes(app, { manager });
   registerPluginRoutes(app, { broadcast });
   registerSkillsRoutes(app, { manager, broadcast });
+  registerGitRoutes(app, { manager });
 
   app.register(async (instance) => {
     instance.get("/ws", { websocket: true }, (socket) => {
