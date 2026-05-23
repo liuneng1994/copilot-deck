@@ -22,7 +22,7 @@ export function ModeSelector({ session }: { session: SessionState }) {
           <ChevronDown className="h-3 w-3 opacity-60" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-64 p-1" align="end">
+      <PopoverContent className="w-72 max-w-[calc(100vw-2rem)] p-1" align="end">
         <div className="border-b border-border px-2 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
           Session mode
         </div>
@@ -43,10 +43,10 @@ export function ModeSelector({ session }: { session: SessionState }) {
               <Check
                 className={cn("mt-0.5 h-3 w-3 shrink-0", selected ? "text-primary" : "opacity-0")}
               />
-              <span className="flex-1">
-                <span className="font-medium text-foreground">{o.name}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium text-foreground">{o.name}</span>
                 {o.description && (
-                  <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
+                  <span className="mt-0.5 block break-words text-[10px] leading-snug text-muted-foreground">
                     {o.description}
                   </span>
                 )}
