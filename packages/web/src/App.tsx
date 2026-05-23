@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { ArtifactPane } from "./components/artifact/artifact-pane";
 import { Composer } from "./components/composer/composer";
 import { Conversation, NoSessionPlaceholder } from "./components/conversation/conversation";
 import { FindBar } from "./components/conversation/find-bar";
@@ -17,6 +18,12 @@ import { TopBar } from "./components/shell/top-bar";
 import { Sidebar, SidebarRail } from "./components/sidebar/sidebar";
 import { orderedSessions } from "./lib/session-order";
 import { useWsBridge } from "./lib/ws-bridge";
+import {
+  ARTIFACT_PANE_DEFAULT,
+  ARTIFACT_PANE_MAX,
+  ARTIFACT_PANE_MIN,
+  useArtifactStore,
+} from "./stores/artifact-store";
 import {
   INSPECTOR_MAX,
   INSPECTOR_MIN,
@@ -39,6 +46,16 @@ export function App() {
   const wsConnected = useUIStore((s) => s.wsConnected);
   const activeId = useUIStore((s) => s.activeSessionId);
   const session = useUIStore((s) => (activeId ? s.sessions[activeId] : null));
+
+  const artifactOpen = useArtifactStore((s) =>
+    activeId
+      ? Boolean(s.openBySession[activeId] && (s.orderBySession[activeId]?.length ?? 0) > 0)
+      : false,
+  );
+  const artifactWidth = useArtifactStore((s) =>
+    activeId ? (s.widthBySession[activeId] ?? ARTIFACT_PANE_DEFAULT) : ARTIFACT_PANE_DEFAULT,
+  );
+  const setArtifactWidth = useArtifactStore((s) => s.setWidth);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -103,9 +120,25 @@ export function App() {
           {session ? (
             <>
               <SessionHeader session={session} />
-              <div className="relative flex min-h-0 flex-1 flex-col">
-                <FindBar />
-                <Conversation session={session} />
+              <div className="flex min-h-0 flex-1">
+                <div className="relative flex min-w-0 flex-1 flex-col">
+                  <FindBar />
+                  <Conversation session={session} />
+                </div>
+                {artifactOpen && activeId ? (
+                  <>
+                    <ResizeHandle
+                      side="right"
+                      value={artifactWidth}
+                      min={ARTIFACT_PANE_MIN}
+                      max={ARTIFACT_PANE_MAX}
+                      defaultValue={ARTIFACT_PANE_DEFAULT}
+                      ariaLabel="Resize artifact pane"
+                      onChange={(px) => setArtifactWidth(activeId, px)}
+                    />
+                    <ArtifactPane sessionId={activeId} width={artifactWidth} />
+                  </>
+                ) : null}
               </div>
               <Composer session={session} />
             </>
