@@ -86,10 +86,12 @@ function mcpServerUrl(name: string, scope: PanelScope | WritableScope, cwd?: str
 
 export function McpServersPanel() {
   const sessions = useUIStore((s) => s.sessions);
-  const cwdOptions = useMemo(
-    () => Array.from(new Set(Object.values(sessions).map((session) => session.cwd))).sort(),
-    [sessions],
-  );
+  const cwdOptions = useMemo(() => {
+    const sessionList = Object.values(sessions);
+    const liveCwds = sessionList.filter((session) => !session.detached).map((session) => session.cwd);
+    const cwds = liveCwds.length > 0 ? liveCwds : sessionList.map((session) => session.cwd);
+    return Array.from(new Set(cwds)).sort();
+  }, [sessions]);
   const [scope, setScope] = useState<PanelScope>("user");
   const [workspaceCwd, setWorkspaceCwd] = useState("");
   const [servers, setServers] = useState<McpServer[]>([]);
