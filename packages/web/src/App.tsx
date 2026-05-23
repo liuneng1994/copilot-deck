@@ -4,6 +4,7 @@ import { Composer } from "./components/composer/composer";
 import { Conversation, NoSessionPlaceholder } from "./components/conversation/conversation";
 import { FindBar } from "./components/conversation/find-bar";
 import { SessionHeader } from "./components/conversation/session-header";
+import { HistoryPage } from "./components/history/history-page";
 import { Inspector, InspectorRail } from "./components/inspector/inspector";
 import { ResizeHandle } from "./components/layout/resize-handle";
 import { ConfirmDialogHost } from "./components/overlays/confirm-dialog";
@@ -48,6 +49,7 @@ export function App() {
   const wsConnected = useUIStore((s) => s.wsConnected);
   const activeId = useUIStore((s) => s.activeSessionId);
   const session = useUIStore((s) => (activeId ? s.sessions[activeId] : null));
+  const topView = useUIStore((s) => s.topView);
 
   // Load checkpoints for the active session on switch.
   useEffect(() => {
@@ -107,75 +109,81 @@ export function App() {
   return (
     <div className="flex h-screen w-screen flex-col bg-background text-foreground">
       <TopBar />
-      <div className="flex min-h-0 flex-1">
-        {sidebarCollapsed ? (
-          <SidebarRail onExpand={toggleSidebar} />
-        ) : (
-          <>
-            <Sidebar />
-            <ResizeHandle
-              side="left"
-              value={sidebarWidth}
-              min={SIDEBAR_MIN}
-              max={SIDEBAR_MAX}
-              defaultValue={256}
-              ariaLabel="Resize sidebar"
-              onChange={setSidebarWidth}
-            />
-          </>
-        )}
-
-        <main className="flex min-w-0 flex-1 flex-col">
-          {!wsConnected && <DisconnectedBanner />}
-          <GlobalErrorBanner />
-          <NoticeBanner />
-          {session ? (
-            <>
-              <SessionHeader session={session} />
-              <div className="flex min-h-0 flex-1">
-                <div className="relative flex min-w-0 flex-1 flex-col">
-                  <FindBar />
-                  <Conversation session={session} />
-                </div>
-                {artifactOpen && activeId ? (
-                  <>
-                    <ResizeHandle
-                      side="right"
-                      value={artifactWidth}
-                      min={ARTIFACT_PANE_MIN}
-                      max={ARTIFACT_PANE_MAX}
-                      defaultValue={ARTIFACT_PANE_DEFAULT}
-                      ariaLabel="Resize artifact pane"
-                      onChange={(px) => setArtifactWidth(activeId, px)}
-                    />
-                    <ArtifactPane sessionId={activeId} width={artifactWidth} />
-                  </>
-                ) : null}
-              </div>
-              <Composer session={session} />
-            </>
+      {topView === "history" ? (
+        <div className="flex min-h-0 flex-1">
+          <HistoryPage />
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          {sidebarCollapsed ? (
+            <SidebarRail onExpand={toggleSidebar} />
           ) : (
-            <NoSessionPlaceholder />
+            <>
+              <Sidebar />
+              <ResizeHandle
+                side="left"
+                value={sidebarWidth}
+                min={SIDEBAR_MIN}
+                max={SIDEBAR_MAX}
+                defaultValue={256}
+                ariaLabel="Resize sidebar"
+                onChange={setSidebarWidth}
+              />
+            </>
           )}
-        </main>
 
-        {inspectorCollapsed ? (
-          <InspectorRail onExpand={toggleInspector} />
-        ) : (
-          <>
-            <ResizeHandle
-              side="right"
-              value={inspectorWidth}
-              min={INSPECTOR_MIN}
-              max={INSPECTOR_MAX}
-              defaultValue={320}
-              ariaLabel="Resize inspector"
-              onChange={setInspectorWidth}
-            />
-            <Inspector />
-          </>
-        )}
-      </div>
+          <main className="flex min-w-0 flex-1 flex-col">
+            {!wsConnected && <DisconnectedBanner />}
+            <GlobalErrorBanner />
+            <NoticeBanner />
+            {session ? (
+              <>
+                <SessionHeader session={session} />
+                <div className="flex min-h-0 flex-1">
+                  <div className="relative flex min-w-0 flex-1 flex-col">
+                    <FindBar />
+                    <Conversation session={session} />
+                  </div>
+                  {artifactOpen && activeId ? (
+                    <>
+                      <ResizeHandle
+                        side="right"
+                        value={artifactWidth}
+                        min={ARTIFACT_PANE_MIN}
+                        max={ARTIFACT_PANE_MAX}
+                        defaultValue={ARTIFACT_PANE_DEFAULT}
+                        ariaLabel="Resize artifact pane"
+                        onChange={(px) => setArtifactWidth(activeId, px)}
+                      />
+                      <ArtifactPane sessionId={activeId} width={artifactWidth} />
+                    </>
+                  ) : null}
+                </div>
+                <Composer session={session} />
+              </>
+            ) : (
+              <NoSessionPlaceholder />
+            )}
+          </main>
+
+          {inspectorCollapsed ? (
+            <InspectorRail onExpand={toggleInspector} />
+          ) : (
+            <>
+              <ResizeHandle
+                side="right"
+                value={inspectorWidth}
+                min={INSPECTOR_MIN}
+                max={INSPECTOR_MAX}
+                defaultValue={320}
+                ariaLabel="Resize inspector"
+                onChange={setInspectorWidth}
+              />
+              <Inspector />
+            </>
+          )}
+        </div>
+      )}
       <StatusBar />
       <PermissionDialog />
       <TraceDrawer />

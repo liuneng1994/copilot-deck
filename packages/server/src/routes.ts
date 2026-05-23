@@ -6,6 +6,7 @@ import { promises as fs, createReadStream } from "node:fs";
 import path from "node:path";
 import { CURATED_MODELS } from "@agent-view/shared";
 import type { FastifyInstance } from "fastify";
+import { CopilotHistoryStore } from "./copilot-history.js";
 import { listFiles } from "./file-index.js";
 import {
   deleteCheckpoint as deleteCheckpointGit,
@@ -77,12 +78,61 @@ function isImageMime(mime: string): boolean {
 
 export function registerRoutes(app: FastifyInstance, deps: Deps): void {
   const { manager } = deps;
+  const copilotHistory = new CopilotHistoryStore();
   const isKnownCwd = (cwd: string) => {
     if (manager.list().some((s) => s.cwd === cwd)) return true;
     return manager.hydrate().some((s) => s.cwd === cwd);
   };
 
   app.get("/api/health", async () => ({ ok: true }));
+
+  // ─── Copilot CLI history (read-only adapter over ~/.copilot/session-store.db) ───
+  app.get<{ Querystring: { cwd?: string; q?: string; limit?: string } }>(
+    "/api/copilot-history/sessions",
+    async (req) => {
+      const limit = parseNonNegativeInt(req.query.limit, 100, 500);
+      const sessions = copilotHistory.listSessions({
+        cwd: req.query.cwd?.trim() || undefined,
+        q: req.query.q?.trim() || undefined,
+        limit,
+      });
+      return { available: copilotHistory.isAvailable(), sessions };
+    },
+  );
+
+  app.get<{ Params: { id: string } }>("/api/copilot-history/sessions/:id", async (req, reply) => {
+    const detail = copilotHistory.getSession(req.params.id);
+    if (!detail) return reply.code(404).send({ error: "session not found" });
+    return detail;
+  });
+
+  app.post<{ Body: { externalSessionId?: string; cwd?: string; title?: string } }>(
+    "/api/copilot-history/resume",
+    async (req, reply) => {
+      const id = (req.body?.externalSessionId ?? "").trim();
+      if (!id) return reply.code(400).send({ error: "externalSessionId required" });
+      const detail = copilotHistory.getSession(id);
+      if (!detail) return reply.code(404).send({ error: "copilot session not found" });
+      const cwd = (req.body?.cwd ?? detail.cwd ?? "").trim();
+      if (!cwd)
+        return reply.code(400).send({ error: "cwd required (session has no cwd recorded)" });
+      try {
+        const result = await manager.importExternalSession({
+          externalSessionId: id,
+          cwd,
+          title: req.body?.title?.trim() || detail.summary || null,
+          turns: detail.turns.map((t) => ({
+            userMessage: t.userMessage,
+            assistantResponse: t.assistantResponse,
+            timestamp: t.timestamp,
+          })),
+        });
+        return result;
+      } catch (err) {
+        return reply.code(500).send({ error: (err as Error).message || "import failed" });
+      }
+    },
+  );
 
   app.get("/api/sessions", async () => ({ sessions: manager.list() }));
 

@@ -197,6 +197,8 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   modelPickerOpen: boolean;
   /** Settings drawer visibility. */
   settingsOpen: boolean;
+  /** Which top-level view is active in the shell. */
+  topView: "workspace" | "history";
   /** Inspector Files-tab: which path the user opened (clicked or set externally). */
   filePreviewPath: string | null;
   /** Per-session unsent composer drafts. Persisted in localStorage. */
@@ -266,6 +268,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   setRenderHintMode: (sessionId: string, mode: "agents_md" | "prompt" | "off") => void;
   setModelPickerOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
+  setTopView: (view: "workspace" | "history") => void;
   setFilePreviewPath: (path: string | null) => void;
   setDraft: (sessionId: string, text: string) => void;
   /** Update the sidebar/inspector width (px) with min/max clamp; persists to localStorage. */
@@ -421,6 +424,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   modelBySession: {},
   modelPickerOpen: false,
   settingsOpen: false,
+  topView: "workspace",
   filePreviewPath: null,
   drafts: loadDrafts(),
   promptHistory: loadPromptHistory(),
@@ -981,6 +985,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
     }),
   setModelPickerOpen: (open) => set({ modelPickerOpen: open }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setTopView: (view) => set({ topView: view }),
   setFilePreviewPath: (path) => set({ filePreviewPath: path }),
   setDraft: (sessionId, text) =>
     set((s) => {

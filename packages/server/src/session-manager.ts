@@ -691,6 +691,79 @@ export class SessionManager {
   }
 
   /**
+   * Adopt a Copilot CLI session that exists in the upstream `~/.copilot/session-store.db`
+   * but is unknown to agent-view. Creates a placeholder row in our DB (so
+   * hydrate works), seeds it with the prior conversation turns, then calls
+   * ACP `loadSession` so the live CLI process restores its in-memory state.
+   *
+   * Idempotent: if the id is already known to agent-view, we just reattach.
+   */
+  async importExternalSession(opts: {
+    externalSessionId: string;
+    cwd: string;
+    title?: string | null;
+    /** Prior turns to seed our local store with so they show up in the bubble list. */
+    turns?: Array<{
+      userMessage: string | null;
+      assistantResponse: string | null;
+      timestamp: string;
+    }>;
+  }): Promise<{ sessionId: string; replacedFrom?: string }> {
+    const { externalSessionId, cwd, title, turns } = opts;
+    // Already known? Just reattach (or no-op if attached).
+    if (this.store.getSession(externalSessionId)) {
+      return this.reattachSession(externalSessionId);
+    }
+    const now = Date.now();
+    this.store.upsertSession({
+      id: externalSessionId,
+      cwd,
+      title: title ?? null,
+      status: "idle",
+      modeId: null,
+      modeName: null,
+      modeOptions: null,
+      availableCommands: null,
+      createdAt: now,
+      updatedAt: now,
+      detached: true,
+      renderHintMode: DEFAULT_RENDER_HINT_MODE,
+      firstPromptSent: true,
+    });
+    // Seed message history from the upstream turns. We invent stable per-turn
+    // ids so future loads stay idempotent. Timestamps fall back to `now` if
+    // parsing fails.
+    if (turns && turns.length > 0) {
+      for (let i = 0; i < turns.length; i++) {
+        const t = turns[i];
+        if (!t) continue;
+        let ts = Date.parse(t.timestamp);
+        if (!Number.isFinite(ts)) ts = now + i;
+        if (t.userMessage) {
+          this.store.insertMessage({
+            id: `${externalSessionId}-imp-u-${i}`,
+            sessionId: externalSessionId,
+            role: "user",
+            text: t.userMessage,
+            ts,
+          });
+        }
+        if (t.assistantResponse) {
+          this.store.insertMessage({
+            id: `${externalSessionId}-imp-a-${i}`,
+            sessionId: externalSessionId,
+            role: "agent",
+            text: t.assistantResponse,
+            ts: ts + 1,
+          });
+        }
+      }
+    }
+    // Reattach via loadSession to wake the CLI's context.
+    return this.reattachSession(externalSessionId);
+  }
+
+  /**
    * Fork a session: creates a brand-new ACP session in the same cwd and
    * stores a condensed "Previous context" prefix that will be prepended to
    * its first user prompt. The prefix is built from messages up to (and
