@@ -65,6 +65,15 @@ export const BUILTIN_COMMANDS: BuiltinCommand[] = [
     },
   },
   {
+    name: "search",
+    description: "Search across all sessions (⌘⇧F)",
+    category: "view",
+    run: () => {
+      ui().setSearchOpen(true);
+      return true;
+    },
+  },
+  {
     name: "plan",
     description: "Open the Plan tab in the inspector",
     category: "view",

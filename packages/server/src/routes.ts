@@ -171,6 +171,27 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
     }
   });
 
+  // ───── cross-session search ─────
+  app.get<{ Querystring: { q?: string; limit?: string; sessionId?: string } }>(
+    "/api/search",
+    async (req, reply) => {
+      const q = (req.query.q ?? "").trim();
+      if (!q) return { query: q, hits: [] };
+      const limit = Number(req.query.limit ?? "50");
+      const sessionId = req.query.sessionId?.trim() || undefined;
+      try {
+        const hits = manager.store.searchMessages(q, {
+          limit: Number.isFinite(limit) ? limit : 50,
+          sessionId,
+        });
+        return { query: q, hits };
+      } catch (e) {
+        reply.code(500);
+        return { error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
   app.post<{ Body: { path?: string; cwd?: string } }>("/api/mkdir", async (req, reply) => {
     const raw = typeof req.body?.path === "string" ? req.body.path.trim() : "";
     const cwd = typeof req.body?.cwd === "string" ? req.body.cwd.trim() : undefined;

@@ -97,3 +97,18 @@
     outline: 1px solid rgb(250 204 21);
   }
 }
+
+@layer utilities {
+  @keyframes search-flash {
+    0% {
+      background-color: rgb(250 204 21 / 0.18);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+  .search-flash {
+    animation: search-flash 1.4s ease-out;
+    border-radius: 8px;
+  }
+}

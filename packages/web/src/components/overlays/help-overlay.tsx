@@ -7,6 +7,7 @@ const SHORTCUTS: { keys: string; desc: string }[] = [
   { keys: "⌘ \\", desc: "Toggle sidebar" },
   { keys: "⌘ B", desc: "Toggle inspector" },
   { keys: "⌘ F", desc: "Find in conversation" },
+  { keys: "⌘ ⇧ F", desc: "Search across all sessions" },
   { keys: "⌘ 1-9", desc: "Switch to nth session" },
   { keys: "⌘ ↵ / ↵", desc: "Send prompt" },
   { keys: "Esc", desc: "Cancel streaming reply" },

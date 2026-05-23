@@ -168,6 +168,8 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   /** Help/keyboard reference overlay. */
   helpOpen: boolean;
   findOpen: boolean;
+  /** Cross-session full-text search overlay. */
+  searchOpen: boolean;
   /** Banner-style transient notice shown above the conversation. */
   notice: { id: string; kind: "info" | "warn"; text: string; ts: number } | null;
   /** Curated model list (loaded on connect via list_models). */
@@ -235,6 +237,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   setInspectorTab: (tab: UIState["inspectorTab"]) => void;
   setHelpOpen: (open: boolean) => void;
   setFindOpen: (open: boolean) => void;
+  setSearchOpen: (open: boolean) => void;
   setNotice: (n: UIState["notice"]) => void;
   setModels: (
     models: ModelInfo[],
@@ -393,6 +396,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   inspectorTab: "tools",
   helpOpen: false,
   findOpen: false,
+  searchOpen: false,
   notice: null,
   models: [],
   defaultModel: null,
@@ -918,6 +922,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   setInspectorTab: (tab) => set({ inspectorTab: tab }),
   setHelpOpen: (open) => set({ helpOpen: open }),
   setFindOpen: (open) => set({ findOpen: open }),
+  setSearchOpen: (open) => set({ searchOpen: open }),
   setNotice: (n) => set({ notice: n }),
   setModels: (models, defaultModel, currentByCwd, currentBySession) =>
     set({

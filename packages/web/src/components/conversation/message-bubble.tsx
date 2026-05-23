@@ -61,7 +61,10 @@ export function MessageBubble({
 
   const isUser = message.role === "user";
   return (
-    <div className={cn("group/msg flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
+    <div
+      data-msg-id={message.id}
+      className={cn("group/msg flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}
+    >
       <div
         className={cn(
           "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border",

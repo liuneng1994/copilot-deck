@@ -11,6 +11,7 @@ import { HelpOverlay } from "./components/overlays/help-overlay";
 import { ModelPickerOverlay } from "./components/overlays/model-picker";
 import { NoticeBanner } from "./components/overlays/notice-banner";
 import { PermissionDialog } from "./components/overlays/permission-dialog";
+import { SearchOverlay } from "./components/overlays/search-overlay";
 import { SettingsDrawer } from "./components/overlays/settings-drawer";
 import { TraceDrawer } from "./components/overlays/trace-drawer";
 import { StatusBar } from "./components/shell/status-bar";
@@ -75,10 +76,15 @@ export function App() {
         e.preventDefault();
         toggleInspector();
       } else if (e.key === "f" || e.key === "F") {
-        // Cmd/Ctrl+F → toggle find-in-conversation overlay.
+        // Cmd/Ctrl+Shift+F → cross-session search.
+        // Cmd/Ctrl+F → in-conversation find.
         e.preventDefault();
         const st = useUIStore.getState();
-        st.setFindOpen(!st.findOpen);
+        if (e.shiftKey) {
+          st.setSearchOpen(!st.searchOpen);
+        } else {
+          st.setFindOpen(!st.findOpen);
+        }
       } else if (e.key === ",") {
         e.preventDefault();
         useUIStore.getState().setSettingsOpen(true);
@@ -174,6 +180,7 @@ export function App() {
       <PermissionDialog />
       <TraceDrawer />
       <HelpOverlay />
+      <SearchOverlay />
       <ModelPickerOverlay />
       <SettingsDrawer />
       <ConfirmDialogHost />

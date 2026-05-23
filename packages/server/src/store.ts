@@ -102,6 +102,26 @@ CREATE TABLE IF NOT EXISTS checkpoints (
 );
 CREATE INDEX IF NOT EXISTS idx_checkpoints_session ON checkpoints(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_checkpoints_message ON checkpoints(session_id, message_id);
+
+-- Cross-session full-text search over message bodies.
+-- Uses contentless FTS5 so we don't double-store text.
+CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+  text,
+  content='messages',
+  content_rowid='rowid',
+  tokenize = 'unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+  INSERT INTO messages_fts(rowid, text) VALUES (new.rowid, new.text);
+END;
+CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+  INSERT INTO messages_fts(messages_fts, rowid, text) VALUES('delete', old.rowid, old.text);
+END;
+CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+  INSERT INTO messages_fts(messages_fts, rowid, text) VALUES('delete', old.rowid, old.text);
+  INSERT INTO messages_fts(rowid, text) VALUES (new.rowid, new.text);
+END;
 `;
 
 const TRACE_MAX_ROWS = Number(process.env.AGENT_VIEW_TRACE_MAX ?? 5000);
@@ -210,6 +230,31 @@ export class Store {
     this.ensureColumn("session_files", "source", "TEXT");
     this.ensureColumn("session_files", "reviewed_at", "INTEGER");
     this.ensureColumn("session_files", "last_diff_hash", "TEXT");
+    this.backfillMessagesFts();
+  }
+
+  /**
+   * One-time backfill: if `messages_fts` has no indexed docs but `messages`
+   * is not empty, rebuild the FTS index from the source table. We detect
+   * this via the docsize shadow table since the virtual table itself
+   * reports a misleading count from content='messages' mode.
+   */
+  private backfillMessagesFts(): void {
+    try {
+      const ftsDocs = (
+        this.db.prepare("SELECT count(*) AS n FROM messages_fts_docsize").get() as {
+          n: number;
+        }
+      ).n;
+      const msgCount = (
+        this.db.prepare("SELECT count(*) AS n FROM messages").get() as { n: number }
+      ).n;
+      if (ftsDocs === 0 && msgCount > 0) {
+        this.db.exec("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')");
+      }
+    } catch {
+      // FTS5 may not be compiled in extremely minimal builds; skip silently.
+    }
   }
 
   /**
@@ -579,6 +624,96 @@ export class Store {
   deleteCheckpoint(id: string): void {
     this.db.prepare("DELETE FROM checkpoints WHERE id = ?").run(id);
   }
+
+  // ───── search ─────
+
+  /**
+   * Full-text search across all messages. Returns rows with session metadata
+   * + a snippet with FTS5 highlight markers. Query is the raw user input;
+   * we sanitise it to a safe FTS5 MATCH expression.
+   */
+  searchMessages(rawQuery: string, opts: { limit?: number; sessionId?: string } = {}): SearchHit[] {
+    const q = toFtsQuery(rawQuery);
+    if (!q) return [];
+    const limit = Math.max(1, Math.min(200, opts.limit ?? 50));
+    try {
+      const sql = opts.sessionId
+        ? `SELECT m.id AS message_id, m.session_id, m.role, m.ts,
+                  s.cwd AS cwd, s.title AS title,
+                  snippet(messages_fts, 0, '<mark>', '</mark>', '…', 16) AS snippet,
+                  bm25(messages_fts) AS score
+           FROM messages_fts
+           JOIN messages m ON m.rowid = messages_fts.rowid
+           JOIN sessions s ON s.id = m.session_id
+           WHERE messages_fts MATCH ? AND m.session_id = ?
+           ORDER BY score
+           LIMIT ?`
+        : `SELECT m.id AS message_id, m.session_id, m.role, m.ts,
+                  s.cwd AS cwd, s.title AS title,
+                  snippet(messages_fts, 0, '<mark>', '</mark>', '…', 16) AS snippet,
+                  bm25(messages_fts) AS score
+           FROM messages_fts
+           JOIN messages m ON m.rowid = messages_fts.rowid
+           JOIN sessions s ON s.id = m.session_id
+           WHERE messages_fts MATCH ?
+           ORDER BY score
+           LIMIT ?`;
+      const params = opts.sessionId ? [q, opts.sessionId, limit] : [q, limit];
+      const rows = this.db.prepare(sql).all(...params) as Array<{
+        message_id: string;
+        session_id: string;
+        role: string;
+        ts: number;
+        cwd: string;
+        title: string | null;
+        snippet: string;
+        score: number;
+      }>;
+      return rows.map((r) => ({
+        messageId: r.message_id,
+        sessionId: r.session_id,
+        role: r.role as "user" | "agent",
+        ts: r.ts,
+        cwd: r.cwd,
+        title: r.title,
+        snippet: r.snippet,
+        score: r.score,
+      }));
+    } catch {
+      // Malformed FTS query — return empty rather than 500.
+      return [];
+    }
+  }
+}
+
+export interface SearchHit {
+  messageId: string;
+  sessionId: string;
+  role: "user" | "agent";
+  ts: number;
+  cwd: string;
+  title: string | null;
+  /** Snippet with `<mark>…</mark>` around the matched terms. */
+  snippet: string;
+  score: number;
+}
+
+/**
+ * Convert a raw user search string into a safe FTS5 MATCH expression.
+ *  - splits on whitespace
+ *  - drops FTS-meaningful punctuation
+ *  - wraps each token in double quotes and ANDs with implicit space
+ *  - appends `*` to the last token for prefix matching
+ */
+function toFtsQuery(raw: string): string {
+  const tokens = raw
+    .trim()
+    .split(/\s+/)
+    .map((t) => t.replace(/["()\-*:]/g, ""))
+    .filter((t) => t.length > 0);
+  if (tokens.length === 0) return "";
+  const quoted = tokens.map((t, i) => (i === tokens.length - 1 ? `"${t}"*` : `"${t}"`));
+  return quoted.join(" ");
 }
 
 function rowToCheckpoint(r: Record<string, unknown>): CheckpointRow {
