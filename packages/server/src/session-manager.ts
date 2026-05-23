@@ -786,9 +786,22 @@ export class SessionManager {
     // Render-hint injection: under `prompt` mode we prepend the canonical hint
     // body to the *first* user prompt only, so the model anchors on the
     // formatting conventions without paying token cost on every turn.
+    // Skip slash commands and empty prompts — they're consumed by the CLI's
+    // own command router, not the model, so injection would either break the
+    // command or be wasted. We leave `firstPromptSent` false so the hint is
+    // still attached to the next real natural-language prompt.
     let outboundText = text;
     const persisted = this.store.getSession(sessionId);
-    if (persisted && persisted.renderHintMode === "prompt" && !persisted.firstPromptSent) {
+    const trimmed = text.trimStart();
+    const isSlash = trimmed.startsWith("/");
+    const isEmpty = trimmed.length === 0;
+    if (
+      persisted &&
+      persisted.renderHintMode === "prompt" &&
+      !persisted.firstPromptSent &&
+      !isSlash &&
+      !isEmpty
+    ) {
       outboundText = prefixFirstPrompt(text);
       this.store.setSessionFirstPromptSent(sessionId, true);
     }
