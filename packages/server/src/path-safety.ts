@@ -19,7 +19,9 @@ export async function assertWithinCwd(
   if (!path.isAbsolute(cwd)) throw new PathSafetyError("cwd must be absolute");
   if (target.includes("\0") || cwd.includes("\0")) throw new PathSafetyError("NUL in path");
 
-  const knownCwds = new Set(manager.list().map((s) => s.cwd));
+  const knownCwds = new Set<string>();
+  for (const s of manager.list()) knownCwds.add(s.cwd);
+  for (const s of manager.hydrate()) knownCwds.add(s.cwd);
   if (!knownCwds.has(cwd)) throw new PathSafetyError("cwd not in active session list");
 
   const realCwd = await fs.realpath(cwd);

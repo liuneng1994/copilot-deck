@@ -72,7 +72,10 @@ function isImageMime(mime: string): boolean {
 
 export function registerRoutes(app: FastifyInstance, deps: Deps): void {
   const { manager } = deps;
-  const isKnownCwd = (cwd: string) => manager.list().some((s) => s.cwd === cwd);
+  const isKnownCwd = (cwd: string) => {
+    if (manager.list().some((s) => s.cwd === cwd)) return true;
+    return manager.hydrate().some((s) => s.cwd === cwd);
+  };
 
   app.get("/api/health", async () => ({ ok: true }));
 
