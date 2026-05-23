@@ -3,9 +3,11 @@ import {
   Copy,
   Cpu,
   Download,
+  FileCode2,
   Loader2,
   MoreHorizontal,
   Pencil,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
@@ -131,6 +133,7 @@ export function SessionHeader({ session }: { session: SessionState }) {
             )}
           </button>
           <ModeSelector session={session} />
+          <HintModeControl session={session} />
           <Popover open={menuOpen} onOpenChange={setMenuOpen}>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Session actions">
@@ -248,5 +251,148 @@ function MenuItem({
       {icon}
       <span className="flex-1 truncate">{label}</span>
     </button>
+  );
+}
+
+type HintMode = "agents_md" | "prompt" | "off";
+
+const HINT_LABELS: Record<HintMode, string> = {
+  agents_md: "AGENTS.md",
+  prompt: "Prompt",
+  off: "Off",
+};
+
+const HINT_DESCRIPTIONS: Record<HintMode, string> = {
+  agents_md:
+    "Write the rich-output hint into this workspace's AGENTS.md so every session in this cwd uses it.",
+  prompt: "Prepend the hint to the first prompt of this session only. No files are written.",
+  off: "Don't inject any rendering hints.",
+};
+
+function HintModeControl({ session }: { session: SessionState }) {
+  const [open, setOpen] = useState(false);
+  const [writeBusy, setWriteBusy] = useState(false);
+  const [writeResult, setWriteResult] = useState<string | null>(null);
+  const setRenderHintMode = useUIStore((s) => s.setRenderHintMode);
+  const setNotice = useUIStore((s) => s.setNotice);
+  const mode: HintMode = session.renderHintMode ?? "prompt";
+
+  async function pickMode(next: HintMode) {
+    if (next === mode) return;
+    try {
+      const r = await fetch(`/api/sessions/${session.id}/render-hint`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: next }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setRenderHintMode(session.id, next);
+      if (next === "agents_md") {
+        await writeAgentsMd(true);
+      }
+    } catch (err) {
+      setNotice({
+        id: `hint-${Date.now()}`,
+        kind: "warn",
+        text: `Failed to set render hint: ${(err as Error).message}`,
+        ts: Date.now(),
+      });
+    }
+  }
+
+  async function writeAgentsMd(silent = false) {
+    setWriteBusy(true);
+    setWriteResult(null);
+    try {
+      const r = await fetch(`/api/sessions/${session.id}/agents-md`, {
+        method: "POST",
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = (await r.json()) as { status: string; path: string };
+      const msg = `${data.status} ${data.path}`;
+      setWriteResult(msg);
+      if (!silent)
+        setNotice({
+          id: `agentsmd-${Date.now()}`,
+          kind: "info",
+          text: `AGENTS.md ${msg}`,
+          ts: Date.now(),
+        });
+    } catch (err) {
+      const msg = (err as Error).message;
+      setWriteResult(`error: ${msg}`);
+      if (!silent)
+        setNotice({
+          id: `agentsmd-err-${Date.now()}`,
+          kind: "warn",
+          text: `AGENTS.md write failed: ${msg}`,
+          ts: Date.now(),
+        });
+    } finally {
+      setWriteBusy(false);
+    }
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+          title="Rich-output rendering hints"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          <span>Hints: {HINT_LABELS[mode]}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 p-2">
+        <div className="px-2 pb-1.5 pt-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+          Rendering hints
+        </div>
+        <div className="space-y-0.5">
+          {(["agents_md", "prompt", "off"] as HintMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => {
+                void pickMode(m);
+              }}
+              className={
+                m === mode
+                  ? "flex w-full flex-col gap-0.5 rounded bg-muted px-2 py-1.5 text-left"
+                  : "flex w-full flex-col gap-0.5 rounded px-2 py-1.5 text-left hover:bg-muted"
+              }
+            >
+              <span className="text-xs font-medium">{HINT_LABELS[m]}</span>
+              <span className="text-[11px] leading-snug text-muted-foreground">
+                {HINT_DESCRIPTIONS[m]}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 border-t border-border pt-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-full justify-start gap-2 text-xs"
+            disabled={writeBusy}
+            onClick={() => {
+              void writeAgentsMd(false);
+            }}
+          >
+            {writeBusy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <FileCode2 className="h-3.5 w-3.5" />
+            )}
+            Write AGENTS.md now
+          </Button>
+          {writeResult && (
+            <div className="px-2 pb-0.5 pt-1 text-[11px] text-muted-foreground">{writeResult}</div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

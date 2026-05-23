@@ -401,6 +401,8 @@ export interface HydratedSession {
   plan: PlanEntrySnapshot[] | null;
   /** Per-session model override (null = inherit cwd/default). */
   model: string | null;
+  /** Render-hint injection mode. */
+  renderHintMode: "agents_md" | "prompt" | "off";
   createdAt: number;
   updatedAt: number;
   detached: boolean;

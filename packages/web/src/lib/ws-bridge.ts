@@ -85,6 +85,7 @@ export function useWsBridge() {
             cwd: msg.cwd,
             title: "New session",
             status: "idle",
+            renderHintMode: "prompt",
           });
           if (msg.modes) {
             store.setMode(

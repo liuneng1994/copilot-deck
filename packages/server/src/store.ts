@@ -21,7 +21,11 @@ CREATE TABLE IF NOT EXISTS sessions (
   /** JSON-encoded ACP plan entries (most-recent plan update wins). */
   plan TEXT,
   /** Per-session model override (null = inherit cwd default). */
-  model TEXT
+  model TEXT,
+  /** "agents_md" | "prompt" | "off" — controls render-hint injection. */
+  render_hint_mode TEXT,
+  /** 1 once we've injected the prompt-mode hint into the first user prompt. */
+  first_prompt_sent INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -114,6 +118,10 @@ export interface PersistedSession {
   plan: PlanEntry[] | null;
   /** Per-session model override (null = inherit cwd default). */
   model: string | null;
+  /** "agents_md" | "prompt" | "off" — controls render-hint injection. */
+  renderHintMode: "agents_md" | "prompt" | "off";
+  /** True once we've injected the prompt-mode hint into the first user prompt. */
+  firstPromptSent: boolean;
 }
 
 export interface PersistedMessage {
@@ -169,6 +177,8 @@ export class Store {
     // were created before they were introduced.
     this.ensureColumn("sessions", "plan", "TEXT");
     this.ensureColumn("sessions", "model", "TEXT");
+    this.ensureColumn("sessions", "render_hint_mode", "TEXT");
+    this.ensureColumn("sessions", "first_prompt_sent", "INTEGER DEFAULT 0");
     this.ensureColumn("session_files", "source", "TEXT");
     this.ensureColumn("session_files", "reviewed_at", "INTEGER");
     this.ensureColumn("session_files", "last_diff_hash", "TEXT");
@@ -191,10 +201,15 @@ export class Store {
 
   // ───── sessions ─────
   upsertSession(
-    s: Omit<PersistedSession, "detached" | "plan" | "model"> & {
+    s: Omit<
+      PersistedSession,
+      "detached" | "plan" | "model" | "renderHintMode" | "firstPromptSent"
+    > & {
       detached?: boolean;
       plan?: PlanEntry[] | null;
       model?: string | null;
+      renderHintMode?: "agents_md" | "prompt" | "off";
+      firstPromptSent?: boolean;
     },
   ) {
     this.db
@@ -250,7 +265,7 @@ export class Store {
   listSessions(): PersistedSession[] {
     const rows = this.db
       .prepare(
-        `SELECT id, cwd, title, mode_id, mode_name, mode_options, available_commands, status, created_at, updated_at, detached, plan, model
+        `SELECT id, cwd, title, mode_id, mode_name, mode_options, available_commands, status, created_at, updated_at, detached, plan, model, render_hint_mode, first_prompt_sent
          FROM sessions ORDER BY updated_at DESC`,
       )
       .all() as Record<string, unknown>[];
@@ -260,7 +275,7 @@ export class Store {
   getSession(id: string): PersistedSession | null {
     const row = this.db
       .prepare(
-        `SELECT id, cwd, title, mode_id, mode_name, mode_options, available_commands, status, created_at, updated_at, detached, plan, model
+        `SELECT id, cwd, title, mode_id, mode_name, mode_options, available_commands, status, created_at, updated_at, detached, plan, model, render_hint_mode, first_prompt_sent
          FROM sessions WHERE id = ?`,
       )
       .get(id) as Record<string, unknown> | undefined;
@@ -277,6 +292,16 @@ export class Store {
     this.db
       .prepare("UPDATE sessions SET model = ?, updated_at = ? WHERE id = ?")
       .run(model, Date.now(), id);
+  }
+
+  setSessionRenderHintMode(id: string, mode: "agents_md" | "prompt" | "off"): void {
+    this.db
+      .prepare("UPDATE sessions SET render_hint_mode = ?, updated_at = ? WHERE id = ?")
+      .run(mode, Date.now(), id);
+  }
+
+  setSessionFirstPromptSent(id: string, sent: boolean): void {
+    this.db.prepare("UPDATE sessions SET first_prompt_sent = ? WHERE id = ?").run(sent ? 1 : 0, id);
   }
 
   touchSession(id: string, status?: string) {
@@ -504,6 +529,8 @@ function rowToSession(r: Record<string, unknown>): PersistedSession {
     detached: (r.detached as number) === 1,
     plan: r.plan ? (JSON.parse(r.plan as string) as PlanEntry[]) : null,
     model: (r.model ?? null) as string | null,
+    renderHintMode: (r.render_hint_mode ?? "prompt") as "agents_md" | "prompt" | "off",
+    firstPromptSent: (r.first_prompt_sent as number) === 1,
   };
 }
 

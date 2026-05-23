@@ -98,6 +98,8 @@ export interface SessionState {
   crashInfo?: { code: number | null; signal: string | null };
   /** Persisted-only session whose child has exited; read-only history view. */
   detached?: boolean;
+  /** Render-hint injection mode (defaults to "prompt"). */
+  renderHintMode?: "agents_md" | "prompt" | "off";
 }
 
 export interface PermissionRequest {
@@ -242,6 +244,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   ) => void;
   setModelForCwd: (cwd: string, model: string) => void;
   setModelForSession: (sessionId: string, model: string) => void;
+  setRenderHintMode: (sessionId: string, mode: "agents_md" | "prompt" | "off") => void;
   setModelPickerOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setFilePreviewPath: (path: string | null) => void;
@@ -894,6 +897,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
           createdAt: h.createdAt,
           updatedAt: h.updatedAt,
           detached: h.detached,
+          renderHintMode: h.renderHintMode,
         };
         if (h.model) modelBySession[h.id] = h.model;
       }
@@ -925,6 +929,14 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   setModelForCwd: (cwd, model) => set((s) => ({ modelByCwd: { ...s.modelByCwd, [cwd]: model } })),
   setModelForSession: (sessionId, model) =>
     set((s) => ({ modelBySession: { ...s.modelBySession, [sessionId]: model } })),
+  setRenderHintMode: (sessionId, mode) =>
+    set((s) => {
+      const sess = s.sessions[sessionId];
+      if (!sess) return s;
+      return {
+        sessions: { ...s.sessions, [sessionId]: { ...sess, renderHintMode: mode } },
+      };
+    }),
   setModelPickerOpen: (open) => set({ modelPickerOpen: open }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
   setFilePreviewPath: (path) => set({ filePreviewPath: path }),

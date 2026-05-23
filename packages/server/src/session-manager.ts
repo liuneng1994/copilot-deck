@@ -10,6 +10,12 @@ import type * as acp from "@agentclientprotocol/sdk";
 import { CopilotAgent } from "./acp/copilot-agent.js";
 import { type MessageStream, persistSessionUpdate } from "./acp/persist.js";
 import { PERMISSION_TIMEOUT_MS, readDefaultCopilotModel } from "./config.js";
+import {
+  DEFAULT_RENDER_HINT_MODE,
+  type RenderHintMode,
+  prefixFirstPrompt,
+  upsertAgentsMd,
+} from "./render-hints.js";
 import type { Store } from "./store.js";
 
 export type SessionUpdateListener = (sessionId: string, update: acp.SessionNotification) => void;
@@ -267,6 +273,7 @@ export class SessionManager {
       availableCommands: s.availableCommands,
       plan: s.plan,
       model: s.model,
+      renderHintMode: s.renderHintMode,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
       detached: s.detached,
@@ -675,6 +682,8 @@ export class SessionManager {
       createdAt: now,
       updatedAt: now,
       detached: false,
+      renderHintMode: DEFAULT_RENDER_HINT_MODE,
+      firstPromptSent: false,
     });
     return { sessionId: res.sessionId, modes: res.modes ?? undefined };
   }
@@ -773,17 +782,28 @@ export class SessionManager {
       stream.agentBuf = "";
     }
     this.store.touchSession(sessionId, "streaming");
+
+    // Render-hint injection: under `prompt` mode we prepend the canonical hint
+    // body to the *first* user prompt only, so the model anchors on the
+    // formatting conventions without paying token cost on every turn.
+    let outboundText = text;
+    const persisted = this.store.getSession(sessionId);
+    if (persisted && persisted.renderHintMode === "prompt" && !persisted.firstPromptSent) {
+      outboundText = prefixFirstPrompt(text);
+      this.store.setSessionFirstPromptSent(sessionId, true);
+    }
+
     this.trace({
       sessionId,
       cwd: entry.cwd,
       direction: "out",
       kind: "prompt",
-      payload: { text },
+      payload: { text, injectedHint: outboundText !== text },
       ts: now,
     });
     const res = await entry.agent.connection.prompt({
       sessionId,
-      prompt: [{ type: "text", text }],
+      prompt: [{ type: "text", text: outboundText }],
     });
     this.store.touchSession(sessionId, "idle");
     this.trace({
@@ -834,6 +854,30 @@ export class SessionManager {
         updatedAt: Date.now(),
       });
     }
+  }
+
+  /**
+   * Update the render-hint delivery mode for a session.
+   * Switching back to `prompt` clears the `firstPromptSent` flag so the hint
+   * will be re-injected on the next prompt (useful if the user changed mind).
+   */
+  setRenderHintMode(sessionId: string, mode: RenderHintMode): void {
+    this.store.setSessionRenderHintMode(sessionId, mode);
+    if (mode === "prompt") this.store.setSessionFirstPromptSent(sessionId, false);
+  }
+
+  /**
+   * Materialise the canonical hint block into `<cwd>/AGENTS.md` for a session.
+   * Returns metadata about the change (created / updated / no-op).
+   */
+  async writeAgentsMd(sessionId: string): Promise<{
+    filePath: string;
+    created: boolean;
+    updated: boolean;
+  }> {
+    const persisted = this.store.getSession(sessionId);
+    if (!persisted) throw new Error(`unknown session ${sessionId}`);
+    return upsertAgentsMd(persisted.cwd);
   }
 
   list() {

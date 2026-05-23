@@ -87,6 +87,34 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
     currentByCwd: manager.getModelsByCwd(),
   }));
 
+  app.post<{ Params: { id: string }; Body: { mode?: string } }>(
+    "/api/sessions/:id/render-hint",
+    async (req, reply) => {
+      const mode = req.body?.mode;
+      if (mode !== "agents_md" && mode !== "prompt" && mode !== "off") {
+        reply.code(400);
+        return { error: "mode must be one of: agents_md, prompt, off" };
+      }
+      try {
+        manager.setRenderHintMode(req.params.id, mode);
+        return { ok: true, mode };
+      } catch (e) {
+        reply.code(404);
+        return { error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
+  app.post<{ Params: { id: string } }>("/api/sessions/:id/agents-md", async (req, reply) => {
+    try {
+      const result = await manager.writeAgentsMd(req.params.id);
+      return { ok: true, ...result };
+    } catch (e) {
+      reply.code(404);
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+
   app.post<{ Body: { path?: string; cwd?: string } }>("/api/mkdir", async (req, reply) => {
     const raw = typeof req.body?.path === "string" ? req.body.path.trim() : "";
     const cwd = typeof req.body?.cwd === "string" ? req.body.cwd.trim() : undefined;
