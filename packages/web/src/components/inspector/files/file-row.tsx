@@ -24,7 +24,34 @@ function gitBadgeClass(entry: FileEntry) {
   if (status.includes("A")) return "border-emerald-500/40 bg-emerald-500/10 text-emerald-300";
   if (status.includes("M")) return "border-amber-500/40 bg-amber-500/10 text-amber-300";
   if (status.includes("D")) return "border-rose-500/40 bg-rose-500/10 text-rose-300";
+  if (status.includes("R")) return "border-sky-500/40 bg-sky-500/10 text-sky-300";
+  if (status.includes("U") || status.includes("!"))
+    return "border-rose-500/40 bg-rose-500/10 text-rose-300";
   return "border-border bg-muted/30 text-muted-foreground";
+}
+
+const GIT_CODE_LABEL: Record<string, string> = {
+  M: "modified",
+  A: "added",
+  D: "deleted",
+  R: "renamed",
+  C: "copied",
+  U: "unmerged",
+  "?": "untracked",
+  "!": "ignored",
+  " ": "unchanged",
+};
+
+function gitBadgeTitle(entry: FileEntry): string {
+  const x = entry.gitX ?? " ";
+  const y = entry.gitY ?? " ";
+  const code = `${x}${y}`;
+  if (code === "??") return "?? untracked — new file, not yet added to git";
+  if (code === "!!") return "!! ignored — matched by .gitignore";
+  if (code === "  ") return "clean — no changes";
+  const xLabel = GIT_CODE_LABEL[x] ?? x;
+  const yLabel = GIT_CODE_LABEL[y] ?? y;
+  return `${code} — index: ${xLabel}, worktree: ${yLabel}`;
 }
 
 function splitPath(entry: FileEntry) {
@@ -62,6 +89,7 @@ export function FileRow({ entry, depth, selected, session, onClick }: FileRowPro
             "w-6 shrink-0 rounded border px-0.5 text-center font-mono text-[10px] leading-4",
             gitBadgeClass(entry),
           )}
+          title={gitBadgeTitle(entry)}
         >
           {gitStatus}
         </span>
