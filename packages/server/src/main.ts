@@ -149,6 +149,54 @@ async function main() {
     },
   );
 
+  app.get<{ Querystring: { path?: string; q?: string; limit?: string } }>(
+    "/api/list-dir",
+    async (req, reply) => {
+      const raw = req.query.path?.trim() || process.env.HOME || "/";
+      const query = (req.query.q ?? "").toLowerCase();
+      const limit = Math.min(Number(req.query.limit ?? 50) || 50, 200);
+
+      // Expand leading ~ to HOME, then normalize.
+      const expanded = raw.startsWith("~")
+        ? path.join(process.env.HOME ?? "/", raw.slice(1))
+        : raw;
+      // If the path ends with a separator, we list the directory itself.
+      // Otherwise we list the parent and treat the trailing segment as a filter.
+      let dir = path.isAbsolute(expanded) ? expanded : path.resolve(expanded);
+      let prefixFilter = "";
+      try {
+        const st = await fs.stat(dir).catch(() => null);
+        if (!st?.isDirectory() && !raw.endsWith("/")) {
+          prefixFilter = path.basename(dir).toLowerCase();
+          dir = path.dirname(dir);
+        }
+      } catch {
+        // fallthrough — let readdir error below
+      }
+
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        const matches = entries
+          .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+          .map((e) => e.name)
+          .filter((n) => {
+            const lower = n.toLowerCase();
+            if (prefixFilter && !lower.startsWith(prefixFilter)) return false;
+            if (query && !lower.includes(query)) return false;
+            return true;
+          })
+          .sort((a, b) => a.localeCompare(b))
+          .slice(0, limit)
+          .map((n) => ({ name: n, path: path.join(dir, n) }));
+        return { dir, entries: matches };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        reply.code(404);
+        return { error: message };
+      }
+    },
+  );
+
   app.get<{ Querystring: { cwd?: string } }>(
     "/api/git-info",
     async (req, reply) => {

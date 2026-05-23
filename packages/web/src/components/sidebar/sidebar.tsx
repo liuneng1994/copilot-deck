@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "../../lib/cn";
 import { useUIStore, type SessionState } from "../../stores/ui-store";
 import { sendWs } from "../../lib/ws-client";
+import { CwdCombobox } from "./cwd-combobox";
 
 function statusToDot(status: SessionState["status"]) {
   if (status === "streaming") return { status: "ok" as const, pulse: true };
@@ -48,6 +49,19 @@ export function Sidebar() {
       .map(([cwd, list]) => ({ cwd, list: list.sort((a, b) => b.updatedAt - a.updatedAt) }));
   }, [sessions, q]);
 
+  /** Recently-used cwds, deduped and ordered by latest session activity. */
+  const recentCwds = useMemo(() => {
+    const lastSeen = new Map<string, number>();
+    for (const s of Object.values(sessions)) {
+      if (!s.cwd) continue;
+      const cur = lastSeen.get(s.cwd) ?? 0;
+      if (s.updatedAt > cur) lastSeen.set(s.cwd, s.updatedAt);
+    }
+    return [...lastSeen.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([cwd]) => cwd);
+  }, [sessions]);
+
   const createSession = () => {
     if (!cwdInput.trim()) return;
     sendWs({ type: "create_session", cwd: cwdInput.trim() });
@@ -84,12 +98,11 @@ export function Sidebar() {
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-border bg-panel">
       <div className="flex items-center gap-1.5 border-b border-border px-3 py-2">
-        <Input
+        <CwdCombobox
           value={cwdInput}
-          onChange={(e) => setCwdInput(e.target.value)}
-          placeholder="cwd path…"
-          className="h-8 text-xs"
-          onKeyDown={(e) => e.key === "Enter" && createSession()}
+          onChange={setCwdInput}
+          onSubmit={createSession}
+          recents={recentCwds}
           disabled={busy}
         />
         <Tooltip>
