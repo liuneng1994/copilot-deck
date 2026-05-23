@@ -1,6 +1,14 @@
 import type { SkillInfo } from "@agent-view/shared";
 import { Loader2, Search, Trash2 } from "lucide-react";
-import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { cn } from "../../../lib/cn";
 import { connectWs, onWsMessage } from "../../../lib/ws-client";
 import { useUIStore } from "../../../stores/ui-store";
@@ -104,8 +112,13 @@ export function SkillsPanel() {
     [selectedCwd],
   );
 
+  // Track the last activeCwd we synced from so we only re-seed selectedCwd
+  // when the *active session* actually changes — otherwise a user's manual
+  // dropdown pick would be stomped on every render.
+  const lastSyncedActiveCwd = useRef<string | undefined>(activeCwd);
   useEffect(() => {
-    if (activeCwd && activeCwd !== selectedCwd) {
+    if (activeCwd && activeCwd !== lastSyncedActiveCwd.current) {
+      lastSyncedActiveCwd.current = activeCwd;
       setSelectedCwd(activeCwd);
       setInstallCwd(activeCwd);
     } else if (!selectedCwd && cwdOptions[0]) {
