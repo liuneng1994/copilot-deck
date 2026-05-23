@@ -11,6 +11,17 @@ the CLI's own historical sessions.
 > Protocol: JSON-RPC 2.0 over stdio NDJSON · CLI: `copilot --acp --stdio` ·
 > SDK: official [`@agentclientprotocol/sdk`](https://www.npmjs.com/package/@agentclientprotocol/sdk).
 
+## Screenshots
+
+**Workspace** — sidebar grouped by cwd, streaming conversation, inspector with Plan / Tools / Files / Term tabs, per-session model + render-hints status.
+
+![Workspace](docs/screenshots/workspace.png)
+
+**Copilot CLI history** — read every session in `~/.copilot/session-store.db`, search/filter by cwd, preview the full turn history, and **Resume** to adopt it as a live ACP session.
+
+![History list](docs/screenshots/history.png)
+![History detail](docs/screenshots/history-detail.png)
+
 ---
 
 ## Features
