@@ -14,8 +14,11 @@ import {
 } from "./extensions/routes-plugins.js";
 import { invalidateSkillsCache, registerSkillsRoutes } from "./extensions/routes-skills.js";
 import { startExtensionWatchers } from "./extensions/watchers.js";
+import { registerFilesOverviewRoutes } from "./files-overview/route.js";
+import { startFilesWatcher } from "./files-watcher.js";
 import { registerGitRoutes } from "./git/routes.js";
 import { registerGrepRoutes } from "./grep/routes.js";
+import { registerOutlineRoutes } from "./outline/routes.js";
 import { registerRoutes } from "./routes.js";
 import { SessionManager } from "./session-manager.js";
 import { Store } from "./store.js";
@@ -46,6 +49,7 @@ async function main() {
       skillsGlobal: () => invalidateSkillsCache(),
     },
   });
+  const stopFilesWatcher = startFilesWatcher({ manager, broadcast });
 
   registerRoutes(app, { manager });
   registerMcpRoutes(app, { manager });
@@ -53,6 +57,8 @@ async function main() {
   registerSkillsRoutes(app, { manager, broadcast });
   registerGitRoutes(app, { manager });
   registerGrepRoutes(app, { manager, broadcast });
+  registerOutlineRoutes(app, { manager });
+  registerFilesOverviewRoutes(app, { manager });
 
   app.register(async (instance) => {
     instance.get("/ws", { websocket: true }, (socket) => {
@@ -141,6 +147,7 @@ async function main() {
 
   const shutdown = async () => {
     app.log.info("shutting down");
+    stopFilesWatcher();
     await extensionWatchers.close();
     await manager.shutdownAll();
     await app.close();
