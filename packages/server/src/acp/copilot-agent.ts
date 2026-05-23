@@ -54,9 +54,18 @@ export class CopilotAgent {
       })
       .then((res) => {
         this.initialized = true;
+        this.initResponse = res;
         return res;
       });
     return this.initPromise;
+  }
+
+  /** Resolved initialize response, available after `initialize()` settles. */
+  initResponse: acp.InitializeResponse | null = null;
+
+  /** True if the agent advertises ACP `loadSession` capability. */
+  supportsLoadSession(): boolean {
+    return this.initResponse?.agentCapabilities?.loadSession === true;
   }
 
   isInitialized() {

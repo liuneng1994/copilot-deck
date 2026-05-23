@@ -379,6 +379,20 @@ async function main() {
               await manager.setModel(msg.cwd, msg.model);
               break;
             }
+            case "reattach_session": {
+              try {
+                await manager.reattachSession(msg.sessionId);
+                send({ type: "session_reattached", sessionId: msg.sessionId });
+              } catch (e) {
+                const message = e instanceof Error ? e.message : String(e);
+                send({
+                  type: "error",
+                  sessionId: msg.sessionId,
+                  message: `Reattach failed: ${message}`,
+                });
+              }
+              break;
+            }
             case "permission_reply": {
               const handled = manager.replyPermission(
                 msg.requestId,

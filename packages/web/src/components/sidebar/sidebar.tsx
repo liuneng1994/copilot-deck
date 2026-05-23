@@ -1,4 +1,4 @@
-import { ChevronRight, FolderOpen, FolderPlus, MessageSquare, Plus, Search, Trash2 } from "lucide-react";
+import { ChevronRight, FolderOpen, FolderPlus, MessageSquare, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -203,6 +203,18 @@ export function Sidebar() {
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
+                      {s.detached && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            sendWs({ type: "reattach_session", sessionId: s.id });
+                          }}
+                          className="absolute right-7 top-1/2 hidden -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-warn/20 hover:text-warn group-hover/item:block"
+                          title="Reattach session"
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                        </button>
+                      )}
                     </li>
                   );
                 })}

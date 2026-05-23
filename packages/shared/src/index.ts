@@ -28,6 +28,7 @@ export type ClientToServer =
   | { type: "request_trace"; sessionId?: string; sinceId?: number; limit?: number }
   | { type: "list_models" }
   | { type: "set_model"; cwd: string; model: string }
+  | { type: "reattach_session"; sessionId: string }
   | {
       type: "permission_reply";
       requestId: string;
@@ -100,6 +101,12 @@ export type ServerToClient =
       cwd: string;
       model: string;
       sessionIds: string[];
+    }
+  | {
+      // A previously-detached session was successfully reattached via ACP
+      // loadSession. Client should clear the detached flag locally.
+      type: "session_reattached";
+      sessionId: string;
     };
 
 export interface TraceEventDTO {

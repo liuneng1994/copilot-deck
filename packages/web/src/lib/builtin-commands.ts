@@ -148,6 +148,25 @@ export const BUILTIN_COMMANDS: BuiltinCommand[] = [
     },
   },
   {
+    name: "reattach",
+    description: "Reattach a detached session by reloading it in the CLI (ACP loadSession)",
+    category: "session",
+    run: (_args, ctx) => {
+      if (!ctx.sessionId) {
+        notice("No active session.", "warn");
+        return true;
+      }
+      const sess = useUIStore.getState().sessions[ctx.sessionId];
+      if (!sess?.detached) {
+        notice("Session is already attached.", "info");
+        return true;
+      }
+      sendWs({ type: "reattach_session", sessionId: ctx.sessionId });
+      notice("Reattaching…");
+      return true;
+    },
+  },
+  {
     name: "delete",
     description: "Delete the current session (with confirmation)",
     category: "session",

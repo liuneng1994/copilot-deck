@@ -1,4 +1,4 @@
-import { Paperclip, Send, Square } from "lucide-react";
+import { Paperclip, RotateCcw, Send, Square } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/input";
@@ -118,6 +118,23 @@ export function Composer({ session }: { session: SessionState }) {
   return (
     <div className="relative border-t border-border bg-panel/60 px-4 py-3">
       <div className="mx-auto flex max-w-3xl flex-col gap-2">
+        {detached && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
+            <span>
+              Session detached — the Copilot child process exited. Reattach to resume the same
+              conversation context.
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1 border-warn/40 text-warn hover:bg-warn/15 hover:text-warn"
+              onClick={() => sendWs({ type: "reattach_session", sessionId: session.id })}
+            >
+              <RotateCcw size={12} />
+              Reattach
+            </Button>
+          </div>
+        )}
         <div className="relative">
           <SlashPopover
             open={slashOpen}

@@ -80,6 +80,8 @@ export class SessionManager {
   private streams = new Map<string, MessageStream>();
   /** Set of session ids that are persisted but have no live ACP child (detached). */
   private detachedSessions = new Set<string>();
+  /** Sessions being rehydrated via ACP loadSession — suppress sessionUpdate replay. */
+  private replayingSessions = new Set<string>();
   /** Per-cwd selected model id (sent as `--model` when spawning). */
   private modelByCwd = new Map<string, string>();
   /** Listeners for model changes per cwd. */
@@ -274,6 +276,20 @@ export class SessionManager {
         return this.handlePermission(cwd, params);
       },
       sessionUpdate: async (params) => {
+        // While we're replaying a session via loadSession, Copilot resends the
+        // entire conversation as session updates. We already have everything
+        // in SQLite — suppress to avoid duplicating message text on screen.
+        if (params.sessionId && this.replayingSessions.has(params.sessionId)) {
+          this.trace({
+            sessionId: params.sessionId,
+            cwd,
+            direction: "in",
+            kind: "sessionUpdate[replay-suppressed]",
+            payload: { kind: (params.update as { sessionUpdate?: string })?.sessionUpdate },
+            ts: Date.now(),
+          });
+          return;
+        }
         this.trace({
           sessionId: params.sessionId ?? null,
           cwd,
@@ -474,6 +490,61 @@ export class SessionManager {
       detached: false,
     });
     return { sessionId: res.sessionId, modes: res.modes ?? undefined };
+  }
+
+  /**
+   * Reattach a previously-detached session: spawn (or reuse) the cwd's Copilot
+   * agent and call ACP `loadSession`, which restores the conversation context
+   * inside the CLI. Throws if the session is unknown, already attached, or the
+   * agent doesn't advertise `loadSession`.
+   */
+  async reattachSession(sessionId: string): Promise<{ sessionId: string }> {
+    if (this.sessions.has(sessionId)) {
+      // Already attached.
+      return { sessionId };
+    }
+    const persisted = this.store.getSession(sessionId);
+    if (!persisted) throw new Error(`unknown session ${sessionId}`);
+    const cwd = persisted.cwd;
+    const agent = await this.getOrCreateAgent(cwd);
+    if (!agent.supportsLoadSession()) {
+      throw new Error("agent does not support loadSession");
+    }
+    this.trace({
+      sessionId,
+      cwd,
+      direction: "out",
+      kind: "loadSession",
+      payload: { cwd, sessionId },
+      ts: Date.now(),
+    });
+    this.replayingSessions.add(sessionId);
+    try {
+      await agent.connection.loadSession({ cwd, sessionId, mcpServers: [] });
+    } catch (e) {
+      // Copilot returns "Resource not found" for sessions with no turns. The
+      // session ID is still in our SQLite — surface a friendlier hint.
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/not found/i.test(msg)) {
+        throw new Error(
+          "Copilot has no saved history for this session (it had no completed turns). Create a new session instead.",
+        );
+      }
+      throw e;
+    } finally {
+      this.replayingSessions.delete(sessionId);
+    }
+    this.sessions.set(sessionId, { id: sessionId, cwd, agent });
+    this.detachedSessions.delete(sessionId);
+    this.streams.delete(sessionId);
+    this.store.markSessionDetached(sessionId, false);
+    this.store.upsertSession({
+      ...persisted,
+      detached: false,
+      status: "idle",
+      updatedAt: Date.now(),
+    });
+    return { sessionId };
   }
 
   async prompt(sessionId: string, text: string): Promise<acp.PromptResponse> {

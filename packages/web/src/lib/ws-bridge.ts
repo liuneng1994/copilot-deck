@@ -266,6 +266,11 @@ export function useWsBridge() {
           // Affected sessions are already handled by child_exit broadcast.
           break;
         }
+        case "session_reattached": {
+          store.markSessionDetached(msg.sessionId, false);
+          store.setSessionStatus(msg.sessionId, "idle");
+          break;
+        }
       }
     });
     return () => {

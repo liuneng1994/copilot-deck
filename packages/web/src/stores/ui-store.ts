@@ -463,7 +463,13 @@ export const useUIStore = create<UIState>((set) => ({
       return {
         sessions: {
           ...state.sessions,
-          [sessionId]: { ...existing, detached, updatedAt: Date.now() },
+          [sessionId]: {
+            ...existing,
+            detached,
+            // Reattaching also clears the crashed flag / banner.
+            ...(detached ? {} : { crashed: false, crashInfo: undefined }),
+            updatedAt: Date.now(),
+          },
         },
       };
     }),
