@@ -1,10 +1,29 @@
-import { useEffect, useRef } from "react";
-import { useUIStore, type SessionState } from "../../stores/ui-store";
+import { useEffect, useMemo, useRef } from "react";
+import { useUIStore, type SessionState, type ToolCallState } from "../../stores/ui-store";
 import { MessageBubble } from "./message-bubble";
+import { ToolCallCard } from "./tool-call-card";
+
+type TimelineItem =
+  | { kind: "message"; ts: number; data: SessionState["messages"][number] }
+  | { kind: "toolCall"; ts: number; data: ToolCallState };
 
 export function Conversation({ session }: { session: SessionState }) {
   const ref = useRef<HTMLDivElement>(null);
-  const messages = session.messages;
+  const allToolCalls = useUIStore((s) => s.toolCalls);
+
+  const items: TimelineItem[] = useMemo(() => {
+    const out: TimelineItem[] = session.messages.map((m) => ({
+      kind: "message",
+      ts: m.ts,
+      data: m,
+    }));
+    for (const id of session.toolCallIds) {
+      const c = allToolCalls[id];
+      if (c) out.push({ kind: "toolCall", ts: c.ts, data: c });
+    }
+    out.sort((a, b) => a.ts - b.ts);
+    return out;
+  }, [session.messages, session.toolCallIds, allToolCalls]);
 
   // Auto-scroll to bottom on new content (unless user scrolled up).
   useEffect(() => {
@@ -16,24 +35,28 @@ export function Conversation({ session }: { session: SessionState }) {
         el.scrollTop = el.scrollHeight;
       });
     }
-  }, [messages]);
+  }, [items]);
 
-  const lastIsAgent = messages[messages.length - 1]?.role === "agent";
+  const lastMsg = session.messages[session.messages.length - 1];
   const streaming = session.status === "streaming";
 
   return (
     <div ref={ref} className="flex-1 min-h-0 overflow-auto">
       <div className="mx-auto flex max-w-3xl flex-col gap-4 px-6 py-6">
-        {messages.length === 0 && (
-          <EmptyConversation cwd={session.cwd} />
-        )}
-        {messages.map((m, i) => (
-          <MessageBubble
-            key={m.id}
-            message={m}
-            streaming={streaming && i === messages.length - 1 && lastIsAgent}
-          />
-        ))}
+        {items.length === 0 && <EmptyConversation cwd={session.cwd} />}
+        {items.map((it) => {
+          if (it.kind === "toolCall") {
+            return <ToolCallCard key={`tc-${it.data.id}`} call={it.data} />;
+          }
+          const m = it.data;
+          return (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              streaming={streaming && m.id === lastMsg?.id && m.role === "agent"}
+            />
+          );
+        })}
       </div>
     </div>
   );

@@ -59,7 +59,20 @@ async function main() {
         send({ type: "session_update", sessionId, update: update.update });
       });
 
-      socket.on("close", () => unsub());
+      const unsubPerm = manager.onPermissionRequest((ev) => {
+        send({
+          type: "permission_request",
+          requestId: ev.requestId,
+          sessionId: ev.sessionId,
+          toolCall: ev.toolCall,
+          options: ev.options,
+        });
+      });
+
+      socket.on("close", () => {
+        unsub();
+        unsubPerm();
+      });
 
       socket.on("message", async (raw: Buffer) => {
         let msg: ClientToServer;
@@ -72,8 +85,22 @@ async function main() {
         try {
           switch (msg.type) {
             case "create_session": {
-              const sessionId = await manager.createSession(msg.cwd);
-              send({ type: "session_created", sessionId, cwd: msg.cwd });
+              const { sessionId, modes } = await manager.createSession(msg.cwd);
+              send({
+                type: "session_created",
+                sessionId,
+                cwd: msg.cwd,
+                modes: modes
+                  ? {
+                      currentModeId: modes.currentModeId,
+                      availableModes: modes.availableModes.map((m) => ({
+                        id: m.id,
+                        name: m.name,
+                        description: m.description ?? undefined,
+                      })),
+                    }
+                  : undefined,
+              });
               break;
             }
             case "prompt": {
@@ -87,6 +114,21 @@ async function main() {
             }
             case "cancel": {
               await manager.cancel(msg.sessionId);
+              break;
+            }
+            case "set_mode": {
+              await manager.setMode(msg.sessionId, msg.modeId);
+              break;
+            }
+            case "permission_reply": {
+              const handled = manager.replyPermission(
+                msg.requestId,
+                msg.outcome,
+                msg.optionId,
+              );
+              if (!handled) {
+                app.log.warn({ requestId: msg.requestId }, "stale permission reply");
+              }
               break;
             }
           }

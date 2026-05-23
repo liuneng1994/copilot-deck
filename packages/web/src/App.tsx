@@ -6,6 +6,7 @@ import { Inspector, InspectorRail } from "./components/inspector/inspector";
 import { SessionHeader } from "./components/conversation/session-header";
 import { Conversation, NoSessionPlaceholder } from "./components/conversation/conversation";
 import { Composer } from "./components/composer/composer";
+import { PermissionDialog } from "./components/overlays/permission-dialog";
 import { useWsBridge } from "./lib/ws-bridge";
 import { useUIStore } from "./stores/ui-store";
 
@@ -58,6 +59,7 @@ export function App() {
         {inspectorCollapsed ? <InspectorRail onExpand={toggleInspector} /> : <Inspector />}
       </div>
       <StatusBar />
+      <PermissionDialog />
     </div>
   );
 }

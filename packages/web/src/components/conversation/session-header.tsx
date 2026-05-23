@@ -1,7 +1,8 @@
-import { MoreHorizontal, Sparkles } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import { Button } from "../ui/button";
 import { StatusDot } from "../ui/status-dot";
 import { type SessionState } from "../../stores/ui-store";
+import { ModeSelector } from "./mode-selector";
 
 function statusLabel(s: SessionState["status"]) {
   switch (s) {
@@ -37,12 +38,7 @@ export function SessionHeader({ session }: { session: SessionState }) {
         </div>
       </div>
       <div className="flex items-center gap-1">
-        {session.mode && (
-          <Button variant="outline" size="sm" className="h-7 gap-1 text-xs">
-            <Sparkles className="h-3 w-3" />
-            {session.mode}
-          </Button>
-        )}
+        <ModeSelector session={session} />
         <Button variant="ghost" size="icon" className="h-7 w-7">
           <MoreHorizontal className="h-4 w-4" />
         </Button>
