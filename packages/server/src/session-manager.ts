@@ -190,6 +190,7 @@ export class SessionManager {
       modeName: s.modeName,
       modeOptions: s.modeOptions,
       availableCommands: s.availableCommands,
+      plan: s.plan,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
       detached: s.detached,

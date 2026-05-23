@@ -3,7 +3,7 @@
 
 import { randomUUID } from "node:crypto";
 import type * as acp from "@agentclientprotocol/sdk";
-import type { Store } from "../store.js";
+import type { PlanEntry, Store } from "../store.js";
 
 /** In-flight accumulator for the current agent reply text. One per session. */
 export interface MessageStream {
@@ -56,6 +56,7 @@ export function persistSessionUpdate(
         createdAt: now,
         updatedAt: now,
         detached: false,
+        plan: null as PlanEntry[] | null,
       };
       ctx.store.upsertSession(seed);
       return seed;
@@ -153,6 +154,27 @@ export function persistSessionUpdate(
         availableCommands: cmds,
         updatedAt: now,
       });
+      return;
+    }
+
+    if (kind === "plan") {
+      ensureSession();
+      const entries = update.entries as
+        | { content?: string; priority?: string; status?: string }[]
+        | undefined;
+      if (!Array.isArray(entries)) return;
+      const normalized: PlanEntry[] = entries.map((e) => ({
+        content: typeof e.content === "string" ? e.content : "",
+        priority:
+          e.priority === "low" || e.priority === "medium" || e.priority === "high"
+            ? e.priority
+            : undefined,
+        status:
+          e.status === "pending" || e.status === "in_progress" || e.status === "completed"
+            ? e.status
+            : undefined,
+      }));
+      ctx.store.setSessionPlan(sid, normalized);
       return;
     }
 

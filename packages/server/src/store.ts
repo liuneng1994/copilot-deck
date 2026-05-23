@@ -17,7 +17,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   updated_at INTEGER NOT NULL,
   /** When detached=1, the originating Copilot child has exited and the session
    * is read-only until the user re-opens it (which spawns a new child). */
-  detached INTEGER DEFAULT 0
+  detached INTEGER DEFAULT 0,
+  /** JSON-encoded ACP plan entries (most-recent plan update wins). */
+  plan TEXT
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -77,6 +79,13 @@ function defaultDbPath(): string {
   return path.join(dir, "db.sqlite");
 }
 
+export interface PlanEntry {
+  /** Plan-item text from the agent (markdown allowed). */
+  content: string;
+  priority?: "low" | "medium" | "high";
+  status?: "pending" | "in_progress" | "completed";
+}
+
 export interface PersistedSession {
   id: string;
   cwd: string;
@@ -89,6 +98,7 @@ export interface PersistedSession {
   createdAt: number;
   updatedAt: number;
   detached: boolean;
+  plan: PlanEntry[] | null;
 }
 
 export interface PersistedMessage {
@@ -134,6 +144,20 @@ export class Store {
     this.db.pragma("synchronous = NORMAL");
     this.db.pragma("foreign_keys = ON");
     this.db.exec(SCHEMA);
+    // Lightweight migration: ensure newer columns exist on older DBs that
+    // were created before they were introduced.
+    this.ensureColumn("sessions", "plan", "TEXT");
+  }
+
+  /**
+   * SQLite has no IF NOT EXISTS for column adds; this helper checks
+   * pragma_table_info and emits an ALTER only when the column is missing.
+   */
+  private ensureColumn(table: string, column: string, ddl: string): void {
+    const rows = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!rows.some((r) => r.name === column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+    }
   }
 
   close() {
@@ -141,7 +165,12 @@ export class Store {
   }
 
   // ───── sessions ─────
-  upsertSession(s: Omit<PersistedSession, "detached"> & { detached?: boolean }) {
+  upsertSession(
+    s: Omit<PersistedSession, "detached" | "plan"> & {
+      detached?: boolean;
+      plan?: PlanEntry[] | null;
+    },
+  ) {
     this.db
       .prepare(
         `INSERT INTO sessions (id, cwd, title, mode_id, mode_name, mode_options, available_commands, status, created_at, updated_at, detached)
@@ -195,7 +224,7 @@ export class Store {
   listSessions(): PersistedSession[] {
     const rows = this.db
       .prepare(
-        `SELECT id, cwd, title, mode_id, mode_name, mode_options, available_commands, status, created_at, updated_at, detached
+        `SELECT id, cwd, title, mode_id, mode_name, mode_options, available_commands, status, created_at, updated_at, detached, plan
          FROM sessions ORDER BY updated_at DESC`,
       )
       .all() as Record<string, unknown>[];
@@ -205,11 +234,17 @@ export class Store {
   getSession(id: string): PersistedSession | null {
     const row = this.db
       .prepare(
-        `SELECT id, cwd, title, mode_id, mode_name, mode_options, available_commands, status, created_at, updated_at, detached
+        `SELECT id, cwd, title, mode_id, mode_name, mode_options, available_commands, status, created_at, updated_at, detached, plan
          FROM sessions WHERE id = ?`,
       )
       .get(id) as Record<string, unknown> | undefined;
     return row ? rowToSession(row) : null;
+  }
+
+  setSessionPlan(id: string, plan: PlanEntry[] | null): void {
+    this.db
+      .prepare("UPDATE sessions SET plan = ?, updated_at = ? WHERE id = ?")
+      .run(plan ? JSON.stringify(plan) : null, Date.now(), id);
   }
 
   touchSession(id: string, status?: string) {
@@ -405,6 +440,7 @@ function rowToSession(r: Record<string, unknown>): PersistedSession {
     createdAt: r.created_at as number,
     updatedAt: r.updated_at as number,
     detached: (r.detached as number) === 1,
+    plan: r.plan ? (JSON.parse(r.plan as string) as PlanEntry[]) : null,
   };
 }
 

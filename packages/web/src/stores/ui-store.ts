@@ -55,6 +55,12 @@ export interface ModeOption {
   description?: string;
 }
 
+export interface PlanEntry {
+  content: string;
+  priority?: "low" | "medium" | "high";
+  status?: "pending" | "in_progress" | "completed";
+}
+
 export interface SessionState {
   id: string;
   cwd: string;
@@ -66,6 +72,8 @@ export interface SessionState {
   modeId?: string;
   modeOptions?: ModeOption[];
   availableCommands?: { name: string; description?: string }[];
+  /** Latest ACP plan snapshot for the session. */
+  plan?: PlanEntry[];
   messages: Message[];
   toolCallIds: string[];
   createdAt: number;
@@ -147,6 +155,7 @@ export interface UIState {
   /** Tag the last agent message (if any) with the given stop reason. */
   markLastAgentStopped: (sessionId: string, reason: NonNullable<Message["stopReason"]>) => void;
   setAvailableCommands: (sessionId: string, cmds: { name: string; description?: string }[]) => void;
+  setSessionPlan: (sessionId: string, plan: PlanEntry[]) => void;
   setMode: (sessionId: string, currentValue: string, options: ModeOption[]) => void;
 
   upsertToolCall: (call: Partial<ToolCallState> & { id: string; sessionId: string }) => void;
@@ -431,6 +440,18 @@ export const useUIStore = create<UIState>((set) => ({
       };
     }),
 
+  setSessionPlan: (sessionId, plan) =>
+    set((state) => {
+      const s = state.sessions[sessionId];
+      if (!s) return state;
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...s, plan, updatedAt: Date.now() },
+        },
+      };
+    }),
+
   setMode: (sessionId, currentValue, options) =>
     set((state) => {
       const s = state.sessions[sessionId];
@@ -601,6 +622,7 @@ export const useUIStore = create<UIState>((set) => ({
             ? h.modeOptions.map((m) => ({ name: m.name, value: m.id, description: m.description }))
             : undefined,
           availableCommands: h.availableCommands ?? undefined,
+          plan: h.plan ?? undefined,
           messages,
           toolCallIds,
           createdAt: h.createdAt,

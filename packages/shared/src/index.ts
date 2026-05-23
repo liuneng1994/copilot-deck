@@ -133,6 +133,12 @@ export interface TraceEventDTO {
   ts: number;
 }
 
+export interface PlanEntrySnapshot {
+  content: string;
+  priority?: "low" | "medium" | "high";
+  status?: "pending" | "in_progress" | "completed";
+}
+
 export interface HydratedSession {
   id: string;
   cwd: string;
@@ -142,6 +148,7 @@ export interface HydratedSession {
   modeName: string | null;
   modeOptions: { id: string; name: string; description?: string }[] | null;
   availableCommands: { name: string; description?: string }[] | null;
+  plan: PlanEntrySnapshot[] | null;
   createdAt: number;
   updatedAt: number;
   detached: boolean;

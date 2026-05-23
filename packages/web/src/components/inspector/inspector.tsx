@@ -12,6 +12,7 @@ import { ToolCallCard } from "../conversation/tool-call-card";
 import { Button } from "../ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { FilesTab } from "./files-tab";
+import { PlanTab } from "./plan-tab";
 import { TerminalTab } from "./terminal-tab";
 
 function Empty({ label }: { label: string }) {
@@ -72,6 +73,11 @@ export function Inspector() {
           <TabsTrigger value="plan" className="gap-1">
             <ListChecks className="h-3 w-3" />
             Plan
+            {session?.plan && session.plan.length > 0 && (
+              <span className="ml-0.5 rounded bg-muted px-1 text-[9px]">
+                {session.plan.filter((p) => p.status === "completed").length}/{session.plan.length}
+              </span>
+            )}
           </TabsTrigger>
           <TabsTrigger value="tools" className="gap-1">
             <FolderTree className="h-3 w-3" />
@@ -98,9 +104,7 @@ export function Inspector() {
 
         <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto px-1 pb-3">
           <TabsContent value="plan">
-            <Empty
-              label={session ? "No plan emitted yet for this session." : "Select a session."}
-            />
+            {session ? <PlanTab session={session} /> : <Empty label="Select a session." />}
           </TabsContent>
           <TabsContent value="tools" className="space-y-1">
             {!session ? (

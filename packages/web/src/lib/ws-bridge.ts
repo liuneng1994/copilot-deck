@@ -185,8 +185,31 @@ export function useWsBridge() {
               }
               break;
             }
-            case "plan":
+            case "plan": {
+              const entries = (u as unknown as { entries?: unknown[] }).entries;
+              if (Array.isArray(entries)) {
+                store.setSessionPlan(
+                  sid,
+                  entries.map((raw) => {
+                    const e = raw as { content?: unknown; priority?: unknown; status?: unknown };
+                    const allowedPriority = ["low", "medium", "high"] as const;
+                    const allowedStatus = ["pending", "in_progress", "completed"] as const;
+                    return {
+                      content: typeof e.content === "string" ? e.content : "",
+                      priority: allowedPriority.includes(
+                        e.priority as (typeof allowedPriority)[number],
+                      )
+                        ? (e.priority as (typeof allowedPriority)[number])
+                        : undefined,
+                      status: allowedStatus.includes(e.status as (typeof allowedStatus)[number])
+                        ? (e.status as (typeof allowedStatus)[number])
+                        : undefined,
+                    };
+                  }),
+                );
+              }
               break;
+            }
             case "session_info_update": {
               const cu = u.contextUsage;
               if (cu) store.setSessionCtx(sid, cu.used, cu.total);
