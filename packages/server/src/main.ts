@@ -6,6 +6,7 @@
 import type { ClientToServer, ServerToClient } from "@agent-view/shared";
 import fastifyWebsocket from "@fastify/websocket";
 import Fastify from "fastify";
+import { registerMcpRoutes } from "./extensions/routes-mcp.js";
 import { registerPluginRoutes } from "./extensions/routes-plugins.js";
 import { registerSkillsRoutes } from "./extensions/routes-skills.js";
 import { registerRoutes } from "./routes.js";
@@ -28,6 +29,7 @@ async function main() {
   };
 
   registerRoutes(app, { manager });
+  registerMcpRoutes(app, { manager });
   registerPluginRoutes(app, { broadcast });
   registerSkillsRoutes(app, { manager, broadcast });
 
