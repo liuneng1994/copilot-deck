@@ -134,6 +134,9 @@ export interface GitStatus {
   ahead: number;
   behind: number;
   files: GitFileFlag[];
+  /** False when `cwd` is not inside a git repository. Older clients that
+   * ignore this field still get a usable (empty) status. */
+  isRepo?: boolean;
 }
 
 export interface FileEntry {

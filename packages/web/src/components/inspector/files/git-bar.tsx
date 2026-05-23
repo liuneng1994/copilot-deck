@@ -35,6 +35,7 @@ export function GitBar({ cwd, status }: GitBarProps) {
   const dirtyCount = status.files.length;
   const untrackedCount = status.files.filter((file) => file.x === "?" || file.y === "?").length;
   const agentPaths = agentEntries.map((entry) => entry.path);
+  const isRepo = status.isRepo !== false;
 
   async function restoreAgentChanges() {
     if (agentPaths.length === 0) return;
@@ -88,33 +89,41 @@ export function GitBar({ cwd, status }: GitBarProps) {
           type="button"
           className="rounded-full border border-border bg-muted/60 px-2 py-0.5 font-medium text-foreground hover:bg-muted"
           onClick={() => undefined}
-          title="Current branch"
+          title={isRepo ? "Current branch" : "This directory is not a git repository"}
         >
-          {status.branch ?? "detached"}
+          {isRepo ? (status.branch ?? "detached") : "no git"}
         </button>
-        {status.ahead > 0 && <span className="font-medium text-foreground">↑{status.ahead}</span>}
-        {status.behind > 0 && <span className="font-medium text-foreground">↓{status.behind}</span>}
+        {isRepo && status.ahead > 0 && (
+          <span className="font-medium text-foreground">↑{status.ahead}</span>
+        )}
+        {isRepo && status.behind > 0 && (
+          <span className="font-medium text-foreground">↓{status.behind}</span>
+        )}
         <span className="text-muted-foreground">
-          {dirtyCount} dirty · {untrackedCount} untracked · {agentEntries.length} agent
+          {isRepo
+            ? `${dirtyCount} dirty · ${untrackedCount} untracked · ${agentEntries.length} agent`
+            : `${agentEntries.length} agent-touched`}
         </span>
-        <div className="ml-auto flex items-center gap-1.5">
-          <button
-            type="button"
-            className="rounded border border-border px-2 py-1 text-[11px] text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={busy || agentPaths.length === 0}
-            onClick={() => setRestoreOpen(true)}
-          >
-            Restore agent changes…
-          </button>
-          <button
-            type="button"
-            className="rounded border border-border px-2 py-1 text-[11px] text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={busy || dirtyCount === 0}
-            onClick={() => void stashChanges()}
-          >
-            Stash…
-          </button>
-        </div>
+        {isRepo && (
+          <div className="ml-auto flex items-center gap-1.5">
+            <button
+              type="button"
+              className="rounded border border-border px-2 py-1 text-[11px] text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={busy || agentPaths.length === 0}
+              onClick={() => setRestoreOpen(true)}
+            >
+              Restore agent changes…
+            </button>
+            <button
+              type="button"
+              className="rounded border border-border px-2 py-1 text-[11px] text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={busy || dirtyCount === 0}
+              onClick={() => void stashChanges()}
+            >
+              Stash…
+            </button>
+          </div>
+        )}
       </div>
       {restoreOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

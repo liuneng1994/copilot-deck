@@ -77,5 +77,5 @@ export function parseGitStatus(output: string, cwd = ""): GitStatus {
     }
   }
 
-  return { cwd, branch, ahead, behind, files };
+  return { cwd, branch, ahead, behind, files, isRepo: true };
 }

@@ -15,3 +15,8 @@ data/
 
 # Copilot session state
 .copilot/
+
+# transient test/debug artifacts
+e2e-artifacts/
+skills-tab.png
+*.pid
