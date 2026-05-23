@@ -291,6 +291,25 @@ export function useWsBridge() {
           }
           break;
         }
+        case "git_status": {
+          store.recordGitStatus(msg.cwd, msg.payload);
+          break;
+        }
+        case "files_index_invalidated": {
+          store.invalidateFilesIndex(msg.cwd);
+          break;
+        }
+        case "file_changed": {
+          break;
+        }
+        case "grep_chunk": {
+          store.appendGrepChunk(msg.opId, msg.hits);
+          break;
+        }
+        case "grep_done": {
+          store.finalizeGrep(msg.opId, msg);
+          break;
+        }
         case "session_reload_suggested": {
           store.suggestSessionReload(msg.sessionId, {
             reason: msg.reason,

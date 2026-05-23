@@ -13,6 +13,9 @@ import type {
 } from "@agent-view/shared";
 import { create } from "zustand";
 import { normalizeContentBlocks } from "../lib/normalize-content";
+import { type FilesSlice, createFilesSlice } from "./files-slice";
+
+export type { FilesSlice };
 
 export type SessionStatus = "idle" | "streaming" | "awaiting_perm" | "reloading" | "error";
 export type MessageRole = "user" | "agent" | "system";
@@ -139,7 +142,7 @@ export interface ExtensionsSlice {
   recordExtOpDone: (msg: ExtensionOpDone) => void;
 }
 
-export interface UIState extends ExtensionsSlice {
+export interface UIState extends ExtensionsSlice, FilesSlice {
   sidebarCollapsed: boolean;
   inspectorCollapsed: boolean;
   activeSessionId: string | null;
@@ -365,7 +368,8 @@ function savePanelWidths(w: { sidebar: number; inspector: number }): void {
   } catch {}
 }
 
-export const useUIStore = create<UIState>((set, get) => ({
+export const useUIStore = create<UIState>((set, get, api) => ({
+  ...createFilesSlice(set, get, api),
   sidebarCollapsed: false,
   inspectorCollapsed: false,
   activeSessionId: null,
