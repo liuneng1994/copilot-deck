@@ -4,8 +4,11 @@ import type {
   PermissionOption,
   PermissionOutcome,
   PermissionToolCallSnapshot,
+  TraceEventDTO,
+  HydratedSession,
 } from "@agent-view/shared";
 import { CopilotAgent } from "./acp/copilot-agent.js";
+import { Store } from "./store.js";
 
 export type SessionUpdateListener = (
   sessionId: string,
@@ -29,6 +32,7 @@ export interface ChildExitEvent {
 }
 
 export type ChildExitListener = (ev: ChildExitEvent) => void;
+export type TraceListener = (ev: TraceEventDTO) => void;
 
 interface SessionEntry {
   id: string;
@@ -42,6 +46,12 @@ interface PendingPermission {
   timer: NodeJS.Timeout;
   cwd: string;
   toolName: string;
+}
+
+/** In-flight accumulator for the current agent reply text, plus the persisted user msg id. */
+interface MessageStream {
+  agentMessageId: string | null;
+  agentBuf: string;
 }
 
 const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
@@ -58,9 +68,26 @@ export class SessionManager {
   private listeners = new Set<SessionUpdateListener>();
   private permissionListeners = new Set<PermissionRequestListener>();
   private childExitListeners = new Set<ChildExitListener>();
+  private traceListeners = new Set<TraceListener>();
   private pendingPermissions = new Map<string, PendingPermission>();
-  /** (cwd, toolName) → outcome — sticky decisions until process restart. */
+  /** (cwd, toolName) → outcome — sticky decisions, loaded from / written to store. */
   private permissionMemory = new Map<string, "allowed" | "denied">();
+  /** Per-session aggregator for streaming agent messages. */
+  private streams = new Map<string, MessageStream>();
+  /** Set of session ids that are persisted but have no live ACP child (detached). */
+  private detachedSessions = new Set<string>();
+
+  constructor(private readonly store: Store) {
+    // Hydrate sticky permission decisions.
+    for (const p of store.listPermissions()) {
+      this.permissionMemory.set(`${p.cwd}::${p.toolName}`, p.decision);
+    }
+    // Mark all previously-tracked sessions as detached until their cwd respawns.
+    store.markAllDetached();
+    for (const s of store.listSessions()) {
+      this.detachedSessions.add(s.id);
+    }
+  }
 
   onSessionUpdate(l: SessionUpdateListener) {
     this.listeners.add(l);
@@ -75,6 +102,83 @@ export class SessionManager {
   onChildExit(l: ChildExitListener) {
     this.childExitListeners.add(l);
     return () => this.childExitListeners.delete(l);
+  }
+
+  onTrace(l: TraceListener) {
+    this.traceListeners.add(l);
+    return () => this.traceListeners.delete(l);
+  }
+
+  private trace(ev: Omit<TraceEventDTO, "id">) {
+    const id = this.store.insertTrace(ev);
+    const dto: TraceEventDTO = { id, ...ev };
+    for (const l of this.traceListeners) {
+      try {
+        l(dto);
+      } catch (e) {
+        console.error("trace listener error", e);
+      }
+    }
+  }
+
+  /** Get a hydration snapshot for a fresh WS client. */
+  hydrate(): HydratedSession[] {
+    return this.store.listSessions().map((s) => ({
+      id: s.id,
+      cwd: s.cwd,
+      title: s.title,
+      status: s.status,
+      modeId: s.modeId,
+      modeName: s.modeName,
+      modeOptions: s.modeOptions,
+      availableCommands: s.availableCommands,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+      detached: s.detached,
+      messages: this.store.listMessages(s.id).map((m) => ({
+        id: m.id,
+        role: m.role,
+        text: m.text,
+        ts: m.ts,
+      })),
+      toolCalls: this.store.listToolCalls(s.id).map((c) => ({
+        id: c.id,
+        kind: c.kind,
+        title: c.title,
+        status: c.status,
+        rawInput: c.rawInput,
+        rawOutput: c.rawOutput,
+        content: c.content,
+        locations: c.locations,
+        startedAt: c.startedAt,
+        finishedAt: c.finishedAt,
+        ts: c.ts,
+      })),
+    }));
+  }
+
+  /** Surface trace snapshot for a UI request. */
+  listTrace(opts: { sessionId?: string; sinceId?: number; limit?: number }): TraceEventDTO[] {
+    return this.store.listTrace(opts).map((t) => ({
+      id: t.id ?? 0,
+      sessionId: t.sessionId,
+      cwd: t.cwd,
+      direction: t.direction,
+      kind: t.kind,
+      payload: t.payload,
+      ts: t.ts,
+    }));
+  }
+
+  deleteSession(sessionId: string) {
+    const entry = this.sessions.get(sessionId);
+    if (entry) {
+      void entry.agent.connection.cancel({ sessionId }).catch(() => undefined);
+      this.sessions.delete(sessionId);
+    }
+    this.detachedSessions.delete(sessionId);
+    this.streams.delete(sessionId);
+    this.store.deleteSession(sessionId);
   }
 
   private emit(sessionId: string, update: acp.SessionNotification) {
@@ -102,8 +206,27 @@ export class SessionManager {
     if (existing) return existing;
 
     const client: acp.Client = {
-      requestPermission: async (params) => this.handlePermission(cwd, params),
+      requestPermission: async (params) => {
+        this.trace({
+          sessionId: params.sessionId ?? null,
+          cwd,
+          direction: "in",
+          kind: "requestPermission",
+          payload: params,
+          ts: Date.now(),
+        });
+        return this.handlePermission(cwd, params);
+      },
       sessionUpdate: async (params) => {
+        this.trace({
+          sessionId: params.sessionId ?? null,
+          cwd,
+          direction: "in",
+          kind: (params.update as { sessionUpdate?: string })?.sessionUpdate ?? "sessionUpdate",
+          payload: params,
+          ts: Date.now(),
+        });
+        this.persistSessionUpdate(cwd, params);
         this.emit(params.sessionId, params);
       },
     };
@@ -118,6 +241,8 @@ export class SessionManager {
           if (entry.cwd === cwd) {
             droppedSessionIds.push(sid);
             this.sessions.delete(sid);
+            this.detachedSessions.add(sid);
+            this.store.markSessionDetached(sid, true);
           }
         }
         // Reject any pending permissions tied to this cwd.
@@ -250,6 +375,7 @@ export class SessionManager {
   /** Update sticky permission memory; called by the gateway when allow_always/reject_always picked. */
   rememberPermission(cwd: string, toolName: string, decision: "allowed" | "denied") {
     this.permissionMemory.set(`${cwd}::${toolName}`, decision);
+    this.store.setPermission(cwd, toolName, decision);
   }
 
   sessionCwd(sessionId: string): string | undefined {
@@ -258,30 +384,121 @@ export class SessionManager {
 
   async createSession(cwd: string): Promise<{ sessionId: string; modes?: acp.SessionModeState }> {
     const agent = await this.getOrCreateAgent(cwd);
+    this.trace({
+      sessionId: null,
+      cwd,
+      direction: "out",
+      kind: "newSession",
+      payload: { cwd },
+      ts: Date.now(),
+    });
     const res = await agent.connection.newSession({ cwd, mcpServers: [] });
     this.sessions.set(res.sessionId, { id: res.sessionId, cwd, agent });
+    this.detachedSessions.delete(res.sessionId);
+    const now = Date.now();
+    const modes = res.modes;
+    this.store.upsertSession({
+      id: res.sessionId,
+      cwd,
+      title: null,
+      status: "idle",
+      modeId: modes?.currentModeId ?? null,
+      modeName:
+        (modes?.availableModes ?? []).find((m) => m.id === modes?.currentModeId)?.name ?? null,
+      modeOptions:
+        (modes?.availableModes ?? []).map((m) => ({
+          id: m.id,
+          name: m.name,
+          description: m.description ?? undefined,
+        })) ?? null,
+      availableCommands: null,
+      createdAt: now,
+      updatedAt: now,
+      detached: false,
+    });
     return { sessionId: res.sessionId, modes: res.modes ?? undefined };
   }
 
   async prompt(sessionId: string, text: string): Promise<acp.PromptResponse> {
     const entry = this.sessions.get(sessionId);
     if (!entry) throw new Error(`unknown session ${sessionId}`);
-    return entry.agent.connection.prompt({
+    // Persist the user message + flush any prior in-flight agent buffer.
+    const now = Date.now();
+    const userMsgId = randomUUID();
+    this.store.insertMessage({
+      id: userMsgId,
+      sessionId,
+      role: "user",
+      text,
+      ts: now,
+    });
+    const stream = this.streams.get(sessionId);
+    if (stream) {
+      stream.agentMessageId = null;
+      stream.agentBuf = "";
+    }
+    this.store.touchSession(sessionId, "streaming");
+    this.trace({
+      sessionId,
+      cwd: entry.cwd,
+      direction: "out",
+      kind: "prompt",
+      payload: { text },
+      ts: now,
+    });
+    const res = await entry.agent.connection.prompt({
       sessionId,
       prompt: [{ type: "text", text }],
     });
+    this.store.touchSession(sessionId, "idle");
+    this.trace({
+      sessionId,
+      cwd: entry.cwd,
+      direction: "in",
+      kind: "promptResponse",
+      payload: res,
+      ts: Date.now(),
+    });
+    return res;
   }
 
   async cancel(sessionId: string): Promise<void> {
     const entry = this.sessions.get(sessionId);
     if (!entry) return;
+    this.trace({
+      sessionId,
+      cwd: entry.cwd,
+      direction: "out",
+      kind: "cancel",
+      payload: {},
+      ts: Date.now(),
+    });
     await entry.agent.connection.cancel({ sessionId });
   }
 
   async setMode(sessionId: string, modeId: string): Promise<void> {
     const entry = this.sessions.get(sessionId);
     if (!entry) throw new Error(`unknown session ${sessionId}`);
+    this.trace({
+      sessionId,
+      cwd: entry.cwd,
+      direction: "out",
+      kind: "setMode",
+      payload: { modeId },
+      ts: Date.now(),
+    });
     await entry.agent.connection.setSessionMode({ sessionId, modeId });
+    // Optimistically reflect — current_mode_update will also arrive via sessionUpdate.
+    const persisted = this.store.getSession(sessionId);
+    if (persisted) {
+      const opt = persisted.modeOptions?.find((m) => m.id === modeId);
+      this.store.upsertSession({
+        ...persisted,
+        modeId,
+        modeName: opt?.name ?? persisted.modeName,
+        updatedAt: Date.now(),
+      });
+    }
   }
 
   list() {
@@ -292,5 +509,152 @@ export class SessionManager {
     await Promise.all([...this.agentsByCwd.values()].map((a) => a.shutdown()));
     this.agentsByCwd.clear();
     this.sessions.clear();
+  }
+
+  /**
+   * Mirror an incoming sessionUpdate into SQLite. Best-effort; failures are logged.
+   */
+  private persistSessionUpdate(cwd: string, params: acp.SessionNotification): void {
+    try {
+      const sid = params.sessionId;
+      const update = params.update as Record<string, unknown> & { sessionUpdate?: string };
+      const kind = update?.sessionUpdate;
+      const now = Date.now();
+
+      const ensureStream = (): MessageStream => {
+        let s = this.streams.get(sid);
+        if (!s) {
+          s = { agentMessageId: null, agentBuf: "" };
+          this.streams.set(sid, s);
+        }
+        return s;
+      };
+
+      const ensureSession = () => {
+        const existing = this.store.getSession(sid);
+        if (existing) return existing;
+        const seed = {
+          id: sid,
+          cwd,
+          title: null as string | null,
+          status: "idle" as string | null,
+          modeId: null as string | null,
+          modeName: null as string | null,
+          modeOptions: null as { id: string; name: string; description?: string }[] | null,
+          availableCommands: null as { name: string; description?: string }[] | null,
+          createdAt: now,
+          updatedAt: now,
+          detached: false,
+        };
+        this.store.upsertSession(seed);
+        return seed;
+      };
+
+      if (kind === "agent_message_chunk" || kind === "user_message_chunk") {
+        const content = update.content as { type?: string; text?: string } | undefined;
+        const text = content?.type === "text" ? (content.text ?? "") : "";
+        if (!text) return;
+        ensureSession();
+        const stream = ensureStream();
+        if (kind === "agent_message_chunk") {
+          if (!stream.agentMessageId) {
+            stream.agentMessageId = randomUUID();
+            stream.agentBuf = text;
+            this.store.insertMessage({
+              id: stream.agentMessageId,
+              sessionId: sid,
+              role: "agent",
+              text,
+              ts: now,
+            });
+          } else {
+            stream.agentBuf += text;
+            this.store.updateMessageText(stream.agentMessageId, stream.agentBuf);
+          }
+        } else {
+          // user_message_chunk (rare — usually we recorded on prompt). Append to a fresh msg.
+          this.store.insertMessage({
+            id: randomUUID(),
+            sessionId: sid,
+            role: "user",
+            text,
+            ts: now,
+          });
+        }
+        return;
+      }
+
+      if (kind === "tool_call" || kind === "tool_call_update") {
+        ensureSession();
+        // Flush any current agent stream — tool calls slot into the message timeline.
+        const stream = this.streams.get(sid);
+        if (stream) {
+          stream.agentMessageId = null;
+          stream.agentBuf = "";
+        }
+        const u = update as Record<string, unknown>;
+        const id = String(u.toolCallId ?? u.id ?? "");
+        if (!id) return;
+        const existing = this.store.getToolCall(id);
+        const merged = {
+          id,
+          sessionId: sid,
+          kind: (u.kind as string | undefined) ?? existing?.kind ?? "",
+          title: (u.title as string | undefined) ?? existing?.title ?? "",
+          status: (u.status as string | undefined) ?? existing?.status ?? "pending",
+          rawInput: u.rawInput ?? existing?.rawInput ?? null,
+          rawOutput: u.rawOutput ?? existing?.rawOutput ?? null,
+          content:
+            (u.content as unknown[] | undefined) ?? existing?.content ?? ([] as unknown[]),
+          locations:
+            (u.locations as { path: string; line?: number }[] | undefined) ??
+            existing?.locations ??
+            null,
+          startedAt: existing?.startedAt ?? now,
+          finishedAt:
+            (u.status as string | undefined) === "completed" ||
+            (u.status as string | undefined) === "failed"
+              ? now
+              : (existing?.finishedAt ?? null),
+          ts: now,
+        };
+        this.store.upsertToolCall(merged);
+        this.store.touchSession(sid);
+        return;
+      }
+
+      if (kind === "current_mode_update") {
+        const persisted = ensureSession();
+        const modeId = (update.currentModeId as string | undefined) ?? null;
+        const opt = persisted.modeOptions?.find((m) => m.id === modeId);
+        this.store.upsertSession({
+          ...persisted,
+          modeId,
+          modeName: opt?.name ?? persisted.modeName,
+          updatedAt: now,
+        });
+        return;
+      }
+
+      if (kind === "available_commands_update") {
+        const persisted = ensureSession();
+        const cmds = (update.availableCommands as { name: string; description?: string }[] | undefined) ?? [];
+        this.store.upsertSession({
+          ...persisted,
+          availableCommands: cmds,
+          updatedAt: now,
+        });
+        return;
+      }
+
+      if (kind === "session_info_update") {
+        // Best-effort title from first user prompt; skip for now (UI derives).
+        ensureSession();
+        this.store.touchSession(sid);
+        return;
+      }
+    } catch (e) {
+      console.error("persistSessionUpdate error", e);
+    }
   }
 }

@@ -5,6 +5,8 @@ export type WsHandler = (msg: ServerToClient) => void;
 
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let backoffMs = 500;
+const BACKOFF_MAX = 8000;
 const handlers = new Set<WsHandler>();
 
 export function connectWs() {
@@ -16,6 +18,7 @@ export function connectWs() {
   ws = new WebSocket(url);
 
   ws.onopen = () => {
+    backoffMs = 500;
     useUIStore.getState().setWsConnected(true);
   };
   ws.onclose = () => {
@@ -37,10 +40,12 @@ export function connectWs() {
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
+  const wait = backoffMs;
+  backoffMs = Math.min(backoffMs * 2, BACKOFF_MAX);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connectWs();
-  }, 1500);
+  }, wait);
 }
 
 export function sendWs(msg: ClientToServer) {

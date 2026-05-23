@@ -1,5 +1,10 @@
 import { create } from "zustand";
-import type { PermissionOption, PermissionToolCallSnapshot } from "@agent-view/shared";
+import type {
+  PermissionOption,
+  PermissionToolCallSnapshot,
+  HydratedSession,
+  TraceEventDTO,
+} from "@agent-view/shared";
 
 export type SessionStatus = "idle" | "streaming" | "awaiting_perm" | "error";
 export type MessageRole = "user" | "agent" | "system";
@@ -70,6 +75,8 @@ export interface SessionState {
   /** Set to true when the underlying child process exited unexpectedly. */
   crashed?: boolean;
   crashInfo?: { code: number | null; signal: string | null };
+  /** Persisted-only session whose child has exited; read-only history view. */
+  detached?: boolean;
 }
 
 export interface PermissionRequest {
@@ -91,6 +98,14 @@ export interface UIState {
   toolCalls: Record<string, ToolCallState>;
   permissionQueue: PermissionRequest[];
 
+  /** Whether the initial hydration message has been processed. */
+  hydrated: boolean;
+  /** Bounded ring of recent trace events. */
+  trace: TraceEventDTO[];
+  /** Filters for the trace drawer. */
+  traceFilters: { direction?: "in" | "out"; sessionScope: boolean };
+  traceDrawerOpen: boolean;
+
   toggleSidebar: () => void;
   toggleInspector: () => void;
   setActiveSession: (id: string | null) => void;
@@ -99,6 +114,8 @@ export interface UIState {
 
   upsertSession: (s: Partial<SessionState> & { id: string }) => void;
   removeSession: (id: string) => void;
+  hydrate: (sessions: HydratedSession[]) => void;
+  markSessionDetached: (sessionId: string, detached: boolean) => void;
   appendUserMessage: (sessionId: string, text: string) => string;
   appendAgentChunk: (sessionId: string, chunk: string) => void;
   appendSystemMessage: (sessionId: string, text: string) => void;
@@ -120,6 +137,12 @@ export interface UIState {
 
   enqueuePermission: (req: PermissionRequest) => void;
   dismissPermission: (requestId: string) => void;
+
+  appendTrace: (ev: TraceEventDTO) => void;
+  setTrace: (events: TraceEventDTO[]) => void;
+  clearTrace: () => void;
+  setTraceFilters: (f: Partial<UIState["traceFilters"]>) => void;
+  setTraceDrawerOpen: (open: boolean) => void;
 }
 
 const nowId = () => Math.random().toString(36).slice(2, 10);
@@ -162,6 +185,10 @@ export const useUIStore = create<UIState>((set) => ({
   sessions: {},
   toolCalls: {},
   permissionQueue: [],
+  hydrated: false,
+  trace: [],
+  traceFilters: { sessionScope: true },
+  traceDrawerOpen: false,
 
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   toggleInspector: () => set((s) => ({ inspectorCollapsed: !s.inspectorCollapsed })),
@@ -187,6 +214,11 @@ export const useUIStore = create<UIState>((set) => ({
         updatedAt: Date.now(),
         tokensIn: s.tokensIn ?? existing?.tokensIn,
         tokensOut: s.tokensOut ?? existing?.tokensOut,
+        detached: s.detached ?? existing?.detached,
+        crashed: s.crashed ?? existing?.crashed,
+        crashInfo: s.crashInfo ?? existing?.crashInfo,
+        ctxUsed: s.ctxUsed ?? existing?.ctxUsed,
+        ctxTotal: s.ctxTotal ?? existing?.ctxTotal,
       };
       return { sessions: { ...state.sessions, [s.id]: merged } };
     }),
@@ -393,4 +425,81 @@ export const useUIStore = create<UIState>((set) => ({
         },
       };
     }),
+
+  markSessionDetached: (sessionId, detached) =>
+    set((state) => {
+      const existing = state.sessions[sessionId];
+      if (!existing) return state;
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...existing, detached, updatedAt: Date.now() },
+        },
+      };
+    }),
+
+  hydrate: (hydrated) =>
+    set((state) => {
+      const sessions: Record<string, SessionState> = { ...state.sessions };
+      const toolCalls: Record<string, ToolCallState> = { ...state.toolCalls };
+      for (const h of hydrated) {
+        // Don't trample an already-live session (e.g. one created in this tab pre-WS-ready).
+        if (sessions[h.id] && sessions[h.id].messages.length > 0) continue;
+        const messages: Message[] = h.messages.map((m) => ({
+          id: m.id,
+          role: m.role as MessageRole,
+          text: m.text,
+          ts: m.ts,
+        }));
+        const toolCallIds: string[] = [];
+        for (const c of h.toolCalls) {
+          toolCallIds.push(c.id);
+          toolCalls[c.id] = {
+            id: c.id,
+            sessionId: h.id,
+            ts: c.ts,
+            kind: c.kind,
+            title: c.title || c.kind,
+            status: (c.status as ToolCallStatus) ?? "completed",
+            rawInput: c.rawInput,
+            rawOutput: c.rawOutput,
+            content: (c.content as ToolCallContentBlock[]) ?? [],
+            locations: c.locations ?? undefined,
+            startedAt: c.startedAt,
+            finishedAt: c.finishedAt ?? undefined,
+            inputSummary: summarizeInput(c.rawInput),
+          };
+        }
+        sessions[h.id] = {
+          id: h.id,
+          cwd: h.cwd,
+          title: h.title ?? (messages[0]?.text.slice(0, 60) ?? "Session"),
+          status: h.detached ? "idle" : ((h.status as SessionStatus) ?? "idle"),
+          modeName: h.modeName ?? undefined,
+          modeId: h.modeId ?? undefined,
+          modeOptions: h.modeOptions
+            ? h.modeOptions.map((m) => ({ name: m.name, value: m.id, description: m.description }))
+            : undefined,
+          availableCommands: h.availableCommands ?? undefined,
+          messages,
+          toolCallIds,
+          createdAt: h.createdAt,
+          updatedAt: h.updatedAt,
+          detached: h.detached,
+        };
+      }
+      return { sessions, toolCalls, hydrated: true };
+    }),
+
+  appendTrace: (ev) =>
+    set((state) => {
+      const next = [...state.trace, ev];
+      // bounded ring
+      if (next.length > 1000) next.splice(0, next.length - 1000);
+      return { trace: next };
+    }),
+  setTrace: (events) => set({ trace: events.slice(-1000) }),
+  clearTrace: () => set({ trace: [] }),
+  setTraceFilters: (f) => set((s) => ({ traceFilters: { ...s.traceFilters, ...f } })),
+  setTraceDrawerOpen: (open) => set({ traceDrawerOpen: open }),
 }));

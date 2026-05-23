@@ -1,4 +1,4 @@
-import { ChevronRight, FolderOpen, FolderPlus, MessageSquare, Plus, Search } from "lucide-react";
+import { ChevronRight, FolderOpen, FolderPlus, MessageSquare, Plus, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -154,20 +154,41 @@ export function Sidebar() {
                   const dot = statusToDot(s.status);
                   const isActive = s.id === active;
                   return (
-                    <li key={s.id}>
+                    <li key={s.id} className="group/item relative">
                       <button
                         onClick={() => setActive(s.id)}
                         className={cn(
-                          "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors",
+                          "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 pr-7 text-left text-xs transition-colors",
                           isActive
                             ? "bg-panel-elevated text-foreground"
                             : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                          s.detached && !isActive && "opacity-60",
                         )}
+                        title={s.detached ? "Detached — child exited; history is read-only" : undefined}
                       >
                         <StatusDot status={dot.status} pulse={dot.pulse} />
                         <MessageSquare className="h-3 w-3 shrink-0 opacity-50" />
-                        <span className="flex-1 truncate">{s.title}</span>
+                        <span className="flex-1 truncate">
+                          {s.title}
+                          {s.detached && (
+                            <span className="ml-1 rounded bg-muted px-1 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground">
+                              detached
+                            </span>
+                          )}
+                        </span>
                         {isActive && <ChevronRight className="h-3 w-3 opacity-60" />}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!confirm("Delete this session and its history?")) return;
+                          sendWs({ type: "delete_session", sessionId: s.id });
+                          useUIStore.getState().removeSession(s.id);
+                        }}
+                        className="absolute right-1.5 top-1/2 hidden -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive group-hover/item:block"
+                        title="Delete session"
+                      >
+                        <Trash2 className="h-3 w-3" />
                       </button>
                     </li>
                   );

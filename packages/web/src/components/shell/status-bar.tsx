@@ -81,7 +81,8 @@ export function StatusBar() {
         <span title={session ? "Context window usage" : "No session"}>ctx {ctxLabel}</span>
         <button
           className="flex items-center gap-1 hover:text-foreground"
-          title="JSON-RPC trace (M-Persist)"
+          title="JSON-RPC trace"
+          onClick={() => useUIStore.getState().setTraceDrawerOpen(!useUIStore.getState().traceDrawerOpen)}
         >
           <Bug className="h-3 w-3" />
           trace

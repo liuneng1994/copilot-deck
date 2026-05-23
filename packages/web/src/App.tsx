@@ -7,6 +7,7 @@ import { SessionHeader } from "./components/conversation/session-header";
 import { Conversation, NoSessionPlaceholder } from "./components/conversation/conversation";
 import { Composer } from "./components/composer/composer";
 import { PermissionDialog } from "./components/overlays/permission-dialog";
+import { TraceDrawer } from "./components/overlays/trace-drawer";
 import { useWsBridge } from "./lib/ws-bridge";
 import { useUIStore } from "./stores/ui-store";
 
@@ -60,6 +61,7 @@ export function App() {
       </div>
       <StatusBar />
       <PermissionDialog />
+      <TraceDrawer />
     </div>
   );
 }

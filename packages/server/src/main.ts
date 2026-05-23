@@ -6,6 +6,7 @@ import fastifyWebsocket from "@fastify/websocket";
 import type { ClientToServer, ServerToClient } from "@agent-view/shared";
 import { SessionManager } from "./session-manager.js";
 import { listFiles } from "./file-index.js";
+import { Store } from "./store.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
 const HOST = process.env.HOST ?? "127.0.0.1";
@@ -14,7 +15,8 @@ async function main() {
   const app = Fastify({ logger: { level: "info" } });
   await app.register(fastifyWebsocket);
 
-  const manager = new SessionManager();
+  const store = new Store();
+  const manager = new SessionManager(store);
 
   app.get("/api/health", async () => ({ ok: true }));
 
@@ -177,6 +179,17 @@ async function main() {
     },
   );
 
+  app.get<{ Querystring: { sessionId?: string; sinceId?: string; limit?: string } }>(
+    "/api/trace",
+    async (req) => {
+      const sessionId = req.query.sessionId?.trim() || undefined;
+      const sinceId = req.query.sinceId ? Number(req.query.sinceId) : undefined;
+      const limit = req.query.limit ? Number(req.query.limit) : undefined;
+      const events = manager.listTrace({ sessionId, sinceId, limit });
+      return { events };
+    },
+  );
+
   app.register(async (instance) => {
     instance.get("/ws", { websocket: true }, (socket) => {
       const send = (msg: ServerToClient) => {
@@ -186,6 +199,13 @@ async function main() {
           app.log.warn({ err: e }, "ws send failed");
         }
       };
+
+      // Push the persisted snapshot first so the client paints history immediately.
+      try {
+        send({ type: "hydrate", sessions: manager.hydrate() });
+      } catch (e) {
+        app.log.warn({ err: e }, "hydrate send failed");
+      }
 
       const unsub = manager.onSessionUpdate((sessionId, update) => {
         send({ type: "session_update", sessionId, update: update.update });
@@ -211,10 +231,15 @@ async function main() {
         });
       });
 
+      const unsubTrace = manager.onTrace((ev) => {
+        send({ type: "trace_event", event: ev });
+      });
+
       socket.on("close", () => {
         unsub();
         unsubPerm();
         unsubChildExit();
+        unsubTrace();
       });
 
       socket.on("message", async (raw: Buffer) => {
@@ -261,6 +286,19 @@ async function main() {
             }
             case "set_mode": {
               await manager.setMode(msg.sessionId, msg.modeId);
+              break;
+            }
+            case "delete_session": {
+              manager.deleteSession(msg.sessionId);
+              break;
+            }
+            case "request_trace": {
+              const events = manager.listTrace({
+                sessionId: msg.sessionId,
+                sinceId: msg.sinceId,
+                limit: msg.limit,
+              });
+              send({ type: "trace_snapshot", events });
               break;
             }
             case "permission_reply": {

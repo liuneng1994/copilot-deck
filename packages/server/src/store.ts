@@ -1,0 +1,417 @@
+import { mkdirSync } from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import Database from "better-sqlite3";
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  cwd TEXT NOT NULL,
+  title TEXT,
+  mode_id TEXT,
+  mode_name TEXT,
+  mode_options TEXT,
+  available_commands TEXT,
+  status TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  /** When detached=1, the originating Copilot child has exited and the session
+   * is read-only until the user re-opens it (which spawns a new child). */
+  detached INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  text TEXT NOT NULL,
+  ts INTEGER NOT NULL,
+  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, ts);
+
+CREATE TABLE IF NOT EXISTS tool_calls (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL,
+  raw_input TEXT,
+  raw_output TEXT,
+  content TEXT,
+  locations TEXT,
+  started_at INTEGER NOT NULL,
+  finished_at INTEGER,
+  ts INTEGER NOT NULL,
+  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id, ts);
+
+CREATE TABLE IF NOT EXISTS permissions (
+  cwd TEXT NOT NULL,
+  tool_name TEXT NOT NULL,
+  decision TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (cwd, tool_name)
+);
+
+CREATE TABLE IF NOT EXISTS trace_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT,
+  cwd TEXT,
+  direction TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  ts INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_trace_session_ts ON trace_events(session_id, ts);
+CREATE INDEX IF NOT EXISTS idx_trace_ts ON trace_events(ts);
+`;
+
+const TRACE_MAX_ROWS = Number(process.env.AGENT_VIEW_TRACE_MAX ?? 5000);
+
+function defaultDbPath(): string {
+  if (process.env.AGENT_VIEW_DB) return process.env.AGENT_VIEW_DB;
+  const dir = path.join(os.homedir(), ".agent-view");
+  mkdirSync(dir, { recursive: true });
+  return path.join(dir, "db.sqlite");
+}
+
+export interface PersistedSession {
+  id: string;
+  cwd: string;
+  title: string | null;
+  modeId: string | null;
+  modeName: string | null;
+  modeOptions: { id: string; name: string; description?: string }[] | null;
+  availableCommands: { name: string; description?: string }[] | null;
+  status: string | null;
+  createdAt: number;
+  updatedAt: number;
+  detached: boolean;
+}
+
+export interface PersistedMessage {
+  id: string;
+  sessionId: string;
+  role: string;
+  text: string;
+  ts: number;
+}
+
+export interface PersistedToolCall {
+  id: string;
+  sessionId: string;
+  kind: string;
+  title: string;
+  status: string;
+  rawInput: unknown;
+  rawOutput: unknown;
+  content: unknown[];
+  locations: { path: string; line?: number }[] | null;
+  startedAt: number;
+  finishedAt: number | null;
+  ts: number;
+}
+
+export interface TraceEvent {
+  id?: number;
+  sessionId: string | null;
+  cwd: string | null;
+  direction: "in" | "out";
+  kind: string;
+  payload: unknown;
+  ts: number;
+}
+
+export class Store {
+  readonly db: Database.Database;
+
+  constructor(file?: string) {
+    const dbPath = file ?? defaultDbPath();
+    this.db = new Database(dbPath);
+    this.db.pragma("journal_mode = WAL");
+    this.db.pragma("synchronous = NORMAL");
+    this.db.pragma("foreign_keys = ON");
+    this.db.exec(SCHEMA);
+  }
+
+  close() {
+    this.db.close();
+  }
+
+  // ───── sessions ─────
+  upsertSession(s: Omit<PersistedSession, "detached"> & { detached?: boolean }) {
+    this.db
+      .prepare(
+        `INSERT INTO sessions (id, cwd, title, mode_id, mode_name, mode_options, available_commands, status, created_at, updated_at, detached)
+         VALUES (@id, @cwd, @title, @modeId, @modeName, @modeOptions, @availableCommands, @status, @createdAt, @updatedAt, @detached)
+         ON CONFLICT(id) DO UPDATE SET
+           cwd = excluded.cwd,
+           title = excluded.title,
+           mode_id = excluded.mode_id,
+           mode_name = excluded.mode_name,
+           mode_options = excluded.mode_options,
+           available_commands = excluded.available_commands,
+           status = excluded.status,
+           updated_at = excluded.updated_at,
+           detached = excluded.detached`,
+      )
+      .run({
+        id: s.id,
+        cwd: s.cwd,
+        title: s.title,
+        modeId: s.modeId,
+        modeName: s.modeName,
+        modeOptions: s.modeOptions ? JSON.stringify(s.modeOptions) : null,
+        availableCommands: s.availableCommands ? JSON.stringify(s.availableCommands) : null,
+        status: s.status,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+        detached: s.detached ? 1 : 0,
+      });
+  }
+
+  markSessionDetached(sessionId: string, detached: boolean) {
+    this.db
+      .prepare(
+        `UPDATE sessions SET detached = ?, updated_at = ? WHERE id = ?`,
+      )
+      .run(detached ? 1 : 0, Date.now(), sessionId);
+  }
+
+  markAllDetached() {
+    this.db.prepare(`UPDATE sessions SET detached = 1`).run();
+  }
+
+  deleteSession(sessionId: string) {
+    this.db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
+  }
+
+  listSessions(): PersistedSession[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, cwd, title, mode_id, mode_name, mode_options, available_commands, status, created_at, updated_at, detached
+         FROM sessions ORDER BY updated_at DESC`,
+      )
+      .all() as Record<string, unknown>[];
+    return rows.map(rowToSession);
+  }
+
+  getSession(id: string): PersistedSession | null {
+    const row = this.db
+      .prepare(
+        `SELECT id, cwd, title, mode_id, mode_name, mode_options, available_commands, status, created_at, updated_at, detached
+         FROM sessions WHERE id = ?`,
+      )
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? rowToSession(row) : null;
+  }
+
+  touchSession(id: string, status?: string) {
+    if (status !== undefined) {
+      this.db
+        .prepare(`UPDATE sessions SET updated_at = ?, status = ? WHERE id = ?`)
+        .run(Date.now(), status, id);
+    } else {
+      this.db
+        .prepare(`UPDATE sessions SET updated_at = ? WHERE id = ?`)
+        .run(Date.now(), id);
+    }
+  }
+
+  // ───── messages ─────
+  insertMessage(m: PersistedMessage) {
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO messages (id, session_id, role, text, ts) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(m.id, m.sessionId, m.role, m.text, m.ts);
+  }
+
+  updateMessageText(id: string, text: string) {
+    this.db.prepare(`UPDATE messages SET text = ? WHERE id = ?`).run(text, id);
+  }
+
+  listMessages(sessionId: string): PersistedMessage[] {
+    const rows = this.db
+      .prepare(`SELECT id, session_id, role, text, ts FROM messages WHERE session_id = ? ORDER BY ts ASC`)
+      .all(sessionId) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      id: r.id as string,
+      sessionId: r.session_id as string,
+      role: r.role as string,
+      text: r.text as string,
+      ts: r.ts as number,
+    }));
+  }
+
+  // ───── tool calls ─────
+  upsertToolCall(c: PersistedToolCall) {
+    this.db
+      .prepare(
+        `INSERT INTO tool_calls (id, session_id, kind, title, status, raw_input, raw_output, content, locations, started_at, finished_at, ts)
+         VALUES (@id, @sessionId, @kind, @title, @status, @rawInput, @rawOutput, @content, @locations, @startedAt, @finishedAt, @ts)
+         ON CONFLICT(id) DO UPDATE SET
+           kind = excluded.kind,
+           title = excluded.title,
+           status = excluded.status,
+           raw_input = excluded.raw_input,
+           raw_output = excluded.raw_output,
+           content = excluded.content,
+           locations = excluded.locations,
+           started_at = excluded.started_at,
+           finished_at = excluded.finished_at`,
+      )
+      .run({
+        id: c.id,
+        sessionId: c.sessionId,
+        kind: c.kind,
+        title: c.title,
+        status: c.status,
+        rawInput: c.rawInput === undefined ? null : JSON.stringify(c.rawInput),
+        rawOutput: c.rawOutput === undefined ? null : JSON.stringify(c.rawOutput),
+        content: JSON.stringify(c.content),
+        locations: c.locations ? JSON.stringify(c.locations) : null,
+        startedAt: c.startedAt,
+        finishedAt: c.finishedAt,
+        ts: c.ts,
+      });
+  }
+
+  listToolCalls(sessionId: string): PersistedToolCall[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, session_id, kind, title, status, raw_input, raw_output, content, locations, started_at, finished_at, ts
+         FROM tool_calls WHERE session_id = ? ORDER BY ts ASC`,
+      )
+      .all(sessionId) as Record<string, unknown>[];
+    return rows.map(rowToToolCall);
+  }
+
+  getToolCall(id: string): PersistedToolCall | null {
+    const row = this.db
+      .prepare(
+        `SELECT id, session_id, kind, title, status, raw_input, raw_output, content, locations, started_at, finished_at, ts
+         FROM tool_calls WHERE id = ?`,
+      )
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? rowToToolCall(row) : null;
+  }
+
+  // ───── permissions ─────
+  setPermission(cwd: string, toolName: string, decision: "allowed" | "denied") {
+    this.db
+      .prepare(
+        `INSERT INTO permissions (cwd, tool_name, decision, updated_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(cwd, tool_name) DO UPDATE SET decision = excluded.decision, updated_at = excluded.updated_at`,
+      )
+      .run(cwd, toolName, decision, Date.now());
+  }
+
+  clearPermission(cwd: string, toolName: string) {
+    this.db
+      .prepare(`DELETE FROM permissions WHERE cwd = ? AND tool_name = ?`)
+      .run(cwd, toolName);
+  }
+
+  listPermissions(): { cwd: string; toolName: string; decision: "allowed" | "denied"; updatedAt: number }[] {
+    const rows = this.db
+      .prepare(`SELECT cwd, tool_name, decision, updated_at FROM permissions`)
+      .all() as Record<string, unknown>[];
+    return rows.map((r) => ({
+      cwd: r.cwd as string,
+      toolName: r.tool_name as string,
+      decision: r.decision as "allowed" | "denied",
+      updatedAt: r.updated_at as number,
+    }));
+  }
+
+  // ───── trace ─────
+  insertTrace(t: TraceEvent): number {
+    const info = this.db
+      .prepare(
+        `INSERT INTO trace_events (session_id, cwd, direction, kind, payload, ts) VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(t.sessionId, t.cwd, t.direction, t.kind, JSON.stringify(t.payload), t.ts);
+    this.pruneTrace();
+    return Number(info.lastInsertRowid);
+  }
+
+  private pruneCounter = 0;
+  private pruneTrace() {
+    if (++this.pruneCounter % 200 !== 0) return;
+    const count = (this.db.prepare(`SELECT COUNT(*) as c FROM trace_events`).get() as { c: number }).c;
+    if (count <= TRACE_MAX_ROWS) return;
+    this.db
+      .prepare(
+        `DELETE FROM trace_events WHERE id IN (SELECT id FROM trace_events ORDER BY id ASC LIMIT ?)`,
+      )
+      .run(count - TRACE_MAX_ROWS);
+  }
+
+  listTrace(opts: { sessionId?: string; sinceId?: number; limit?: number } = {}): TraceEvent[] {
+    const limit = Math.min(opts.limit ?? 500, 2000);
+    let sql = `SELECT id, session_id, cwd, direction, kind, payload, ts FROM trace_events WHERE 1=1`;
+    const params: unknown[] = [];
+    if (opts.sessionId) {
+      sql += ` AND session_id = ?`;
+      params.push(opts.sessionId);
+    }
+    if (opts.sinceId != null) {
+      sql += ` AND id > ?`;
+      params.push(opts.sinceId);
+    }
+    sql += ` ORDER BY id DESC LIMIT ?`;
+    params.push(limit);
+    const rows = this.db.prepare(sql).all(...params) as Record<string, unknown>[];
+    return rows
+      .map((r) => ({
+        id: r.id as number,
+        sessionId: (r.session_id ?? null) as string | null,
+        cwd: (r.cwd ?? null) as string | null,
+        direction: r.direction as "in" | "out",
+        kind: r.kind as string,
+        payload: JSON.parse(r.payload as string),
+        ts: r.ts as number,
+      }))
+      .reverse();
+  }
+}
+
+function rowToSession(r: Record<string, unknown>): PersistedSession {
+  return {
+    id: r.id as string,
+    cwd: r.cwd as string,
+    title: (r.title ?? null) as string | null,
+    modeId: (r.mode_id ?? null) as string | null,
+    modeName: (r.mode_name ?? null) as string | null,
+    modeOptions: r.mode_options
+      ? (JSON.parse(r.mode_options as string) as PersistedSession["modeOptions"])
+      : null,
+    availableCommands: r.available_commands
+      ? (JSON.parse(r.available_commands as string) as PersistedSession["availableCommands"])
+      : null,
+    status: (r.status ?? null) as string | null,
+    createdAt: r.created_at as number,
+    updatedAt: r.updated_at as number,
+    detached: (r.detached as number) === 1,
+  };
+}
+
+function rowToToolCall(r: Record<string, unknown>): PersistedToolCall {
+  return {
+    id: r.id as string,
+    sessionId: r.session_id as string,
+    kind: r.kind as string,
+    title: r.title as string,
+    status: r.status as string,
+    rawInput: r.raw_input ? JSON.parse(r.raw_input as string) : null,
+    rawOutput: r.raw_output ? JSON.parse(r.raw_output as string) : null,
+    content: JSON.parse((r.content as string) ?? "[]"),
+    locations: r.locations ? JSON.parse(r.locations as string) : null,
+    startedAt: r.started_at as number,
+    finishedAt: (r.finished_at ?? null) as number | null,
+    ts: r.ts as number,
+  };
+}

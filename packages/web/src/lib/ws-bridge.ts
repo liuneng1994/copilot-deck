@@ -230,6 +230,7 @@ export function useWsBridge() {
         case "child_exit": {
           for (const sid of msg.sessionIds) {
             store.markSessionCrashed(sid, { code: msg.code, signal: msg.signal });
+            store.markSessionDetached(sid, true);
             store.appendSystemMessage(
               sid,
               `⚠ copilot child exited (code=${msg.code ?? "?"} signal=${msg.signal ?? "?"}). Create a new session to continue.`,
@@ -238,6 +239,22 @@ export function useWsBridge() {
           if (msg.sessionIds.length === 0) {
             store.setLastError(`copilot child for ${msg.cwd} exited`);
           }
+          break;
+        }
+        case "hydrate": {
+          store.hydrate(msg.sessions);
+          const after = useUIStore.getState();
+          if (!after.activeSessionId && msg.sessions.length > 0) {
+            after.setActiveSession(msg.sessions[0].id);
+          }
+          break;
+        }
+        case "trace_event": {
+          store.appendTrace(msg.event);
+          break;
+        }
+        case "trace_snapshot": {
+          store.setTrace(msg.events);
           break;
         }
       }

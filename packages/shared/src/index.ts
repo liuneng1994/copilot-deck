@@ -20,6 +20,8 @@ export type ClientToServer =
   | { type: "prompt"; sessionId: string; text: string }
   | { type: "cancel"; sessionId: string }
   | { type: "set_mode"; sessionId: string; modeId: string }
+  | { type: "delete_session"; sessionId: string }
+  | { type: "request_trace"; sessionId?: string; sinceId?: number; limit?: number }
   | {
       type: "permission_reply";
       requestId: string;
@@ -62,4 +64,57 @@ export type ServerToClient =
       sessionIds: string[];
       code: number | null;
       signal: string | null;
+    }
+  | {
+      // Initial hydration on (re)connect with the persisted state.
+      type: "hydrate";
+      sessions: HydratedSession[];
+    }
+  | {
+      // New trace event captured (live).
+      type: "trace_event";
+      event: TraceEventDTO;
+    }
+  | {
+      // Response to ClientToServer request_trace.
+      type: "trace_snapshot";
+      events: TraceEventDTO[];
     };
+
+export interface TraceEventDTO {
+  id: number;
+  sessionId: string | null;
+  cwd: string | null;
+  direction: "in" | "out";
+  kind: string;
+  payload: unknown;
+  ts: number;
+}
+
+export interface HydratedSession {
+  id: string;
+  cwd: string;
+  title: string | null;
+  status: string | null;
+  modeId: string | null;
+  modeName: string | null;
+  modeOptions: { id: string; name: string; description?: string }[] | null;
+  availableCommands: { name: string; description?: string }[] | null;
+  createdAt: number;
+  updatedAt: number;
+  detached: boolean;
+  messages: { id: string; role: string; text: string; ts: number }[];
+  toolCalls: {
+    id: string;
+    kind: string;
+    title: string;
+    status: string;
+    rawInput: unknown;
+    rawOutput: unknown;
+    content: unknown[];
+    locations: { path: string; line?: number }[] | null;
+    startedAt: number;
+    finishedAt: number | null;
+    ts: number;
+  }[];
+}

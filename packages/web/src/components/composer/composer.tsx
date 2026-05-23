@@ -15,6 +15,7 @@ export function Composer({ session }: { session: SessionState }) {
 
   const streaming = session.status === "streaming";
   const awaitingPerm = session.status === "awaiting_perm";
+  const detached = !!session.detached;
 
   // Slash popover state: open whenever the active token starts with `/`.
   const slashContext = useMemo(() => {
@@ -98,13 +99,15 @@ export function Composer({ session }: { session: SessionState }) {
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder={
-                streaming
-                  ? "Agent is responding… press Esc to stop"
-                  : awaitingPerm
-                    ? "Waiting for permission decision…"
-                    : "Type a prompt, /command, or @file. ⌘↵ to send"
+                detached
+                  ? "Session detached — create a new session to continue"
+                  : streaming
+                    ? "Agent is responding… press Esc to stop"
+                    : awaitingPerm
+                      ? "Waiting for permission decision…"
+                      : "Type a prompt, /command, or @file. ⌘↵ to send"
               }
-              disabled={streaming || awaitingPerm}
+              disabled={streaming || awaitingPerm || detached}
               rows={1}
               className="min-h-[44px] resize-none border-0 bg-transparent px-4 py-3 text-sm shadow-none focus-visible:ring-0"
               onKeyDown={(e) => {
@@ -154,7 +157,7 @@ export function Composer({ session }: { session: SessionState }) {
                   <Button
                     size="sm"
                     onClick={send}
-                    disabled={!text.trim() || awaitingPerm}
+                    disabled={!text.trim() || awaitingPerm || detached}
                     className="h-7 gap-1.5"
                   >
                     <Send className="h-3 w-3" />
