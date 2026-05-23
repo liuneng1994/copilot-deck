@@ -371,7 +371,8 @@ export class SessionManager {
   ): Promise<acp.RequestPermissionResponse> {
     const toolName = params.toolCall?.kind ?? params.toolCall?.title ?? "tool";
     const memKey = `${cwd}::${toolName}`;
-    const sticky = this.permissionMemory.get(memKey);
+    const folderKey = `${cwd}::*`;
+    const sticky = this.permissionMemory.get(memKey) ?? this.permissionMemory.get(folderKey);
     if (sticky === "allowed") {
       const allow = params.options.find(
         (o) => o.kind === "allow_once" || o.kind === "allow_always",
@@ -428,7 +429,12 @@ export class SessionManager {
   }
 
   /** Resolve a pending permission with the user's decision. */
-  replyPermission(requestId: string, outcome: PermissionOutcome, optionId?: string) {
+  replyPermission(
+    requestId: string,
+    outcome: PermissionOutcome,
+    optionId?: string,
+    trustFolder?: boolean,
+  ) {
     const pending = this.pendingPermissions.get(requestId);
     if (!pending) return false;
     this.pendingPermissions.delete(requestId);
@@ -460,6 +466,10 @@ export class SessionManager {
     // Sticky memory only when the user picked an *always* variant.
     if (picked.raw.kind === "allow_always") {
       this.rememberPermission(pending.cwd, pending.toolName, "allowed");
+      if (trustFolder) {
+        // Folder-wide trust: any subsequent tool in this cwd auto-allows.
+        this.rememberPermission(pending.cwd, "*", "allowed");
+      }
     } else if (picked.raw.kind === "reject_always") {
       this.rememberPermission(pending.cwd, pending.toolName, "denied");
     }

@@ -15,6 +15,8 @@ export interface Message {
   role: MessageRole;
   text: string;
   ts: number;
+  /** Stop reason populated when this message was cut short (e.g. user cancelled). */
+  stopReason?: "cancelled" | "error";
 }
 
 export type ToolCallStatus = "pending" | "in_progress" | "completed" | "failed";
@@ -141,6 +143,8 @@ export interface UIState {
   appendAgentChunk: (sessionId: string, chunk: string) => void;
   appendSystemMessage: (sessionId: string, text: string) => void;
   setSessionStatus: (sessionId: string, status: SessionStatus) => void;
+  /** Tag the last agent message (if any) with the given stop reason. */
+  markLastAgentStopped: (sessionId: string, reason: NonNullable<Message["stopReason"]>) => void;
   setAvailableCommands: (sessionId: string, cmds: { name: string; description?: string }[]) => void;
   setMode: (sessionId: string, currentValue: string, options: ModeOption[]) => void;
 
@@ -381,6 +385,34 @@ export const useUIStore = create<UIState>((set) => ({
       if (!s) return state;
       return {
         sessions: { ...state.sessions, [sessionId]: { ...s, status, updatedAt: Date.now() } },
+      };
+    }),
+
+  markLastAgentStopped: (sessionId, reason) =>
+    set((state) => {
+      const s = state.sessions[sessionId];
+      if (!s) return state;
+      // Walk backward; tag the most recent agent message that doesn't already
+      // carry a stopReason (e.g. cancel-immediately-after-cancel is a no-op).
+      let idx = -1;
+      for (let i = s.messages.length - 1; i >= 0; i--) {
+        const m = s.messages[i];
+        if (!m) continue;
+        if (m.role === "agent") {
+          if (!m.stopReason) idx = i;
+          break;
+        }
+      }
+      if (idx < 0) return state;
+      const messages = [...s.messages];
+      const target = messages[idx];
+      if (!target) return state;
+      messages[idx] = { ...target, stopReason: reason };
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...s, messages, updatedAt: Date.now() },
+        },
       };
     }),
 

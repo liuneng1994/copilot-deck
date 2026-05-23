@@ -36,6 +36,12 @@ export type ClientToServer =
       requestId: string;
       outcome: PermissionOutcome;
       optionId?: string;
+      /**
+       * If true *and* outcome is `allowed_always`, the server records a
+       * wildcard "trust this folder" decision that applies to any tool in
+       * the same cwd (i.e. `${cwd}::*`).
+       */
+      trustFolder?: boolean;
     };
 
 export interface SessionModeSnapshot {

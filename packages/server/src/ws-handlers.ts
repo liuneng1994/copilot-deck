@@ -129,7 +129,12 @@ export const wsHandlers: HandlerMap = {
   },
 
   permission_reply(msg, { manager, log }) {
-    const handled = manager.replyPermission(msg.requestId, msg.outcome, msg.optionId);
+    const handled = manager.replyPermission(
+      msg.requestId,
+      msg.outcome,
+      msg.optionId,
+      msg.trustFolder,
+    );
     if (!handled) {
       log.warn({ requestId: msg.requestId }, "stale permission reply");
     }

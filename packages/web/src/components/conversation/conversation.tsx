@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef } from "react";
+import { ArrowDown } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type SessionState, type ToolCallState, useUIStore } from "../../stores/ui-store";
 import { MessageBubble } from "./message-bubble";
 import { ToolCallCard } from "./tool-call-card";
@@ -10,6 +11,7 @@ type TimelineItem =
 export function Conversation({ session }: { session: SessionState }) {
   const ref = useRef<HTMLDivElement>(null);
   const allToolCalls = useUIStore((s) => s.toolCalls);
+  const [showJump, setShowJump] = useState(false);
 
   const items: TimelineItem[] = useMemo(() => {
     const out: TimelineItem[] = session.messages.map((m) => ({
@@ -25,6 +27,12 @@ export function Conversation({ session }: { session: SessionState }) {
     return out;
   }, [session.messages, session.toolCallIds, allToolCalls]);
 
+  const scrollToBottom = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, []);
+
   // Auto-scroll to bottom on new content (unless user scrolled up).
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on items change, ref reads are intentional
   useEffect(() => {
@@ -38,29 +46,56 @@ export function Conversation({ session }: { session: SessionState }) {
     }
   }, [items]);
 
+  // Track whether user has scrolled away from the bottom so we can offer a
+  // jump-back affordance. Threshold matches the auto-scroll heuristic.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onScroll = () => {
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowJump(distance > 240);
+    };
+    onScroll();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
   const lastMsg = session.messages[session.messages.length - 1];
   const streaming = session.status === "streaming";
 
   return (
-    <div ref={ref} className="flex-1 min-h-0 overflow-auto">
-      <div className="mx-auto flex max-w-3xl flex-col gap-4 px-6 py-6">
-        {session.crashed && <CrashBanner info={session.crashInfo} />}
-        {items.length === 0 && !session.crashed && <EmptyConversation cwd={session.cwd} />}
-        {items.map((it) => {
-          if (it.kind === "toolCall") {
-            return <ToolCallCard key={`tc-${it.data.id}`} call={it.data} />;
-          }
-          const m = it.data;
-          return (
-            <MessageBubble
-              key={m.id}
-              message={m}
-              sessionId={session.id}
-              streaming={streaming && m.id === lastMsg?.id && m.role === "agent"}
-            />
-          );
-        })}
+    <div className="relative flex-1 min-h-0">
+      <div ref={ref} className="h-full overflow-auto">
+        <div className="mx-auto flex max-w-3xl flex-col gap-4 px-6 py-6">
+          {session.crashed && <CrashBanner info={session.crashInfo} />}
+          {items.length === 0 && !session.crashed && <EmptyConversation cwd={session.cwd} />}
+          {items.map((it) => {
+            if (it.kind === "toolCall") {
+              return <ToolCallCard key={`tc-${it.data.id}`} call={it.data} />;
+            }
+            const m = it.data;
+            return (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                sessionId={session.id}
+                streaming={streaming && m.id === lastMsg?.id && m.role === "agent"}
+              />
+            );
+          })}
+        </div>
       </div>
+      {showJump && (
+        <button
+          type="button"
+          onClick={scrollToBottom}
+          title="Jump to latest"
+          className="absolute bottom-4 right-6 z-10 flex h-9 items-center gap-1.5 rounded-full border border-border bg-panel-elevated px-3 text-xs text-foreground shadow-md transition-colors hover:bg-muted"
+        >
+          <ArrowDown className="h-3.5 w-3.5" />
+          Jump to latest
+        </button>
+      )}
     </div>
   );
 }

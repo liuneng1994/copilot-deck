@@ -1,5 +1,6 @@
 import type { PermissionOption } from "@agent-view/shared";
 import { ShieldAlert } from "lucide-react";
+import { useEffect, useState } from "react";
 import { sendWs } from "../../lib/ws-client";
 import { useUIStore } from "../../stores/ui-store";
 import { Button } from "../ui/button";
@@ -30,6 +31,14 @@ export function PermissionDialog() {
   const dismiss = useUIStore((s) => s.dismissPermission);
   const setStatus = useUIStore((s) => s.setSessionStatus);
   const current = queue[0];
+  const [trustFolder, setTrustFolder] = useState(false);
+
+  // Reset the trust-folder toggle whenever the queue head changes so an
+  // earlier dialog's choice doesn't leak into the next request.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: depend on requestId identity
+  useEffect(() => {
+    setTrustFolder(false);
+  }, [current?.requestId]);
 
   if (!current) return null;
 
@@ -39,10 +48,13 @@ export function PermissionDialog() {
       requestId: current.requestId,
       outcome: outcomeFor(opt.kind),
       optionId: opt.optionId,
+      ...(trustFolder && opt.kind === "allow_always" ? { trustFolder: true } : {}),
     });
     dismiss(current.requestId);
     setStatus(current.sessionId, "streaming");
   };
+
+  const hasAllowAlways = current.options.some((o) => o.kind === "allow_always");
 
   return (
     <Dialog
@@ -92,6 +104,21 @@ export function PermissionDialog() {
 
         {queue.length > 1 && (
           <p className="text-[10px] text-muted-foreground">+{queue.length - 1} more queued</p>
+        )}
+
+        {hasAllowAlways && (
+          <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-panel px-3 py-2 text-xs text-muted-foreground hover:text-foreground">
+            <input
+              type="checkbox"
+              checked={trustFolder}
+              onChange={(e) => setTrustFolder(e.target.checked)}
+              className="h-3.5 w-3.5 accent-primary"
+            />
+            <span>
+              Trust <span className="font-mono text-foreground">all tools</span> in this folder
+              (applies the "Always" choice as a wildcard)
+            </span>
+          </label>
         )}
 
         <DialogFooter>

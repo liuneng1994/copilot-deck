@@ -148,7 +148,28 @@ export function Composer({ session }: { session: SessionState }) {
 
   const cancel = () => {
     sendWs({ type: "cancel", sessionId: session.id });
+    useUIStore.getState().markLastAgentStopped(session.id, "cancelled");
     setStatus(session.id, "idle");
+  };
+
+  /** Resend the most recent user prompt in this session. */
+  const retryLast = () => {
+    const state = useUIStore.getState();
+    const sess = state.sessions[session.id];
+    if (!sess) return;
+    let prior: string | null = null;
+    for (let i = sess.messages.length - 1; i >= 0; i--) {
+      const m = sess.messages[i];
+      if (m && m.role === "user") {
+        prior = m.text;
+        break;
+      }
+    }
+    if (!prior) return;
+    appendUser(session.id, prior);
+    setStatus(session.id, "streaming");
+    pushHistory(session.id, prior);
+    sendWs({ type: "prompt", sessionId: session.id, text: prior });
   };
 
   /** Replace the active /token with /name (or run immediately for built-ins). */
@@ -290,15 +311,18 @@ export function Composer({ session }: { session: SessionState }) {
                     Stop
                   </Button>
                 ) : (
-                  <Button
-                    size="sm"
-                    onClick={send}
-                    disabled={!text.trim() || awaitingPerm || detached}
-                    className="h-7 gap-1.5"
-                  >
-                    <Send className="h-3 w-3" />
-                    Send
-                  </Button>
+                  <>
+                    <RetryButton onClick={retryLast} sessionId={session.id} />
+                    <Button
+                      size="sm"
+                      onClick={send}
+                      disabled={!text.trim() || awaitingPerm || detached}
+                      className="h-7 gap-1.5"
+                    >
+                      <Send className="h-3 w-3" />
+                      Send
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -306,5 +330,31 @@ export function Composer({ session }: { session: SessionState }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Small retry button rendered only when the active session has a prior user
+ * prompt that can be re-issued. Subscribes to message count so it appears as
+ * soon as the first prompt lands.
+ */
+function RetryButton({ sessionId, onClick }: { sessionId: string; onClick: () => void }) {
+  const hasUser = useUIStore((s) => {
+    const sess = s.sessions[sessionId];
+    if (!sess) return false;
+    return sess.messages.some((m) => m.role === "user");
+  });
+  if (!hasUser) return null;
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={onClick}
+      className="h-7 gap-1.5"
+      title="Resend the last user prompt"
+    >
+      <RotateCcw className="h-3 w-3" />
+      Retry
+    </Button>
   );
 }

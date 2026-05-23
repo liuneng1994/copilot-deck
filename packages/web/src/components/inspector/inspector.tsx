@@ -6,6 +6,7 @@ import {
   Settings2,
   TerminalSquare,
 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import { ToolCallCard } from "../conversation/tool-call-card";
 import { Button } from "../ui/button";
@@ -21,6 +22,9 @@ function Empty({ label }: { label: string }) {
   );
 }
 
+/** Per (session, tab) scroll memory; resets on page reload. */
+const inspectorScrollMemory = new Map<string, number>();
+
 export function Inspector() {
   const toggle = useUIStore((s) => s.toggleInspector);
   const session = useUIStore((s) => (s.activeSessionId ? s.sessions[s.activeSessionId] : null));
@@ -31,6 +35,24 @@ export function Inspector() {
   const sessionCalls = session
     ? session.toolCallIds.map((id) => toolCalls[id]).filter(Boolean)
     : [];
+
+  // Restore + persist per (sessionId, tab) scroll position. We keep the cache
+  // in a module-local ref so it survives across re-renders but not page
+  // reloads (intentional: stale scroll restores can be confusing).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollKey = `${session?.id ?? "none"}::${tab}`;
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const saved = inspectorScrollMemory.get(scrollKey);
+    el.scrollTop = saved ?? 0;
+    const onScroll = () => inspectorScrollMemory.set(scrollKey, el.scrollTop);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      inspectorScrollMemory.set(scrollKey, el.scrollTop);
+      el.removeEventListener("scroll", onScroll);
+    };
+  }, [scrollKey]);
 
   return (
     <aside className="flex h-full w-80 shrink-0 flex-col border-l border-border bg-panel">
@@ -74,7 +96,7 @@ export function Inspector() {
           </TabsTrigger>
         </TabsList>
 
-        <div className="flex-1 min-h-0 overflow-auto px-1 pb-3">
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto px-1 pb-3">
           <TabsContent value="plan">
             <Empty
               label={session ? "No plan emitted yet for this session." : "Select a session."}

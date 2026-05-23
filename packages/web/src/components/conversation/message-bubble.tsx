@@ -111,6 +111,16 @@ export function MessageBubble({
             {streaming && (
               <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse rounded-sm bg-success align-middle" />
             )}
+            {!streaming && message.stopReason === "cancelled" && (
+              <div className="mt-2 inline-flex items-center gap-1 rounded border border-warn/40 bg-warn/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warn">
+                cancelled
+              </div>
+            )}
+            {!streaming && message.stopReason === "error" && (
+              <div className="mt-2 inline-flex items-center gap-1 rounded border border-rose-500/40 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rose-300">
+                error
+              </div>
+            )}
           </div>
         </div>
         {!streaming && <MessageToolbar message={message} sessionId={sessionId} isUser={isUser} />}
