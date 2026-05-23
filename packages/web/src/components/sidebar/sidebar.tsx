@@ -12,6 +12,7 @@ import { useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
 import { sendWs } from "../../lib/ws-client";
 import { type SessionState, useUIStore } from "../../stores/ui-store";
+import { confirmDialog } from "../overlays/confirm-dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { ScrollArea } from "../ui/scroll-area";
@@ -205,9 +206,15 @@ export function Sidebar() {
                       </button>
                       <button
                         type="button"
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
-                          if (!confirm("Delete this session and its history?")) return;
+                          const ok = await confirmDialog({
+                            title: "Delete session?",
+                            description: `“${s.title}” and its full history will be removed. This cannot be undone.`,
+                            confirmLabel: "Delete",
+                            tone: "danger",
+                          });
+                          if (!ok) return;
                           sendWs({ type: "delete_session", sessionId: s.id });
                           useUIStore.getState().removeSession(s.id);
                         }}

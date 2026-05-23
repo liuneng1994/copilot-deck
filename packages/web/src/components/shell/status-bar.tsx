@@ -36,7 +36,7 @@ export function StatusBar() {
       ? `${Math.round((session.ctxUsed / session.ctxTotal) * 100)}%`
       : session?.ctxUsed != null
         ? `${session.ctxUsed.toLocaleString()} tok`
-        : "—";
+        : null;
 
   const copilotOk = !!session && !session.crashed;
 
@@ -80,7 +80,7 @@ export function StatusBar() {
         </button>
       </div>
       <div className="flex items-center gap-3">
-        <span title={session ? "Context window usage" : "No session"}>ctx {ctxLabel}</span>
+        {ctxLabel && <span title="Context window usage">ctx {ctxLabel}</span>}
         <button
           type="button"
           className="flex items-center gap-1 hover:text-foreground"
@@ -94,8 +94,25 @@ export function StatusBar() {
         </button>
         <button
           type="button"
-          className="flex items-center gap-1 hover:text-foreground"
-          title="Pending permission requests"
+          className={
+            pendingPerms > 0
+              ? "flex items-center gap-1 text-amber-400 hover:text-amber-300"
+              : "flex items-center gap-1 hover:text-foreground"
+          }
+          title={
+            pendingPerms > 0
+              ? `${pendingPerms} pending permission request${pendingPerms === 1 ? "" : "s"} — click to focus`
+              : "No pending permissions"
+          }
+          onClick={() => {
+            if (pendingPerms === 0) return;
+            const dialog = document.querySelector("[data-permission-dialog]") as HTMLElement | null;
+            if (!dialog) return;
+            dialog.scrollIntoView({ behavior: "smooth", block: "center" });
+            const btn = dialog.querySelector("button") as HTMLButtonElement | null;
+            btn?.focus();
+          }}
+          disabled={pendingPerms === 0}
         >
           <Bell className="h-3 w-3" />
           {pendingPerms}

@@ -3,6 +3,7 @@ import { Composer } from "./components/composer/composer";
 import { Conversation, NoSessionPlaceholder } from "./components/conversation/conversation";
 import { SessionHeader } from "./components/conversation/session-header";
 import { Inspector, InspectorRail } from "./components/inspector/inspector";
+import { ConfirmDialogHost } from "./components/overlays/confirm-dialog";
 import { HelpOverlay } from "./components/overlays/help-overlay";
 import { ModelPickerOverlay } from "./components/overlays/model-picker";
 import { NoticeBanner } from "./components/overlays/notice-banner";
@@ -68,6 +69,7 @@ export function App() {
       <TraceDrawer />
       <HelpOverlay />
       <ModelPickerOverlay />
+      <ConfirmDialogHost />
     </div>
   );
 }

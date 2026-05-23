@@ -107,7 +107,7 @@ export interface UIState {
   traceFilters: { direction?: "in" | "out"; sessionScope: boolean };
   traceDrawerOpen: boolean;
   /** Active tab in the inspector pane. */
-  inspectorTab: "plan" | "tools" | "files" | "terminal" | "logs" | "config";
+  inspectorTab: "plan" | "tools" | "files" | "terminal" | "config";
   /** Help/keyboard reference overlay. */
   helpOpen: boolean;
   /** Banner-style transient notice shown above the conversation. */

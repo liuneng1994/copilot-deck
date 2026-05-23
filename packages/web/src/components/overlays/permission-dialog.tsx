@@ -56,7 +56,7 @@ export function PermissionDialog() {
         }
       }}
     >
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-w-xl" data-permission-dialog={current.requestId}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 text-warning" />

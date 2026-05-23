@@ -101,11 +101,12 @@ export const BUILTIN_COMMANDS: BuiltinCommand[] = [
     },
   },
   {
-    name: "logs",
-    description: "Open the Logs tab in the inspector",
+    name: "trace",
+    description: "Toggle the JSON-RPC trace drawer",
     category: "view",
     run: () => {
-      ui().setInspectorTab("logs");
+      const s = ui();
+      s.setTraceDrawerOpen(!s.traceDrawerOpen);
       return true;
     },
   },

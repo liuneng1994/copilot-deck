@@ -3,7 +3,6 @@ import {
   FileCode2,
   FolderTree,
   ListChecks,
-  ScrollText,
   Settings2,
   TerminalSquare,
 } from "lucide-react";
@@ -69,10 +68,6 @@ export function Inspector() {
           </TabsTrigger>
         </TabsList>
         <TabsList className="mx-2 mt-1">
-          <TabsTrigger value="logs" className="gap-1">
-            <ScrollText className="h-3 w-3" />
-            Logs
-          </TabsTrigger>
           <TabsTrigger value="config" className="gap-1">
             <Settings2 className="h-3 w-3" />
             Config
@@ -111,9 +106,6 @@ export function Inspector() {
             ) : (
               <Empty label="Select a session." />
             )}
-          </TabsContent>
-          <TabsContent value="logs">
-            <Empty label="JSON-RPC trace (M-Persist)." />
           </TabsContent>
           <TabsContent value="config" className="px-2">
             {session ? (
