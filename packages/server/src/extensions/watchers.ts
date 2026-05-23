@@ -17,7 +17,8 @@ interface Deps {
   };
 }
 
-type BroadcastMessage = Extract<ServerToClient, { type: "extensions_list" }>;
+type ExtensionsListMessage = Extract<ServerToClient, { type: "extensions_list" }>;
+type ReloadSuggestedMessage = Extract<ServerToClient, { type: "session_reload_suggested" }>;
 type Debounced = () => void;
 
 const WATCHER_OPTIONS = { persistent: true, ignoreInitial: true } as const;
@@ -38,9 +39,14 @@ function normalizeCwds(manager: SessionManager): Set<string> {
   return new Set(manager.list().map((session) => path.resolve(session.cwd)));
 }
 
-function watch(paths: string | string[], onChange: Debounced): FSWatcher {
+function watch(
+  paths: string | string[],
+  onChange: Debounced,
+  shouldHandle?: (changedPath: string) => boolean,
+): FSWatcher {
   const watcher = chokidar.watch(paths, WATCHER_OPTIONS);
   watcher.on("all", (_event, changedPath) => {
+    if (shouldHandle && !shouldHandle(changedPath)) return;
     console.info(`[extension-watchers] change detected: ${changedPath}`);
     onChange();
   });
@@ -50,11 +56,28 @@ function watch(paths: string | string[], onChange: Debounced): FSWatcher {
   return watcher;
 }
 
-function broadcast(deps: Deps, msg: BroadcastMessage): void {
+function broadcast(deps: Deps, msg: ExtensionsListMessage): void {
   console.info(
     `[extension-watchers] broadcasting ${msg.kind}${msg.scope ? `:${msg.scope}` : ""}${msg.cwd ? ` ${msg.cwd}` : ""}`,
   );
   deps.broadcast(msg);
+}
+
+function suggestReload(
+  deps: Deps,
+  reason: string,
+  affectedBy: ReloadSuggestedMessage["affectedBy"],
+  cwd?: string,
+): void {
+  for (const session of deps.manager.list()) {
+    if (cwd && path.resolve(session.cwd) !== cwd) continue;
+    deps.broadcast({
+      type: "session_reload_suggested",
+      sessionId: session.id,
+      reason,
+      affectedBy,
+    });
+  }
 }
 
 export function startExtensionWatchers(deps: Deps): { close: () => Promise<void> } {
@@ -71,6 +94,7 @@ export function startExtensionWatchers(deps: Deps): { close: () => Promise<void>
       debounce(() => {
         deps.invalidate?.mcpUser?.();
         broadcast(deps, { type: "extensions_list", kind: "mcp", scope: "user", items: [] });
+        suggestReload(deps, "MCP configuration changed", { kind: "mcp", scope: "user" });
       }),
     ),
   );
@@ -82,7 +106,9 @@ export function startExtensionWatchers(deps: Deps): { close: () => Promise<void>
         deps.invalidate?.plugins?.();
         deps.invalidate?.marketplaces?.();
         broadcast(deps, { type: "extensions_list", kind: "plugins", items: [] });
+        suggestReload(deps, "Plugin set changed", { kind: "plugins", scope: "user" });
       }),
+      (changedPath) => !/^inuse\.\d+\.lock$/.test(path.basename(changedPath)),
     ),
   );
 
@@ -109,6 +135,12 @@ export function startExtensionWatchers(deps: Deps): { close: () => Promise<void>
         cwd: normalized,
         items: [],
       });
+      suggestReload(
+        deps,
+        "Workspace MCP configuration changed",
+        { kind: "mcp", scope: "workspace", cwd: normalized },
+        normalized,
+      );
     });
     const onWorkspaceSkills = debounce(() => {
       deps.invalidate?.skillsRepo?.(normalized);

@@ -96,6 +96,12 @@ export interface SkillInfo {
 
 export type ExtensionsKind = "plugins" | "mcp" | "skills" | "marketplaces";
 
+export interface SessionReloadSuggestionAffectedBy {
+  kind: "mcp" | "plugins";
+  scope?: string;
+  cwd?: string;
+}
+
 export interface ExtensionOpProgress {
   opId: string;
   kind: "install" | "uninstall" | "update" | "add" | "remove";
@@ -123,6 +129,7 @@ export type ClientToServer =
   | { type: "list_models" }
   | { type: "set_model"; cwd: string; model: string }
   | { type: "set_session_model"; sessionId: string; model: string }
+  | { type: "reload_session"; sessionId: string }
   | { type: "reattach_session"; sessionId: string }
   | {
       type: "extensions_list_request";
@@ -203,6 +210,12 @@ export type ServerToClient =
       items: PluginInfo[] | McpServer[] | SkillInfo[] | MarketplaceInfo[];
     }
   | ({ type: "extension_op_progress" } & ExtensionOpProgress)
+  | {
+      type: "session_reload_suggested";
+      sessionId: string;
+      reason: string;
+      affectedBy: SessionReloadSuggestionAffectedBy;
+    }
   | ({ type: "extension_op_done" } & ExtensionOpDone)
   | {
       // Response to ClientToServer list_models.

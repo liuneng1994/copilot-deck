@@ -119,6 +119,10 @@ export const wsHandlers: HandlerMap = {
     await manager.setSessionModel(msg.sessionId, msg.model);
   },
 
+  async reload_session(msg, { manager }) {
+    await manager.reloadSession(msg.sessionId, "user");
+  },
+
   async reattach_session(msg, { manager, send }) {
     try {
       await manager.reattachSession(msg.sessionId);

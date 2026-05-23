@@ -216,46 +216,10 @@ export class SessionManager {
     this.store.setSessionModel(sessionId, model);
 
     if (prevModel !== model) {
-      // Detach the session from its current agent (without killing the
-      // process — other sessions may still be using it).
-      const entry = this.sessions.get(sessionId);
-      if (entry) {
-        try {
-          await entry.agent.connection.cancel({ sessionId });
-        } catch {
-          // Best-effort cancel; ignore errors.
-        }
-        this.sessions.delete(sessionId);
-        this.detachedSessions.add(sessionId);
-        this.streams.delete(sessionId);
-        this.store.markSessionDetached(sessionId, true);
-        // If the old agent now has no live sessions, shut it down to free RAM.
-        const oldKey = this.agentKey(cwd, prevModel);
-        const oldAgent = this.agents.get(oldKey);
-        if (oldAgent) {
-          let stillUsed = false;
-          for (const e of this.sessions.values()) {
-            if (e.agent === oldAgent) {
-              stillUsed = true;
-              break;
-            }
-          }
-          if (!stillUsed) {
-            try {
-              await oldAgent.shutdown();
-            } catch {
-              // ignore
-            }
-          }
-        }
-        // Reattach onto the (cwd, model) agent.
-        try {
-          await this.reattachSession(sessionId);
-        } catch (e) {
-          // If reattach fails (e.g. Copilot has no saved history), leave the
-          // session detached. The user can still re-create or retry.
-          console.warn(`[setSessionModel] reattach failed for ${sessionId}:`, e);
-        }
+      try {
+        await this.respawnSession(sessionId, model, "model_change");
+      } catch (e) {
+        console.warn(`[setSessionModel] reattach failed for ${sessionId}:`, e);
       }
     }
 
@@ -266,6 +230,12 @@ export class SessionManager {
         console.error("sessionModelChange listener error", e);
       }
     }
+  }
+
+  async reloadSession(sessionId: string, reason: string): Promise<void> {
+    const persisted = this.store.getSession(sessionId);
+    if (!persisted) throw new Error(`unknown session ${sessionId}`);
+    await this.respawnSession(sessionId, this.resolveModel(persisted.cwd, sessionId), reason);
   }
 
   private agentKey(cwd: string, model: string): string {
@@ -381,6 +351,66 @@ export class SessionManager {
       } catch (e) {
         console.error("listener error", e);
       }
+    }
+  }
+
+  private emitStatus(sessionId: string, status: string, reason?: string) {
+    this.emit(sessionId, {
+      sessionId,
+      update: { sessionUpdate: "status_update", status, reason },
+    } as unknown as acp.SessionNotification);
+  }
+
+  private async respawnSession(
+    sessionId: string,
+    newEffectiveModel: string,
+    reason: string,
+  ): Promise<void> {
+    const persisted = this.store.getSession(sessionId);
+    if (!persisted) throw new Error(`unknown session ${sessionId}`);
+    const cwd = persisted.cwd;
+    const entry = this.sessions.get(sessionId);
+    if (!entry) return;
+
+    this.store.touchSession(sessionId, "reloading");
+    this.emitStatus(sessionId, "reloading", reason);
+
+    try {
+      await entry.agent.connection.cancel({ sessionId });
+    } catch {
+      // Best-effort cancel; ignore errors.
+    }
+
+    this.sessions.delete(sessionId);
+    this.detachedSessions.add(sessionId);
+    this.streams.delete(sessionId);
+    this.store.markSessionDetached(sessionId, true);
+
+    let stillUsed = false;
+    for (const e of this.sessions.values()) {
+      if (e.agent === entry.agent) {
+        stillUsed = true;
+        break;
+      }
+    }
+    if (!stillUsed) {
+      try {
+        await entry.agent.shutdown();
+      } catch {
+        // ignore
+      }
+    }
+
+    try {
+      await this.reattachSession(sessionId);
+      this.store.touchSession(sessionId, "idle");
+      this.emitStatus(sessionId, "idle", reason);
+      const reattached = this.sessions.get(sessionId);
+      if (reattached) reattached.model = newEffectiveModel;
+    } catch (e) {
+      this.store.touchSession(sessionId, "error");
+      this.emitStatus(sessionId, "error", reason);
+      throw e;
     }
   }
 

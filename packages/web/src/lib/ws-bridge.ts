@@ -27,7 +27,7 @@ interface AcpUpdate {
   toolCallId?: string;
   title?: string;
   kind?: string;
-  status?: ToolCallStatus;
+  status?: unknown;
   rawInput?: unknown;
   rawOutput?: unknown;
   /** Files / lines this tool touched. Present on tool_call and tool_call_update. */
@@ -42,6 +42,15 @@ interface AcpUpdate {
   // current_mode_update
   currentModeId?: string;
   [k: string]: unknown;
+}
+
+function isToolCallStatus(status: unknown): status is ToolCallStatus {
+  return (
+    status === "pending" ||
+    status === "in_progress" ||
+    status === "completed" ||
+    status === "failed"
+  );
 }
 
 function blocksFromUpdate(u: AcpUpdate): ToolCallContentBlock[] {
@@ -136,7 +145,7 @@ export function useWsBridge() {
                 sessionId: sid,
                 kind: u.kind ?? "tool",
                 title: u.title ?? u.kind ?? "tool",
-                status: u.status ?? "pending",
+                status: isToolCallStatus(u.status) ? u.status : "pending",
                 rawInput: u.rawInput,
                 rawOutput: u.rawOutput,
                 content: blocksFromUpdate(u),
@@ -151,7 +160,7 @@ export function useWsBridge() {
               store.upsertToolCall({
                 id: u.toolCallId,
                 sessionId: sid,
-                status: u.status,
+                status: isToolCallStatus(u.status) ? u.status : undefined,
                 title: u.title,
                 kind: u.kind,
                 rawInput: u.rawInput,
@@ -193,6 +202,20 @@ export function useWsBridge() {
             case "session_info_update": {
               const cu = u.contextUsage;
               if (cu) store.setSessionCtx(sid, cu.used, cu.total);
+              break;
+            }
+            case "status_update": {
+              const status = typeof u.status === "string" ? u.status : undefined;
+              if (
+                status === "idle" ||
+                status === "streaming" ||
+                status === "awaiting_perm" ||
+                status === "reloading" ||
+                status === "error"
+              ) {
+                store.setSessionStatus(sid, status);
+                if (status === "idle") store.dismissReloadSuggestion(sid);
+              }
               break;
             }
             case "agent_thought_chunk":
@@ -268,6 +291,13 @@ export function useWsBridge() {
           }
           break;
         }
+        case "session_reload_suggested": {
+          store.suggestSessionReload(msg.sessionId, {
+            reason: msg.reason,
+            affectedBy: msg.affectedBy,
+          });
+          break;
+        }
         case "extension_op_progress": {
           store.recordExtOpProgress(msg);
           break;
@@ -292,6 +322,7 @@ export function useWsBridge() {
         case "session_reattached": {
           store.markSessionDetached(msg.sessionId, false);
           store.setSessionStatus(msg.sessionId, "idle");
+          store.dismissReloadSuggestion(msg.sessionId);
           break;
         }
         case "session_renamed": {

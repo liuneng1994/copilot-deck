@@ -79,6 +79,7 @@ export function Composer({ session }: { session: SessionState }) {
 
   const streaming = session.status === "streaming";
   const awaitingPerm = session.status === "awaiting_perm";
+  const reloading = session.status === "reloading";
   const detached = !!session.detached;
 
   // Slash popover state: open whenever the active token starts with `/`.
@@ -107,8 +108,8 @@ export function Composer({ session }: { session: SessionState }) {
     [],
   );
   // Popover open whenever we have any slash context — we always have built-ins.
-  const slashOpen = !!slashContext && !streaming;
-  const mentionOpen = !!mentionContext && !!session.cwd && !streaming && !slashOpen;
+  const slashOpen = !!slashContext && !streaming && !reloading;
+  const mentionOpen = !!mentionContext && !!session.cwd && !streaming && !reloading && !slashOpen;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: auto-resize triggers when text mutates, not its read-only props
   useLayoutEffect(() => {
@@ -127,7 +128,7 @@ export function Composer({ session }: { session: SessionState }) {
 
   const send = () => {
     const trimmed = text.trim();
-    if (!trimmed || streaming) return;
+    if (!trimmed || streaming || reloading) return;
     // Intercept built-in slash commands before they go to the agent.
     const parsed = parseSlash(trimmed);
     if (parsed) {
@@ -154,6 +155,7 @@ export function Composer({ session }: { session: SessionState }) {
 
   /** Resend the most recent user prompt in this session. */
   const retryLast = () => {
+    if (streaming || awaitingPerm || reloading || detached) return;
     const state = useUIStore.getState();
     const sess = state.sessions[session.id];
     if (!sess) return;
@@ -246,9 +248,11 @@ export function Composer({ session }: { session: SessionState }) {
                     ? "Agent is responding… press Esc to stop"
                     : awaitingPerm
                       ? "Waiting for permission decision…"
-                      : "Type a prompt, /command, or @file. ⌘↵ to send"
+                      : reloading
+                        ? "Reloading session…"
+                        : "Type a prompt, /command, or @file. ⌘↵ to send"
               }
-              disabled={streaming || awaitingPerm || detached}
+              disabled={streaming || awaitingPerm || reloading || detached}
               rows={1}
               className="min-h-[44px] resize-none border-0 bg-transparent px-4 py-3 text-sm shadow-none focus-visible:ring-0"
               onKeyDown={(e) => {
@@ -303,7 +307,7 @@ export function Composer({ session }: { session: SessionState }) {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-muted-foreground">
-                  {streaming ? "Esc to stop" : "⌘↵ send"}
+                  {streaming ? "Esc to stop" : reloading ? "reloading…" : "⌘↵ send"}
                 </span>
                 {streaming ? (
                   <Button size="sm" variant="destructive" onClick={cancel} className="h-7 gap-1.5">
@@ -316,7 +320,7 @@ export function Composer({ session }: { session: SessionState }) {
                     <Button
                       size="sm"
                       onClick={send}
-                      disabled={!text.trim() || awaitingPerm || detached}
+                      disabled={!text.trim() || awaitingPerm || reloading || detached}
                       className="h-7 gap-1.5"
                     >
                       <Send className="h-3 w-3" />

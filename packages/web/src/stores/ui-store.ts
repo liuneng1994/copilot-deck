@@ -8,12 +8,13 @@ import type {
   PermissionOption,
   PermissionToolCallSnapshot,
   PluginInfo,
+  SessionReloadSuggestionAffectedBy,
   TraceEventDTO,
 } from "@agent-view/shared";
 import { create } from "zustand";
 import { normalizeContentBlocks } from "../lib/normalize-content";
 
-export type SessionStatus = "idle" | "streaming" | "awaiting_perm" | "error";
+export type SessionStatus = "idle" | "streaming" | "awaiting_perm" | "reloading" | "error";
 export type MessageRole = "user" | "agent" | "system";
 
 export interface Message {
@@ -104,6 +105,12 @@ export interface PermissionRequest {
   receivedAt: number;
 }
 
+export interface ReloadSuggestion {
+  reason: string;
+  affectedBy: SessionReloadSuggestionAffectedBy;
+  ts: number;
+}
+
 export interface ExtensionOpState {
   kind: string;
   target: string;
@@ -142,6 +149,7 @@ export interface UIState extends ExtensionsSlice {
   sessions: Record<string, SessionState>;
   toolCalls: Record<string, ToolCallState>;
   permissionQueue: PermissionRequest[];
+  reloadSuggestions: Record<string, ReloadSuggestion>;
 
   /** Whether the initial hydration message has been processed. */
   hydrated: boolean;
@@ -210,6 +218,9 @@ export interface UIState extends ExtensionsSlice {
 
   enqueuePermission: (req: PermissionRequest) => void;
   dismissPermission: (requestId: string) => void;
+  suggestSessionReload: (sessionId: string, suggestion: Omit<ReloadSuggestion, "ts">) => void;
+  dismissReloadSuggestion: (sessionId: string) => void;
+  reloadSession: (sessionId: string) => void;
 
   appendTrace: (ev: TraceEventDTO) => void;
   setTrace: (events: TraceEventDTO[]) => void;
@@ -363,6 +374,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   sessions: {},
   toolCalls: {},
   permissionQueue: [],
+  reloadSuggestions: {},
   plugins: null,
   marketplaces: null,
   marketplaceBrowse: {},
@@ -751,6 +763,34 @@ export const useUIStore = create<UIState>((set, get) => ({
     set((state) => ({
       permissionQueue: state.permissionQueue.filter((r) => r.requestId !== requestId),
     })),
+
+  suggestSessionReload: (sessionId, suggestion) =>
+    set((state) => ({
+      reloadSuggestions: {
+        ...state.reloadSuggestions,
+        [sessionId]: { ...suggestion, ts: Date.now() },
+      },
+    })),
+  dismissReloadSuggestion: (sessionId) =>
+    set((state) => {
+      const { [sessionId]: _dismissed, ...rest } = state.reloadSuggestions;
+      return { reloadSuggestions: rest };
+    }),
+  reloadSession: (sessionId) => {
+    set((state) => {
+      const session = state.sessions[sessionId];
+      if (!session) return state;
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...session, status: "reloading", updatedAt: Date.now() },
+        },
+      };
+    });
+    void import("../lib/ws-client").then(({ sendWs }) => {
+      sendWs({ type: "reload_session", sessionId });
+    });
+  },
 
   setSessionCtx: (sessionId, used, total) =>
     set((state) => {
