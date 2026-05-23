@@ -353,6 +353,15 @@ export type ServerToClient =
       sessionId: string;
     }
   | {
+      // The reattached session was empty (Copilot had no saved history),
+      // so the server transparently created a fresh ACP session bound to
+      // the same cwd and removed the old placeholder. Client should
+      // replace any references to oldSessionId with newSessionId.
+      type: "session_replaced";
+      oldSessionId: string;
+      newSessionId: string;
+    }
+  | {
       // A session was renamed (broadcast to all attached clients).
       type: "session_renamed";
       sessionId: string;

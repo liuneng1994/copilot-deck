@@ -350,6 +350,29 @@ export function useWsBridge() {
           store.dismissReloadSuggestion(msg.sessionId);
           break;
         }
+        case "session_replaced": {
+          const state = useUIStore.getState();
+          const old = state.sessions[msg.oldSessionId];
+          if (old) {
+            state.upsertSession({
+              id: msg.newSessionId,
+              cwd: old.cwd,
+              title: old.title,
+              modeId: old.modeId,
+              modeName: old.modeName,
+              modeOptions: old.modeOptions,
+              availableCommands: old.availableCommands,
+              detached: false,
+            });
+            state.setSessionStatus(msg.newSessionId, "idle");
+          }
+          state.removeSession(msg.oldSessionId);
+          if (state.activeSessionId === msg.oldSessionId) {
+            state.setActiveSession(msg.newSessionId);
+          }
+          state.dismissReloadSuggestion(msg.oldSessionId);
+          break;
+        }
         case "session_renamed": {
           store.upsertSession({ id: msg.sessionId, title: msg.title });
           break;

@@ -685,7 +685,7 @@ export class SessionManager {
    * inside the CLI. Throws if the session is unknown, already attached, or the
    * agent doesn't advertise `loadSession`.
    */
-  async reattachSession(sessionId: string): Promise<{ sessionId: string }> {
+  async reattachSession(sessionId: string): Promise<{ sessionId: string; replacedFrom?: string }> {
     if (this.sessions.has(sessionId)) {
       // Already attached.
       return { sessionId };
@@ -695,8 +695,14 @@ export class SessionManager {
     const cwd = persisted.cwd;
     const model = this.resolveModel(cwd, sessionId);
     const agent = await this.getOrCreateAgent(cwd, model);
+    // Defensive: ensure capabilities have populated before checking. initialize()
+    // is idempotent (returns the cached promise), so this is a cheap await.
+    await agent.initialize();
     if (!agent.supportsLoadSession()) {
-      throw new Error("agent does not support loadSession");
+      const caps = agent.initResponse?.agentCapabilities;
+      throw new Error(
+        `agent does not support loadSession (advertised capabilities: ${JSON.stringify(caps ?? null)})`,
+      );
     }
     this.trace({
       sessionId,
@@ -710,12 +716,25 @@ export class SessionManager {
     try {
       await agent.connection.loadSession({ cwd, sessionId, mcpServers: [] });
     } catch (e) {
-      // Copilot returns "Resource not found" for sessions with no turns. The
-      // session ID is still in our SQLite — surface a friendlier hint.
       const msg = e instanceof Error ? e.message : String(e);
       if (/not found/i.test(msg)) {
+        // Copilot has no saved history for this session — almost always because
+        // the session was created but the user never sent a prompt. Rather than
+        // forcing them through "session is broken, create a new one" friction,
+        // we transparently spin up a fresh ACP session bound to the same cwd
+        // and drop the empty placeholder. The UI receives a `session_replaced`
+        // event to rebind any references to the old id.
+        const messageCount = this.store.listMessages(sessionId).length;
+        if (messageCount === 0) {
+          this.replayingSessions.delete(sessionId);
+          const fresh = await this.createSession(cwd);
+          this.store.deleteSession(sessionId);
+          this.detachedSessions.delete(sessionId);
+          return { sessionId: fresh.sessionId, replacedFrom: sessionId };
+        }
         throw new Error(
-          "Copilot has no saved history for this session (it had no completed turns). Create a new session instead.",
+          "Copilot has no saved history for this session despite recorded messages. " +
+            "The Copilot CLI may have been re-initialized; create a new session.",
         );
       }
       throw e;

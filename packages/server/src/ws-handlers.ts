@@ -125,8 +125,16 @@ export const wsHandlers: HandlerMap = {
 
   async reattach_session(msg, { manager, send }) {
     try {
-      await manager.reattachSession(msg.sessionId);
-      send({ type: "session_reattached", sessionId: msg.sessionId });
+      const result = await manager.reattachSession(msg.sessionId);
+      if (result.replacedFrom) {
+        send({
+          type: "session_replaced",
+          oldSessionId: result.replacedFrom,
+          newSessionId: result.sessionId,
+        });
+      } else {
+        send({ type: "session_reattached", sessionId: msg.sessionId });
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       send({
