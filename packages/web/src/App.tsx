@@ -10,6 +10,7 @@ import { PermissionDialog } from "./components/overlays/permission-dialog";
 import { TraceDrawer } from "./components/overlays/trace-drawer";
 import { HelpOverlay } from "./components/overlays/help-overlay";
 import { NoticeBanner } from "./components/overlays/notice-banner";
+import { ModelPickerOverlay } from "./components/overlays/model-picker";
 import { useWsBridge } from "./lib/ws-bridge";
 import { useUIStore } from "./stores/ui-store";
 
@@ -66,6 +67,7 @@ export function App() {
       <PermissionDialog />
       <TraceDrawer />
       <HelpOverlay />
+      <ModelPickerOverlay />
     </div>
   );
 }

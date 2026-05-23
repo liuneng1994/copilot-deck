@@ -20,6 +20,12 @@ export function connectWs() {
   ws.onopen = () => {
     backoffMs = 500;
     useUIStore.getState().setWsConnected(true);
+    // Fetch the curated model list once we're connected.
+    try {
+      ws?.send(JSON.stringify({ type: "list_models" } satisfies ClientToServer));
+    } catch {
+      // ignore
+    }
   };
   ws.onclose = () => {
     useUIStore.getState().setWsConnected(false);

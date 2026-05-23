@@ -4,6 +4,7 @@ import path from "node:path";
 import Fastify from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
 import type { ClientToServer, ServerToClient } from "@agent-view/shared";
+import { CURATED_MODELS } from "@agent-view/shared";
 import { SessionManager } from "./session-manager.js";
 import { listFiles } from "./file-index.js";
 import { Store } from "./store.js";
@@ -21,6 +22,12 @@ async function main() {
   app.get("/api/health", async () => ({ ok: true }));
 
   app.get("/api/sessions", async () => ({ sessions: manager.list() }));
+
+  app.get("/api/models", async () => ({
+    models: CURATED_MODELS,
+    defaultModel: manager.getDefaultModel(),
+    currentByCwd: manager.getModelsByCwd(),
+  }));
 
   app.post<{ Body: { path?: string } }>("/api/mkdir", async (req, reply) => {
     const raw = typeof req.body?.path === "string" ? req.body.path.trim() : "";
@@ -283,11 +290,21 @@ async function main() {
         send({ type: "trace_event", event: ev });
       });
 
+      const unsubModel = manager.onModelChange((ev) => {
+        send({
+          type: "model_changed",
+          cwd: ev.cwd,
+          model: ev.model,
+          sessionIds: ev.sessionIds,
+        });
+      });
+
       socket.on("close", () => {
         unsub();
         unsubPerm();
         unsubChildExit();
         unsubTrace();
+        unsubModel();
       });
 
       socket.on("message", async (raw: Buffer) => {
@@ -347,6 +364,19 @@ async function main() {
                 limit: msg.limit,
               });
               send({ type: "trace_snapshot", events });
+              break;
+            }
+            case "list_models": {
+              send({
+                type: "models_snapshot",
+                models: CURATED_MODELS,
+                defaultModel: manager.getDefaultModel(),
+                currentByCwd: manager.getModelsByCwd(),
+              });
+              break;
+            }
+            case "set_model": {
+              await manager.setModel(msg.cwd, msg.model);
               break;
             }
             case "permission_reply": {

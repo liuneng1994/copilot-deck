@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
 import type * as acp from "@agentclientprotocol/sdk";
 import type {
   PermissionOption,
@@ -33,6 +36,7 @@ export interface ChildExitEvent {
 
 export type ChildExitListener = (ev: ChildExitEvent) => void;
 export type TraceListener = (ev: TraceEventDTO) => void;
+export type ModelChangeListener = (ev: { cwd: string; model: string; sessionIds: string[] }) => void;
 
 interface SessionEntry {
   id: string;
@@ -76,8 +80,15 @@ export class SessionManager {
   private streams = new Map<string, MessageStream>();
   /** Set of session ids that are persisted but have no live ACP child (detached). */
   private detachedSessions = new Set<string>();
+  /** Per-cwd selected model id (sent as `--model` when spawning). */
+  private modelByCwd = new Map<string, string>();
+  /** Listeners for model changes per cwd. */
+  private modelListeners = new Set<ModelChangeListener>();
+  /** Default model read from ~/.copilot/settings.json (or env). */
+  private readonly defaultModel: string;
 
   constructor(private readonly store: Store) {
+    this.defaultModel = readDefaultCopilotModel();
     // Hydrate sticky permission decisions.
     for (const p of store.listPermissions()) {
       this.permissionMemory.set(`${p.cwd}::${p.toolName}`, p.decision);
@@ -107,6 +118,51 @@ export class SessionManager {
   onTrace(l: TraceListener) {
     this.traceListeners.add(l);
     return () => this.traceListeners.delete(l);
+  }
+
+  onModelChange(l: ModelChangeListener) {
+    this.modelListeners.add(l);
+    return () => this.modelListeners.delete(l);
+  }
+
+  getDefaultModel(): string {
+    return this.defaultModel;
+  }
+
+  /** Snapshot of {cwd → model}. Only includes cwds the user has set explicitly. */
+  getModelsByCwd(): Record<string, string> {
+    return Object.fromEntries(this.modelByCwd);
+  }
+
+  /**
+   * Switch the model for a given cwd. If a child process is running for that
+   * cwd, it is shut down so the next prompt (or proactive respawn) starts
+   * with the new model. Returns the affected session ids.
+   */
+  async setModel(cwd: string, model: string): Promise<string[]> {
+    const current = this.modelByCwd.get(cwd) ?? this.defaultModel;
+    this.modelByCwd.set(cwd, model);
+    const affected: string[] = [];
+    if (current === model) {
+      // No-op for the agent process but still emit so the UI updates.
+    } else {
+      const agent = this.agentsByCwd.get(cwd);
+      if (agent) {
+        for (const [sid, entry] of this.sessions) {
+          if (entry.cwd === cwd) affected.push(sid);
+        }
+        // shutdown triggers onExit which will detach affected sessions.
+        await agent.shutdown();
+      }
+    }
+    for (const l of this.modelListeners) {
+      try {
+        l({ cwd, model, sessionIds: affected });
+      } catch (e) {
+        console.error("modelChange listener error", e);
+      }
+    }
+    return affected;
   }
 
   private trace(ev: Omit<TraceEventDTO, "id">) {
@@ -232,6 +288,7 @@ export class SessionManager {
     };
 
     const agent = new CopilotAgent(client, {
+      extraArgs: ["--model", this.modelByCwd.get(cwd) ?? this.defaultModel],
       onStderr: (c) => process.stderr.write(`[copilot stderr] ${c}`),
       onExit: (code, signal) => {
         console.warn(`[copilot] child exited code=${code} signal=${signal} cwd=${cwd}`);
@@ -657,4 +714,20 @@ export class SessionManager {
       console.error("persistSessionUpdate error", e);
     }
   }
+}
+
+
+/** Read the user default model from ~/.copilot/settings.json, falling back to env or hardcoded. */
+function readDefaultCopilotModel(): string {
+  const envModel = process.env.COPILOT_DEFAULT_MODEL?.trim();
+  if (envModel) return envModel;
+  try {
+    const p = path.join(homedir(), ".copilot", "settings.json");
+    const raw = readFileSync(p, "utf8");
+    const json = JSON.parse(raw) as { model?: unknown };
+    if (typeof json.model === "string" && json.model) return json.model;
+  } catch {
+    // fall through
+  }
+  return "claude-sonnet-4.5";
 }

@@ -257,6 +257,15 @@ export function useWsBridge() {
           store.setTrace(msg.events);
           break;
         }
+        case "models_snapshot": {
+          store.setModels(msg.models, msg.defaultModel, msg.currentByCwd);
+          break;
+        }
+        case "model_changed": {
+          store.setModelForCwd(msg.cwd, msg.model);
+          // Affected sessions are already handled by child_exit broadcast.
+          break;
+        }
       }
     });
     return () => {

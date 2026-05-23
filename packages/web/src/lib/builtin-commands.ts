@@ -208,14 +208,10 @@ export const BUILTIN_COMMANDS: BuiltinCommand[] = [
   // instead of letting the agent reply "I can't run that".
   {
     name: "models",
-    description: "(CLI built-in) Open the model picker — run in a terminal instead",
-    category: "system",
+    description: "Switch the AI model for the current session's cwd",
+    category: "session",
     run: () => {
-      notice(
-        "/models is a CLI built-in and only works in the interactive terminal. Run `copilot` directly to switch models.",
-        "warn",
-      );
-      ui().setHelpOpen(true);
+      ui().setModelPickerOpen(true);
       return true;
     },
   },

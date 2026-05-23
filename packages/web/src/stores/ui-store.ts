@@ -4,6 +4,7 @@ import type {
   PermissionToolCallSnapshot,
   HydratedSession,
   TraceEventDTO,
+  ModelInfo,
 } from "@agent-view/shared";
 
 export type SessionStatus = "idle" | "streaming" | "awaiting_perm" | "error";
@@ -111,6 +112,14 @@ export interface UIState {
   helpOpen: boolean;
   /** Banner-style transient notice shown above the conversation. */
   notice: { id: string; kind: "info" | "warn"; text: string; ts: number } | null;
+  /** Curated model list (loaded on connect via list_models). */
+  models: ModelInfo[];
+  /** Default model id from server (read from ~/.copilot/settings.json). */
+  defaultModel: string | null;
+  /** Per-cwd current model — empty means "use defaultModel". */
+  modelByCwd: Record<string, string>;
+  /** Model picker overlay visibility. */
+  modelPickerOpen: boolean;
 
   toggleSidebar: () => void;
   toggleInspector: () => void;
@@ -152,6 +161,9 @@ export interface UIState {
   setInspectorTab: (tab: UIState["inspectorTab"]) => void;
   setHelpOpen: (open: boolean) => void;
   setNotice: (n: UIState["notice"]) => void;
+  setModels: (models: ModelInfo[], defaultModel: string, currentByCwd: Record<string, string>) => void;
+  setModelForCwd: (cwd: string, model: string) => void;
+  setModelPickerOpen: (open: boolean) => void;
   /** Wipe messages and tool calls for a session locally (does NOT touch the DB). */
   clearSessionMessages: (sessionId: string) => void;
 }
@@ -203,6 +215,10 @@ export const useUIStore = create<UIState>((set) => ({
   inspectorTab: "tools",
   helpOpen: false,
   notice: null,
+  models: [],
+  defaultModel: null,
+  modelByCwd: {},
+  modelPickerOpen: false,
 
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   toggleInspector: () => set((s) => ({ inspectorCollapsed: !s.inspectorCollapsed })),
@@ -519,6 +535,11 @@ export const useUIStore = create<UIState>((set) => ({
   setInspectorTab: (tab) => set({ inspectorTab: tab }),
   setHelpOpen: (open) => set({ helpOpen: open }),
   setNotice: (n) => set({ notice: n }),
+  setModels: (models, defaultModel, currentByCwd) =>
+    set({ models, defaultModel, modelByCwd: { ...currentByCwd } }),
+  setModelForCwd: (cwd, model) =>
+    set((s) => ({ modelByCwd: { ...s.modelByCwd, [cwd]: model } })),
+  setModelPickerOpen: (open) => set({ modelPickerOpen: open }),
   clearSessionMessages: (sessionId) =>
     set((state) => {
       const s = state.sessions[sessionId];

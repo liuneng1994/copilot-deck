@@ -1,5 +1,9 @@
 // Wire protocol between the agent-view server and the React web UI.
 
+export * from "./models.js";
+
+import type { ModelInfo } from "./models.js";
+
 export type PermissionOutcome = "allowed_once" | "allowed_always" | "denied";
 
 export interface PermissionOption {
@@ -22,6 +26,8 @@ export type ClientToServer =
   | { type: "set_mode"; sessionId: string; modeId: string }
   | { type: "delete_session"; sessionId: string }
   | { type: "request_trace"; sessionId?: string; sinceId?: number; limit?: number }
+  | { type: "list_models" }
+  | { type: "set_model"; cwd: string; model: string }
   | {
       type: "permission_reply";
       requestId: string;
@@ -79,6 +85,21 @@ export type ServerToClient =
       // Response to ClientToServer request_trace.
       type: "trace_snapshot";
       events: TraceEventDTO[];
+    }
+  | {
+      // Response to ClientToServer list_models.
+      type: "models_snapshot";
+      models: ModelInfo[];
+      defaultModel: string;
+      currentByCwd: Record<string, string>;
+    }
+  | {
+      // Model for a cwd changed (broadcast). Includes pre-existing sessionIds
+      // affected — they will be detached and respawned.
+      type: "model_changed";
+      cwd: string;
+      model: string;
+      sessionIds: string[];
     };
 
 export interface TraceEventDTO {
