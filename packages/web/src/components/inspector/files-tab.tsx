@@ -49,6 +49,13 @@ function touchForCall(call: ToolCallState): Touch {
   return "other";
 }
 
+function countLines(text: string): number {
+  if (text === "") return 0;
+  const lines = text.split("\n");
+  if (lines[lines.length - 1] === "") lines.pop();
+  return lines.length;
+}
+
 function diffStatsForBlock(block: { oldText?: string; newText?: string }): {
   added: number;
   removed: number;
@@ -56,13 +63,8 @@ function diffStatsForBlock(block: { oldText?: string; newText?: string }): {
   const oldT = block.oldText ?? "";
   const newT = block.newText ?? "";
   if (!oldT && !newT) return { added: 0, removed: 0 };
-  if (!oldT) {
-    // Pure create.
-    return { added: newT.split("\n").filter((l) => l.length > 0).length || 1, removed: 0 };
-  }
-  if (!newT) {
-    return { added: 0, removed: oldT.split("\n").filter((l) => l.length > 0).length || 1 };
-  }
+  if (!oldT) return { added: countLines(newT), removed: 0 };
+  if (!newT) return { added: 0, removed: countLines(oldT) };
   let added = 0;
   let removed = 0;
   for (const p of diffLines(oldT, newT)) {
