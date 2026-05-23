@@ -197,6 +197,7 @@ export function InlineDiff({ path, session }: InlineDiffProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [activeHunk, setActiveHunk] = useState<number | null>(null);
   const hunkRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const initKeyRef = useRef<string | null>(null);
 
   const netPair = useMemo(
     () => aggregateNetDiff(path, session, toolCalls),
@@ -243,8 +244,11 @@ export function InlineDiff({ path, session }: InlineDiffProps) {
   );
 
   useEffect(() => {
+    const key = `${session.cwd}::${path}::${source}`;
+    if (initKeyRef.current === key) return;
+    initKeyRef.current = key;
     setCollapsed(new Set(folds.map((fold) => fold.key)));
-  }, [folds]);
+  }, [folds, session.cwd, path, source]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
