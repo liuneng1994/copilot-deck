@@ -19,6 +19,97 @@ export interface PermissionToolCallSnapshot {
   rawInput?: unknown;
 }
 
+export type McpTransport = "stdio" | "http" | "sse";
+export type ExtensionScope = "user" | "workspace" | "plugin";
+
+export interface McpServer {
+  name: string;
+  transport: McpTransport;
+  /** stdio transport command. */
+  command?: string;
+  /** stdio transport arguments. */
+  args?: string[];
+  /** http/sse transport URL. */
+  url?: string;
+  env?: Record<string, string>;
+  headers?: Record<string, string>;
+  /** Tool filter: "*", "", or comma-separated tool names. */
+  tools?: string;
+  timeoutMs?: number;
+  scope: ExtensionScope;
+  /** Workspace cwd for workspace-scoped entries. */
+  cwd?: string;
+  /** Owning plugin name for plugin-scoped entries. */
+  pluginName?: string;
+  /** Plugin-embedded entries are visible but not editable here. */
+  readOnly?: boolean;
+}
+
+export interface PluginInfo {
+  name: string;
+  version?: string;
+  description?: string;
+  /** e.g. "github/copilot-plugins", "owner/repo", or a URL. */
+  source?: string;
+  /** Marketplace name when installed from a marketplace. */
+  marketplace?: string;
+  /** Capability counts parsed from `copilot plugin list` / `get`. */
+  capabilities?: {
+    skills?: number;
+    agents?: number;
+    mcpServers?: number;
+    hooks?: number;
+    lspServers?: number;
+  };
+}
+
+export interface MarketplaceInfo {
+  name: string;
+  /** e.g. "github/copilot-plugins". */
+  source: string;
+  builtin: boolean;
+}
+
+export interface MarketplacePlugin {
+  name: string;
+  description?: string;
+  marketplace: string;
+}
+
+export interface SkillInfo {
+  name: string;
+  description?: string;
+  /** Absolute path to SKILL.md. */
+  path: string;
+  scope: "repo" | "global";
+  /** Repo cwd for repo-scoped skills. */
+  cwd?: string;
+  /** e.g. "vercel-labs/skills". */
+  source?: string;
+  /** e.g. "github". */
+  sourceType?: string;
+  /** Path inside the source repository. */
+  skillPath?: string;
+  hash?: string;
+}
+
+export type ExtensionsKind = "plugins" | "mcp" | "skills" | "marketplaces";
+
+export interface ExtensionOpProgress {
+  opId: string;
+  kind: "install" | "uninstall" | "update" | "add" | "remove";
+  /** Plugin name, MCP server name, skill name, or marketplace name. */
+  target: string;
+  /** Single stdout/stderr line. */
+  line: string;
+}
+
+export interface ExtensionOpDone {
+  opId: string;
+  success: boolean;
+  error?: string;
+}
+
 export type ClientToServer =
   | { type: "create_session"; cwd: string }
   | { type: "prompt"; sessionId: string; text: string }
@@ -32,6 +123,12 @@ export type ClientToServer =
   | { type: "set_model"; cwd: string; model: string }
   | { type: "set_session_model"; sessionId: string; model: string }
   | { type: "reattach_session"; sessionId: string }
+  | {
+      type: "extensions_list_request";
+      kind: ExtensionsKind;
+      scope?: ExtensionScope | "all";
+      cwd?: string;
+    }
   | {
       type: "permission_reply";
       requestId: string;
@@ -96,6 +193,16 @@ export type ServerToClient =
       type: "trace_snapshot";
       events: TraceEventDTO[];
     }
+  | {
+      // Response to ClientToServer extensions_list_request.
+      type: "extensions_list";
+      kind: ExtensionsKind;
+      scope?: ExtensionScope | "all";
+      cwd?: string;
+      items: PluginInfo[] | McpServer[] | SkillInfo[] | MarketplaceInfo[];
+    }
+  | ({ type: "extension_op_progress" } & ExtensionOpProgress)
+  | ({ type: "extension_op_done" } & ExtensionOpDone)
   | {
       // Response to ClientToServer list_models.
       type: "models_snapshot";
