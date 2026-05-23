@@ -1,10 +1,13 @@
 import { createElement } from "react";
 
-export { PluginsPanel } from "./plugins-panel";
-export { SkillsPanel } from "./skills-panel";
+export { McpServersPanel } from "./mcp-panel";
 
-export function McpServersPanel() {
-  return createElement(ExtensionPanelPlaceholder, null, "Coming soon — wired in ext-tab-mcp");
+export function PluginsPanel() {
+  return createElement(ExtensionPanelPlaceholder, null, "Coming soon — wired in ext-tab-plugins");
+}
+
+export function SkillsPanel() {
+  return createElement(ExtensionPanelPlaceholder, null, "Coming soon — wired in ext-tab-skills");
 }
 
 function ExtensionPanelPlaceholder({ children }: { children: string }) {
