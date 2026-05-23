@@ -8,6 +8,8 @@ import { Conversation, NoSessionPlaceholder } from "./components/conversation/co
 import { Composer } from "./components/composer/composer";
 import { PermissionDialog } from "./components/overlays/permission-dialog";
 import { TraceDrawer } from "./components/overlays/trace-drawer";
+import { HelpOverlay } from "./components/overlays/help-overlay";
+import { NoticeBanner } from "./components/overlays/notice-banner";
 import { useWsBridge } from "./lib/ws-bridge";
 import { useUIStore } from "./stores/ui-store";
 
@@ -46,6 +48,7 @@ export function App() {
         <main className="flex min-w-0 flex-1 flex-col">
           {!wsConnected && <DisconnectedBanner />}
           <GlobalErrorBanner />
+          <NoticeBanner />
           {session ? (
             <>
               <SessionHeader session={session} />
@@ -62,6 +65,7 @@ export function App() {
       <StatusBar />
       <PermissionDialog />
       <TraceDrawer />
+      <HelpOverlay />
     </div>
   );
 }

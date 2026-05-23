@@ -28,6 +28,8 @@ export function Inspector() {
     s.activeSessionId ? s.sessions[s.activeSessionId] : null,
   );
   const toolCalls = useUIStore((s) => s.toolCalls);
+  const tab = useUIStore((s) => s.inspectorTab);
+  const setTab = useUIStore((s) => s.setInspectorTab);
 
   const sessionCalls = session
     ? session.toolCallIds.map((id) => toolCalls[id]).filter(Boolean)
@@ -42,7 +44,11 @@ export function Inspector() {
         </Button>
       </div>
 
-      <Tabs defaultValue="tools" className="flex flex-1 flex-col min-h-0">
+      <Tabs
+        value={tab}
+        onValueChange={(v) => setTab(v as typeof tab)}
+        className="flex flex-1 flex-col min-h-0"
+      >
         <TabsList className="mx-2 mt-2">
           <TabsTrigger value="plan" className="gap-1"><ListChecks className="h-3 w-3" />Plan</TabsTrigger>
           <TabsTrigger value="tools" className="gap-1">

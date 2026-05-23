@@ -4,8 +4,14 @@ import { Button } from "../ui/button";
 import { Textarea } from "../ui/input";
 import { sendWs } from "../../lib/ws-client";
 import { useUIStore, type SessionState } from "../../stores/ui-store";
-import { SlashPopover } from "./slash-popover";
+import { SlashPopover, type SlashItem } from "./slash-popover";
 import { MentionPopover } from "./mention-popover";
+import {
+  BUILTIN_COMMANDS,
+  BUILTIN_BY_NAME,
+  parseSlash,
+  type BuiltinCommand,
+} from "../../lib/builtin-commands";
 
 export function Composer({ session }: { session: SessionState }) {
   const [text, setText] = useState("");
@@ -31,8 +37,19 @@ export function Composer({ session }: { session: SessionState }) {
     return { query: m[1], prefixLength: m[0].length };
   }, [text]);
 
-  const commands = session.availableCommands ?? [];
-  const slashOpen = !!slashContext && commands.length > 0 && !streaming;
+  const agentCommands = session.availableCommands ?? [];
+  const builtinItems = useMemo<SlashItem[]>(
+    () =>
+      BUILTIN_COMMANDS.map((b) => ({
+        name: b.name,
+        description: b.description,
+        source: "builtin" as const,
+        category: b.category,
+      })),
+    [],
+  );
+  // Popover open whenever we have any slash context — we always have built-ins.
+  const slashOpen = !!slashContext && !streaming;
   const mentionOpen = !!mentionContext && !!session.cwd && !streaming && !slashOpen;
 
   useLayoutEffect(() => {
@@ -43,9 +60,24 @@ export function Composer({ session }: { session: SessionState }) {
     ta.style.height = Math.min(ta.scrollHeight, max) + "px";
   }, [text]);
 
+  /** Execute a built-in command and clear the composer. */
+  const runBuiltin = async (cmd: BuiltinCommand, args: string) => {
+    const consumed = await cmd.run(args, { sessionId: session.id });
+    if (consumed) setText("");
+  };
+
   const send = () => {
     const trimmed = text.trim();
     if (!trimmed || streaming) return;
+    // Intercept built-in slash commands before they go to the agent.
+    const parsed = parseSlash(trimmed);
+    if (parsed) {
+      const builtin = BUILTIN_BY_NAME.get(parsed.name);
+      if (builtin) {
+        void runBuiltin(builtin, parsed.args);
+        return;
+      }
+    }
     appendUser(session.id, trimmed);
     setStatus(session.id, "streaming");
     sendWs({ type: "prompt", sessionId: session.id, text: trimmed });
@@ -57,11 +89,19 @@ export function Composer({ session }: { session: SessionState }) {
     setStatus(session.id, "idle");
   };
 
-  const pickSlash = (cmd: { name: string }) => {
+  /** Replace the active /token with /name (or run immediately for built-ins). */
+  const pickSlash = (item: SlashItem) => {
     if (!slashContext) return;
+    if (item.source === "builtin") {
+      const builtin = BUILTIN_BY_NAME.get(item.name);
+      if (builtin) {
+        void runBuiltin(builtin, "");
+        return;
+      }
+    }
     const startIdx = text.length - slashContext.prefixLength;
     const leading = text.slice(0, startIdx);
-    const inserted = `${leading}${leading && !leading.endsWith(" ") ? " " : ""}/${cmd.name} `;
+    const inserted = `${leading}${leading && !leading.endsWith(" ") ? " " : ""}/${item.name} `;
     setText(inserted);
     requestAnimationFrame(() => taRef.current?.focus());
   };
@@ -81,7 +121,8 @@ export function Composer({ session }: { session: SessionState }) {
         <div className="relative">
           <SlashPopover
             open={slashOpen}
-            commands={commands}
+            commands={agentCommands}
+            builtins={builtinItems}
             query={slashContext?.query ?? ""}
             onPick={pickSlash}
             onClose={() => setText((t) => t.replace(/\/[\w-]*$/, ""))}
@@ -135,9 +176,9 @@ export function Composer({ session }: { session: SessionState }) {
                 <Button variant="ghost" size="icon" className="h-7 w-7" title="Attach (todo)">
                   <Paperclip className="h-3.5 w-3.5" />
                 </Button>
-                {commands.length > 0 && (
+                {(agentCommands.length > 0 || true) && (
                   <span className="text-[10px] text-muted-foreground">
-                    type <kbd className="rounded bg-muted px-1 py-0.5 text-[9px]">/</kbd> for {commands.length} commands
+                    type <kbd className="rounded bg-muted px-1 py-0.5 text-[9px]">/</kbd> for {agentCommands.length + builtinItems.length} commands
                   </span>
                 )}
                 <span className="text-[10px] text-muted-foreground">

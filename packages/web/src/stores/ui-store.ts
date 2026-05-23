@@ -105,6 +105,12 @@ export interface UIState {
   /** Filters for the trace drawer. */
   traceFilters: { direction?: "in" | "out"; sessionScope: boolean };
   traceDrawerOpen: boolean;
+  /** Active tab in the inspector pane. */
+  inspectorTab: "plan" | "tools" | "files" | "terminal" | "logs" | "config";
+  /** Help/keyboard reference overlay. */
+  helpOpen: boolean;
+  /** Banner-style transient notice shown above the conversation. */
+  notice: { id: string; kind: "info" | "warn"; text: string; ts: number } | null;
 
   toggleSidebar: () => void;
   toggleInspector: () => void;
@@ -143,6 +149,11 @@ export interface UIState {
   clearTrace: () => void;
   setTraceFilters: (f: Partial<UIState["traceFilters"]>) => void;
   setTraceDrawerOpen: (open: boolean) => void;
+  setInspectorTab: (tab: UIState["inspectorTab"]) => void;
+  setHelpOpen: (open: boolean) => void;
+  setNotice: (n: UIState["notice"]) => void;
+  /** Wipe messages and tool calls for a session locally (does NOT touch the DB). */
+  clearSessionMessages: (sessionId: string) => void;
 }
 
 const nowId = () => Math.random().toString(36).slice(2, 10);
@@ -189,6 +200,9 @@ export const useUIStore = create<UIState>((set) => ({
   trace: [],
   traceFilters: { sessionScope: true },
   traceDrawerOpen: false,
+  inspectorTab: "tools",
+  helpOpen: false,
+  notice: null,
 
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   toggleInspector: () => set((s) => ({ inspectorCollapsed: !s.inspectorCollapsed })),
@@ -502,4 +516,21 @@ export const useUIStore = create<UIState>((set) => ({
   clearTrace: () => set({ trace: [] }),
   setTraceFilters: (f) => set((s) => ({ traceFilters: { ...s.traceFilters, ...f } })),
   setTraceDrawerOpen: (open) => set({ traceDrawerOpen: open }),
+  setInspectorTab: (tab) => set({ inspectorTab: tab }),
+  setHelpOpen: (open) => set({ helpOpen: open }),
+  setNotice: (n) => set({ notice: n }),
+  clearSessionMessages: (sessionId) =>
+    set((state) => {
+      const s = state.sessions[sessionId];
+      if (!s) return state;
+      const toolCalls = { ...state.toolCalls };
+      for (const id of s.toolCallIds) delete toolCalls[id];
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...s, messages: [], toolCallIds: [], updatedAt: Date.now() },
+        },
+        toolCalls,
+      };
+    }),
 }));

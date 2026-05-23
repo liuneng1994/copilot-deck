@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Sparkles, Zap } from "lucide-react";
 import { cn } from "../../lib/cn";
 
 export interface SlashCommand {
@@ -6,32 +7,49 @@ export interface SlashCommand {
   description?: string;
 }
 
+export interface SlashItem {
+  name: string;
+  description?: string;
+  /** "builtin" — handled in the UI; "agent" — sent to the agent as text. */
+  source: "builtin" | "agent";
+  /** Optional category for built-ins (e.g. "view", "session"). */
+  category?: string;
+}
+
 export function SlashPopover({
   open,
   commands,
+  builtins,
   query,
   onPick,
   onClose,
 }: {
   open: boolean;
   commands: SlashCommand[];
+  builtins: SlashItem[];
   query: string;
-  onPick: (cmd: SlashCommand) => void;
+  onPick: (cmd: SlashItem) => void;
   onClose: () => void;
 }) {
   const [active, setActive] = useState(0);
 
-  const items = useMemo(() => {
+  const items = useMemo<SlashItem[]>(() => {
     const q = query.toLowerCase();
-    const filtered = q
-      ? commands.filter(
-          (c) =>
-            c.name.toLowerCase().includes(q) ||
-            (c.description ?? "").toLowerCase().includes(q),
-        )
-      : commands;
-    return filtered.slice(0, 20);
-  }, [commands, query]);
+    const matches = (n: string, d?: string) =>
+      !q ||
+      n.toLowerCase().includes(q) ||
+      (d ?? "").toLowerCase().includes(q);
+    const builtinsF = builtins.filter((b) => matches(b.name, b.description));
+    const agentF = commands
+      .filter((c) => matches(c.name, c.description))
+      .map<SlashItem>((c) => ({
+        name: c.name,
+        description: c.description,
+        source: "agent",
+      }));
+    // Built-ins first so handy view toggles surface quickly.
+    return [...builtinsF, ...agentF].slice(0, 30);
+  }, [commands, builtins, query]);
 
   useEffect(() => {
     setActive(0);
@@ -72,27 +90,47 @@ export function SlashPopover({
         Slash commands · {items.length}
       </div>
       <ul>
-        {items.map((c, i) => (
-          <li key={c.name}>
-            <button
-              onClick={() => onPick(c)}
-              onMouseEnter={() => setActive(i)}
-              className={cn(
-                "flex w-full items-baseline gap-3 px-3 py-1.5 text-left text-xs",
-                i === active
-                  ? "bg-primary/15 text-foreground"
-                  : "text-muted-foreground hover:bg-muted",
-              )}
-            >
-              <span className="font-mono text-foreground">/{c.name}</span>
-              {c.description && (
-                <span className="truncate text-[11px] text-muted-foreground">
-                  {c.description}
+        {items.map((c, i) => {
+          const isBuiltin = c.source === "builtin";
+          const Icon = isBuiltin ? Zap : Sparkles;
+          return (
+            <li key={`${c.source}:${c.name}`}>
+              <button
+                onClick={() => onPick(c)}
+                onMouseEnter={() => setActive(i)}
+                className={cn(
+                  "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs",
+                  i === active
+                    ? "bg-primary/15 text-foreground"
+                    : "text-muted-foreground hover:bg-muted",
+                )}
+              >
+                <Icon
+                  className={cn(
+                    "h-3 w-3 shrink-0",
+                    isBuiltin ? "text-sky-400" : "text-amber-400",
+                  )}
+                />
+                <span className="font-mono text-foreground">/{c.name}</span>
+                {c.description && (
+                  <span className="flex-1 truncate text-[11px] text-muted-foreground">
+                    {c.description}
+                  </span>
+                )}
+                <span
+                  className={cn(
+                    "shrink-0 rounded px-1 py-0.5 text-[9px] uppercase tracking-wider",
+                    isBuiltin
+                      ? "bg-sky-500/10 text-sky-300"
+                      : "bg-amber-500/10 text-amber-300",
+                  )}
+                >
+                  {isBuiltin ? (c.category ?? "ui") : "agent"}
                 </span>
-              )}
-            </button>
-          </li>
-        ))}
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
