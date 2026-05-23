@@ -71,7 +71,11 @@ export function Conversation({ session }: { session: SessionState }) {
           {items.length === 0 && !session.crashed && <EmptyConversation cwd={session.cwd} />}
           {items.map((it) => {
             if (it.kind === "toolCall") {
-              return <ToolCallCard key={`tc-${it.data.id}`} call={it.data} />;
+              return (
+                <div key={`tc-${it.data.id}`} className="ml-10">
+                  <ToolCallCard call={it.data} />
+                </div>
+              );
             }
             const m = it.data;
             return (

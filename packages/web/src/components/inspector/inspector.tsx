@@ -116,11 +116,7 @@ export function Inspector() {
             ) : sessionCalls.length === 0 ? (
               <Empty label="No tool calls yet." />
             ) : (
-              sessionCalls.map((c) => (
-                <div key={c.id} className="-mx-9">
-                  <ToolCallCard call={c} />
-                </div>
-              ))
+              sessionCalls.map((c) => <ToolCallCard key={c.id} call={c} />)
             )}
           </TabsContent>
           <TabsContent value="files">

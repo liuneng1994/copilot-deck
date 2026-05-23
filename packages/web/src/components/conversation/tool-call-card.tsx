@@ -56,7 +56,7 @@ export function ToolCallCard({ call }: { call: ToolCallState }) {
   const v = statusVisual(call.status);
 
   return (
-    <div className="mx-10 my-1 overflow-hidden rounded-lg border border-border bg-panel-elevated text-xs">
+    <div className="my-1 overflow-hidden rounded-lg border border-border bg-panel-elevated text-xs">
       <button
         type="button"
         onClick={() => setOpen(!open)}
