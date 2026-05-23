@@ -8,11 +8,11 @@ import {
   Wrench,
 } from "lucide-react";
 import { useState } from "react";
-import { ansiToHtml } from "../../lib/ansi";
 import { cn } from "../../lib/cn";
 import type { ToolCallContentBlock, ToolCallState } from "../../stores/ui-store";
 import { DiffView } from "./diff-view";
 import { FileLink } from "./file-link";
+import { ClassifiedToolText, ImageBlock, TerminalBlock } from "./tool-content";
 
 function statusVisual(s: ToolCallState["status"]) {
   switch (s) {
@@ -114,7 +114,12 @@ export function ToolCallCard({ call }: { call: ToolCallState }) {
             <p className="text-[11px] text-muted-foreground">Awaiting agent…</p>
           )}
           {call.content.map((block, i) => (
-            <ContentBlock key={`${call.id}:${i}`} block={block} />
+            <ContentBlock
+              key={`${call.id}:${i}`}
+              block={block}
+              sessionId={call.sessionId}
+              callId={`${call.id}:${i}`}
+            />
           ))}
         </div>
       )}
@@ -122,7 +127,15 @@ export function ToolCallCard({ call }: { call: ToolCallState }) {
   );
 }
 
-function ContentBlock({ block }: { block: ToolCallContentBlock }) {
+function ContentBlock({
+  block,
+  sessionId,
+  callId,
+}: {
+  block: ToolCallContentBlock;
+  sessionId: string;
+  callId: string;
+}) {
   if (block.kind === "diff") {
     return (
       <div className="mb-2">
@@ -132,20 +145,22 @@ function ContentBlock({ block }: { block: ToolCallContentBlock }) {
   }
   if (block.kind === "terminal") {
     const text = block.text ?? jsonOrText(block.raw);
-    return (
-      <div
-        className="mb-2 max-h-72 overflow-auto rounded bg-background p-2 font-mono text-[11px] leading-snug text-foreground whitespace-pre-wrap break-words"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: ansi-to-html escapes XML
-        dangerouslySetInnerHTML={{ __html: ansiToHtml(text) }}
-      />
-    );
+    return <TerminalBlock text={text} />;
   }
   if (block.kind === "text") {
-    return (
-      <pre className="mb-2 max-h-72 overflow-auto rounded bg-background p-2 font-mono text-[11px] text-foreground whitespace-pre-wrap break-words">
-        {block.text ?? jsonOrText(block.raw)}
-      </pre>
-    );
+    const text = block.text ?? jsonOrText(block.raw);
+    // Route through the same classifier used by chat bubbles so embedded
+    // tables / json / mermaid get the rich treatment (and large outputs hoist
+    // to the artifact pane).
+    return <ClassifiedToolText text={text} sessionId={sessionId} callId={callId} />;
+  }
+  if (block.kind === "image") {
+    return <ImageBlock raw={block.raw} />;
+  }
+  if (block.kind === "json") {
+    const text =
+      typeof block.raw === "string" ? block.raw : `\`\`\`json\n${jsonOrText(block.raw)}\n\`\`\``;
+    return <ClassifiedToolText text={text} sessionId={sessionId} callId={callId} />;
   }
   return (
     <pre className="mb-2 max-h-40 overflow-auto rounded bg-background p-2 font-mono text-[11px] text-muted-foreground">
