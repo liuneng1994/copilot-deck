@@ -246,6 +246,7 @@ export function InlineDiff({ path, session }: InlineDiffProps) {
   useEffect(() => {
     const key = `${session.cwd}::${path}::${source}`;
     if (initKeyRef.current === key) return;
+    if (folds.length === 0) return;
     initKeyRef.current = key;
     setCollapsed(new Set(folds.map((fold) => fold.key)));
   }, [folds, session.cwd, path, source]);
