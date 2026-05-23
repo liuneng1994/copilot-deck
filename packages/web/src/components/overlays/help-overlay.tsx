@@ -15,6 +15,9 @@ const SHORTCUTS: { keys: string; desc: string }[] = [
   { keys: "@", desc: "Mention a file from cwd" },
   { keys: "↑ ↓ / Tab", desc: "Navigate command picker" },
   { keys: "Hover message", desc: "Copy / Edit (user) / Regenerate (agent)" },
+  { keys: "A / ⇧A", desc: "Permission: allow once / always" },
+  { keys: "D / ⇧D", desc: "Permission: deny once / always" },
+  { keys: "Drag side handle", desc: "Resize sidebar / inspector (double-click resets)" },
 ];
 
 export function HelpOverlay() {
