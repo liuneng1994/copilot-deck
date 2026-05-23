@@ -92,6 +92,37 @@ export const wsHandlers: HandlerMap = {
     });
   },
 
+  async fork_session(msg, { manager, send }) {
+    const src = manager.getStoredSession(msg.sessionId);
+    if (!src) {
+      send({ type: "error", sessionId: msg.sessionId, message: "Session not found." });
+      return;
+    }
+    try {
+      const { sessionId } = await manager.forkSession({
+        sourceSessionId: msg.sessionId,
+        upToMessageId: msg.messageId,
+      });
+      // Fetch persisted row to grab the title we just set via renameSession.
+      const persisted = manager.getStoredSession(sessionId);
+      // The agent's `session_created` notification will also fire when ACP
+      // hands us the modes, but we send our own so the requester can switch
+      // immediately and learn the new title.
+      send({
+        type: "session_created",
+        sessionId,
+        cwd: src.cwd,
+        title: persisted?.title ?? undefined,
+      });
+    } catch (e) {
+      send({
+        type: "error",
+        sessionId: msg.sessionId,
+        message: `Fork failed: ${e instanceof Error ? e.message : String(e)}`,
+      });
+    }
+  },
+
   request_trace(msg, { manager, send }) {
     const events = manager.listTrace({
       sessionId: msg.sessionId,

@@ -192,6 +192,27 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
     },
   );
 
+  app.post<{ Params: { id: string }; Body: { messageId?: string } }>(
+    "/api/sessions/:id/fork",
+    async (req, reply) => {
+      const src = manager.getStoredSession(req.params.id);
+      if (!src) {
+        reply.code(404);
+        return { error: "session not found" };
+      }
+      try {
+        const res = await manager.forkSession({
+          sourceSessionId: req.params.id,
+          upToMessageId: req.body?.messageId,
+        });
+        return res;
+      } catch (e) {
+        reply.code(500);
+        return { error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
   app.post<{ Body: { path?: string; cwd?: string } }>("/api/mkdir", async (req, reply) => {
     const raw = typeof req.body?.path === "string" ? req.body.path.trim() : "";
     const cwd = typeof req.body?.cwd === "string" ? req.body.cwd.trim() : undefined;

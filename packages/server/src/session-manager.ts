@@ -690,6 +690,46 @@ export class SessionManager {
   }
 
   /**
+   * Fork a session: creates a brand-new ACP session in the same cwd and
+   * stores a condensed "Previous context" prefix that will be prepended to
+   * its first user prompt. The prefix is built from messages up to (and
+   * including) `messageId`, or the full message history if omitted.
+   *
+   * The new session is empty from Copilot's POV — we deliberately do NOT
+   * loadSession, because forks are meant to diverge. Context is carried via
+   * the user-prompt prefix only.
+   */
+  async forkSession(opts: {
+    sourceSessionId: string;
+    upToMessageId?: string;
+  }): Promise<{ sessionId: string; sourceSessionId: string; prefixChars: number }> {
+    const src = this.store.getSession(opts.sourceSessionId);
+    if (!src) throw new Error(`unknown session ${opts.sourceSessionId}`);
+    const allMessages = this.store.listMessages(opts.sourceSessionId);
+    let slice = allMessages;
+    if (opts.upToMessageId) {
+      const idx = allMessages.findIndex((m) => m.id === opts.upToMessageId);
+      if (idx >= 0) slice = allMessages.slice(0, idx + 1);
+    }
+    const prefix = buildForkContextPrefix(slice);
+
+    const created = await this.createSession(src.cwd);
+    if (prefix.length > 0) {
+      this.store.setSessionForkPrefix(created.sessionId, prefix);
+    }
+    // Inherit a title hint: "fork: <original title>". If the source has no
+    // title yet (first prompt hasn't auto-set one), fall back to a generic
+    // marker so clients can recognise the fork by its title prefix.
+    const forkTitle = src.title ? `fork: ${src.title}` : "fork";
+    this.store.renameSession(created.sessionId, forkTitle);
+    return {
+      sessionId: created.sessionId,
+      sourceSessionId: opts.sourceSessionId,
+      prefixChars: prefix.length,
+    };
+  }
+
+  /**
    * Reattach a previously-detached session: spawn (or reuse) the cwd's Copilot
    * agent and call ACP `loadSession`, which restores the conversation context
    * inside the CLI. Throws if the session is unknown, already attached, or the
@@ -812,6 +852,17 @@ export class SessionManager {
     const trimmed = text.trimStart();
     const isSlash = trimmed.startsWith("/");
     const isEmpty = trimmed.length === 0;
+
+    // Fork prefix (one-shot): synthetic "Previous context:" injected by
+    // POST /api/sessions/:id/fork. Consumed on the first real prompt.
+    if (!isSlash && !isEmpty) {
+      const forkPrefix = this.store.getSessionForkPrefix(sessionId);
+      if (forkPrefix) {
+        outboundText = `${forkPrefix}\n\n---\n\n${outboundText}`;
+        this.store.setSessionForkPrefix(sessionId, null);
+      }
+    }
+
     if (
       persisted &&
       persisted.renderHintMode === "prompt" &&
@@ -819,7 +870,7 @@ export class SessionManager {
       !isSlash &&
       !isEmpty
     ) {
-      outboundText = prefixFirstPrompt(text);
+      outboundText = prefixFirstPrompt(outboundText);
       this.store.setSessionFirstPromptSent(sessionId, true);
     }
 
@@ -933,4 +984,34 @@ export class SessionManager {
   private persistUpdate(cwd: string, params: acp.SessionNotification): void {
     persistSessionUpdate({ cwd, store: this.store, streams: this.streams }, params);
   }
+}
+
+/**
+ * Condense a slice of prior-session messages into a single text block to
+ * prepend to a forked session's first prompt. Truncates very long agent
+ * replies to keep the prefix bounded.
+ */
+const FORK_AGENT_TRUNCATE_CHARS = 600;
+const FORK_PREFIX_HARD_CAP = 12_000;
+
+export function buildForkContextPrefix(
+  messages: Array<{ role: string; text: string | null }>,
+): string {
+  const lines: string[] = ["Previous context (forked from a prior session):", ""];
+  for (const m of messages) {
+    if (!m.text) continue;
+    const role = m.role === "agent" ? "Assistant" : m.role === "user" ? "User" : m.role;
+    let body = m.text.trim();
+    if (!body) continue;
+    if (m.role === "agent" && body.length > FORK_AGENT_TRUNCATE_CHARS) {
+      body = `${body.slice(0, FORK_AGENT_TRUNCATE_CHARS)} … [truncated]`;
+    }
+    lines.push(`[${role}]: ${body}`, "");
+  }
+  lines.push("--- end of prior context ---");
+  let out = lines.join("\n");
+  if (out.length > FORK_PREFIX_HARD_CAP) {
+    out = `${out.slice(0, FORK_PREFIX_HARD_CAP)}\n… [prior context truncated]\n--- end of prior context ---`;
+  }
+  return out;
 }

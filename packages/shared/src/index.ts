@@ -228,6 +228,7 @@ export type ClientToServer =
   | { type: "delete_session"; sessionId: string }
   | { type: "rename_session"; sessionId: string; title: string }
   | { type: "duplicate_session"; sessionId: string }
+  | { type: "fork_session"; sessionId: string; messageId?: string }
   | { type: "request_trace"; sessionId?: string; sinceId?: number; limit?: number }
   | { type: "list_models" }
   | { type: "set_model"; cwd: string; model: string }
@@ -266,6 +267,7 @@ export type ServerToClient =
       sessionId: string;
       cwd: string;
       modes?: SessionModeSnapshot;
+      title?: string;
     }
   | {
       type: "session_update";

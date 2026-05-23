@@ -25,7 +25,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   /** "agents_md" | "prompt" | "off" — controls render-hint injection. */
   render_hint_mode TEXT,
   /** 1 once we've injected the prompt-mode hint into the first user prompt. */
-  first_prompt_sent INTEGER DEFAULT 0
+  first_prompt_sent INTEGER DEFAULT 0,
+  /** One-shot text prepended to the next prompt — used by session fork to
+   * inject prior-session context into the first user prompt. Cleared after use. */
+  fork_prefix TEXT
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -230,6 +233,7 @@ export class Store {
     this.ensureColumn("session_files", "source", "TEXT");
     this.ensureColumn("session_files", "reviewed_at", "INTEGER");
     this.ensureColumn("session_files", "last_diff_hash", "TEXT");
+    this.ensureColumn("sessions", "fork_prefix", "TEXT");
     this.backfillMessagesFts();
   }
 
@@ -375,6 +379,17 @@ export class Store {
 
   setSessionFirstPromptSent(id: string, sent: boolean): void {
     this.db.prepare("UPDATE sessions SET first_prompt_sent = ? WHERE id = ?").run(sent ? 1 : 0, id);
+  }
+
+  setSessionForkPrefix(id: string, prefix: string | null): void {
+    this.db.prepare("UPDATE sessions SET fork_prefix = ? WHERE id = ?").run(prefix, id);
+  }
+
+  getSessionForkPrefix(id: string): string | null {
+    const r = this.db.prepare("SELECT fork_prefix FROM sessions WHERE id = ?").get(id) as
+      | { fork_prefix: string | null }
+      | undefined;
+    return r?.fork_prefix ?? null;
   }
 
   touchSession(id: string, status?: string) {

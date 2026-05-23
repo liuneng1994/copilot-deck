@@ -1,4 +1,4 @@
-import { Bot, Copy, History, Pencil, RefreshCw, User } from "lucide-react";
+import { Bot, Copy, GitBranch, History, Pencil, RefreshCw, User } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
 import { classify } from "../../lib/content-renderer/classify";
@@ -190,6 +190,7 @@ function MessageToolbar({
           <RefreshCw className="h-3 w-3" />
         </ToolbarButton>
       )}
+      <ForkFromHereButton sessionId={sessionId} messageId={message.id} />
     </div>
   );
 }
@@ -278,6 +279,51 @@ function RestoreCheckpointButton({
       disabled={busy}
     >
       <History className={cn("h-3 w-3", busy && "animate-pulse")} />
+    </ToolbarButton>
+  );
+}
+
+function ForkFromHereButton({
+  sessionId,
+  messageId,
+}: {
+  sessionId: string;
+  messageId: string;
+}) {
+  const setNotice = useUIStore((s) => s.setNotice);
+  const [busy, setBusy] = useState(false);
+
+  const onFork = async () => {
+    if (busy) return;
+    const ok = await confirmDialog({
+      title: "Fork session from here?",
+      description:
+        "Creates a new session in the same workspace. The conversation up to this point will be condensed into a 'Previous context' prefix and prepended to your next prompt in the new session.",
+      confirmLabel: "Fork",
+      cancelLabel: "Cancel",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      sendWs({ type: "fork_session", sessionId, messageId });
+      setNotice({
+        id: `fork-${Date.now()}`,
+        kind: "info",
+        text: "Forking session…",
+        ts: Date.now(),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <ToolbarButton
+      onClick={onFork}
+      title="Fork a new session from this point with condensed prior context"
+      disabled={busy}
+    >
+      <GitBranch className={cn("h-3 w-3", busy && "animate-pulse")} />
     </ToolbarButton>
   );
 }

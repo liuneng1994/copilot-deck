@@ -83,7 +83,7 @@ export function useWsBridge() {
           store.upsertSession({
             id: msg.sessionId,
             cwd: msg.cwd,
-            title: "New session",
+            title: msg.title ?? "New session",
             status: "idle",
             renderHintMode: "prompt",
           });
@@ -98,7 +98,8 @@ export function useWsBridge() {
               })),
             );
           }
-          if (!store.activeSessionId) store.setActiveSession(msg.sessionId);
+          if (!store.activeSessionId || /^fork/.test(msg.title ?? ""))
+            store.setActiveSession(msg.sessionId);
           break;
         }
         case "session_update": {
