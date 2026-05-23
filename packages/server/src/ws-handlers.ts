@@ -18,7 +18,7 @@ type Handler<K extends ClientMsg["type"]> = (
   ctx: WsContext,
 ) => Promise<void> | void;
 
-type HandlerMap = { [K in ClientMsg["type"]]?: Handler<K> };
+type HandlerMap = Partial<{ [K in ClientMsg["type"]]: Handler<K> }>;
 
 export const wsHandlers: HandlerMap = {
   async create_session(msg, { manager, send }) {

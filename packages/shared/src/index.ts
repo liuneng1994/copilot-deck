@@ -117,6 +117,89 @@ export interface ExtensionOpDone {
   error?: string;
 }
 
+// === Files v2 types ===
+export type FileSource = "agent" | "dirty" | "untracked" | "clean";
+export type GitFlag = "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!" | " ";
+
+export interface GitFileFlag {
+  path: string;
+  x: GitFlag; // index status
+  y: GitFlag; // worktree status
+  orig?: string; // rename source
+}
+
+export interface GitStatus {
+  cwd: string;
+  branch: string | null;
+  ahead: number;
+  behind: number;
+  files: GitFileFlag[];
+}
+
+export interface FileEntry {
+  path: string; // absolute
+  rel: string; // relative to cwd
+  source: FileSource;
+  gitX?: GitFlag;
+  gitY?: GitFlag;
+  isGenerated: boolean; // lockfile / minified / generated
+  isBinary?: boolean;
+  size?: number;
+  lastTouchAt?: number;
+  added?: number;
+  removed?: number;
+  callCount?: number;
+}
+
+export interface GrepHit {
+  path: string;
+  line: number; // 1-based
+  col: number; // 1-based
+  before: string; // line up to match
+  match: string;
+  after: string; // rest of line
+}
+
+export interface OutlineNode {
+  kind: string; // function | class | method | interface | const | ...
+  name: string;
+  startLine: number;
+  endLine: number;
+  children?: OutlineNode[];
+}
+
+// === Files v2 WS messages ===
+export interface GitStatusMessage {
+  type: "git_status";
+  cwd: string;
+  payload: GitStatus;
+}
+
+export interface FilesIndexInvalidatedMessage {
+  type: "files_index_invalidated";
+  cwd: string;
+}
+
+export interface FileChangedMessage {
+  type: "file_changed";
+  cwd: string;
+  path: string;
+}
+
+export interface GrepChunkMessage {
+  type: "grep_chunk";
+  opId: string;
+  hits: GrepHit[];
+}
+
+export interface GrepDoneMessage {
+  type: "grep_done";
+  opId: string;
+  total: number;
+  truncated: boolean;
+  error?: string;
+}
+
 export type ClientToServer =
   | { type: "create_session"; cwd: string }
   | { type: "prompt"; sessionId: string; text: string }
@@ -252,7 +335,12 @@ export type ServerToClient =
       type: "session_renamed";
       sessionId: string;
       title: string;
-    };
+    }
+  | GitStatusMessage
+  | FilesIndexInvalidatedMessage
+  | FileChangedMessage
+  | GrepChunkMessage
+  | GrepDoneMessage;
 
 export interface TraceEventDTO {
   id: number;
