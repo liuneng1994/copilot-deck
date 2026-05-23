@@ -1,15 +1,21 @@
-import { Pin, PinOff, X } from "lucide-react";
+import { Download, ExternalLink, Maximize2, Minimize2, Pin, PinOff, X } from "lucide-react";
+import { useState } from "react";
 import { cn } from "../../lib/cn";
+import { renderContent } from "../../lib/content-renderer/render";
 import {
   type Artifact,
   selectSessionArtifacts,
   useArtifactStore,
 } from "../../stores/artifact-store";
+import { useUIStore } from "../../stores/ui-store";
 
 /**
  * Right-side split pane that hosts hoisted artifacts (tables, diagrams, JSON,
- * long code, HTML previews, …). v1 is a placeholder shell: tabs + a generic
- * body that just dumps the source. Type-specific bodies arrive in rr-artifact-pane.
+ * long code, HTML previews, …).
+ *
+ * The body delegates to renderContent in "full" mode, which unlocks the
+ * interactive features each renderer hides while inline (sort/filter/export
+ * for tables, source toggle + larger canvas for mermaid, full-tree JSON, etc).
  */
 export function ArtifactPane({ sessionId, width }: { sessionId: string; width: number }) {
   const items = useArtifactStore((s) => selectSessionArtifacts(s, sessionId));
@@ -18,6 +24,8 @@ export function ArtifactPane({ sessionId, width }: { sessionId: string; width: n
   const closePane = useArtifactStore((s) => s.closePane);
   const remove = useArtifactStore((s) => s.remove);
   const togglePin = useArtifactStore((s) => s.togglePin);
+  const setFindOpen = useUIStore((s) => s.setFindOpen);
+  const [fullscreen, setFullscreen] = useState(false);
   const active = items.find((a) => a.id === activeId) ?? items[items.length - 1];
 
   if (items.length === 0) return null;
@@ -25,8 +33,11 @@ export function ArtifactPane({ sessionId, width }: { sessionId: string; width: n
   return (
     <aside
       data-testid="artifact-pane"
-      className="flex h-full min-w-0 shrink-0 flex-col border-l border-border bg-panel"
-      style={{ width }}
+      className={cn(
+        "flex h-full min-w-0 shrink-0 flex-col border-l border-border bg-panel",
+        fullscreen && "fixed inset-0 z-40 border-l-0",
+      )}
+      style={fullscreen ? undefined : { width }}
     >
       <header className="flex h-9 min-h-9 items-center gap-1 border-b border-border bg-panel-elevated px-1">
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
@@ -44,6 +55,18 @@ export function ArtifactPane({ sessionId, width }: { sessionId: string; width: n
         <button
           type="button"
           className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+          onClick={() => setFullscreen((v) => !v)}
+          title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+        >
+          {fullscreen ? (
+            <Minimize2 className="h-3.5 w-3.5" />
+          ) : (
+            <Maximize2 className="h-3.5 w-3.5" />
+          )}
+        </button>
+        <button
+          type="button"
+          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
           onClick={() => closePane(sessionId)}
           title="Close artifact pane"
         >
@@ -51,9 +74,99 @@ export function ArtifactPane({ sessionId, width }: { sessionId: string; width: n
         </button>
       </header>
       <div className="min-h-0 flex-1 overflow-auto p-3">
-        {active ? <PlaceholderBody artifact={active} /> : null}
+        {active ? <ArtifactBody artifact={active} /> : null}
       </div>
+      {active ? (
+        <footer className="flex items-center justify-between border-t border-border bg-panel-elevated px-2 py-1 text-[10px] text-muted-foreground">
+          <span className="truncate font-mono">
+            from message · {new Date(active.createdAt).toLocaleTimeString()}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setFindOpen(true)}
+              className="inline-flex items-center gap-1 hover:text-foreground"
+              title="Find source message"
+            >
+              <ExternalLink className="h-3 w-3" />
+              source
+            </button>
+            <DownloadButton artifact={active} />
+          </div>
+        </footer>
+      ) : null}
     </aside>
+  );
+}
+
+function ArtifactBody({ artifact }: { artifact: Artifact }) {
+  return (
+    <div className="artifact-body">
+      {renderContent({
+        item: artifact.item,
+        sessionId: artifact.sessionId,
+        msgId: artifact.sourceMsgId,
+        full: true,
+      })}
+    </div>
+  );
+}
+
+function DownloadButton({ artifact }: { artifact: Artifact }) {
+  const it = artifact.item;
+  const onClick = () => {
+    let blob: Blob;
+    let filename: string;
+    switch (it.kind) {
+      case "code":
+        blob = new Blob([it.text], { type: "text/plain" });
+        filename = `artifact-${it.id}.${it.lang ?? "txt"}`;
+        break;
+      case "table":
+      case "csv": {
+        const esc = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+        const lines = [it.header.map(esc).join(","), ...it.rows.map((r) => r.map(esc).join(","))];
+        blob = new Blob([lines.join("\n")], { type: "text/csv" });
+        filename = `artifact-${it.id}.csv`;
+        break;
+      }
+      case "json":
+        blob = new Blob([it.raw], { type: "application/json" });
+        filename = `artifact-${it.id}.json`;
+        break;
+      case "mermaid":
+        blob = new Blob([it.src], { type: "text/plain" });
+        filename = `artifact-${it.id}.mmd`;
+        break;
+      case "svg":
+        blob = new Blob([it.src], { type: "image/svg+xml" });
+        filename = `artifact-${it.id}.svg`;
+        break;
+      case "html":
+        blob = new Blob([it.src], { type: "text/html" });
+        filename = `artifact-${it.id}.html`;
+        break;
+      default:
+        blob = new Blob([JSON.stringify(it, null, 2)], { type: "application/json" });
+        filename = `artifact-${it.id}.json`;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1 hover:text-foreground"
+      title="Download artifact"
+    >
+      <Download className="h-3 w-3" />
+      download
+    </button>
   );
 }
 
@@ -107,27 +220,5 @@ function Tab({
         <X className="h-3 w-3" />
       </button>
     </div>
-  );
-}
-
-function PlaceholderBody({ artifact }: { artifact: Artifact }) {
-  const it = artifact.item;
-  const preview =
-    it.kind === "code" || it.kind === "mermaid" || it.kind === "html" || it.kind === "svg"
-      ? it.kind === "code"
-        ? it.text
-        : it.src
-      : it.kind === "json"
-        ? it.raw
-        : it.kind === "table" || it.kind === "csv"
-          ? `${it.header.join(" | ")}\n${it.rows
-              .slice(0, 10)
-              .map((r) => r.join(" | "))
-              .join("\n")}`
-          : JSON.stringify(it, null, 2);
-  return (
-    <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground">
-      {preview}
-    </pre>
   );
 }
