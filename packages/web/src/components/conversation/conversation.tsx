@@ -55,6 +55,7 @@ export function Conversation({ session }: { session: SessionState }) {
             <MessageBubble
               key={m.id}
               message={m}
+              sessionId={session.id}
               streaming={streaming && m.id === lastMsg?.id && m.role === "agent"}
             />
           );

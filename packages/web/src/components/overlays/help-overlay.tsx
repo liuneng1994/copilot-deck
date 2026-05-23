@@ -6,11 +6,14 @@ import { useUIStore } from "../../stores/ui-store";
 const SHORTCUTS: { keys: string; desc: string }[] = [
   { keys: "⌘ \\", desc: "Toggle sidebar" },
   { keys: "⌘ B", desc: "Toggle inspector" },
+  { keys: "⌘ 1-9", desc: "Switch to nth session" },
   { keys: "⌘ ↵ / ↵", desc: "Send prompt" },
   { keys: "Esc", desc: "Cancel streaming reply" },
+  { keys: "↑ ↓ (empty composer)", desc: "Recall prompt history" },
   { keys: "/", desc: "Open slash command picker" },
   { keys: "@", desc: "Mention a file from cwd" },
   { keys: "↑ ↓ / Tab", desc: "Navigate command picker" },
+  { keys: "Hover message", desc: "Copy / Edit (user) / Regenerate (agent)" },
 ];
 
 export function HelpOverlay() {

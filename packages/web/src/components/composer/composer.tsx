@@ -16,22 +16,65 @@ import { type SlashItem, SlashPopover } from "./slash-popover";
 export function Composer({ session }: { session: SessionState }) {
   const draft = useUIStore((s) => s.drafts[session.id] ?? "");
   const setDraft = useUIStore((s) => s.setDraft);
+  const pushHistory = useUIStore((s) => s.pushPromptHistory);
+  const loadEpoch = useUIStore((s) => s.composerLoadEpoch[session.id] ?? 0);
   const [text, setTextLocal] = useState(draft);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const setStatus = useUIStore((s) => s.setSessionStatus);
   const appendUser = useUIStore((s) => s.appendUserMessage);
+  // History recall: -1 = composing fresh; 0..N-1 = recalled from the end.
+  const historyIdxRef = useRef<number>(-1);
 
-  // Restore draft when switching sessions; persist on edits.
+  // Restore draft when switching sessions OR when an external action bumps
+  // the load epoch (e.g. Edit & resend from a message bubble). loadEpoch is
+  // intentional even though it isn't read inside the effect body — every bump
+  // must re-run the restore-from-store + caret-to-end behaviour below.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above
   useEffect(() => {
-    setTextLocal(useUIStore.getState().drafts[session.id] ?? "");
-  }, [session.id]);
+    const d = useUIStore.getState().drafts[session.id] ?? "";
+    setTextLocal(d);
+    historyIdxRef.current = -1;
+    if (d && taRef.current) {
+      // Move focus + caret to end so the user can keep typing.
+      const ta = taRef.current;
+      setTimeout(() => {
+        ta.focus();
+        ta.setSelectionRange(d.length, d.length);
+      }, 0);
+    }
+  }, [session.id, loadEpoch]);
 
   const setText = (next: string | ((t: string) => string)) => {
     setTextLocal((prev) => {
       const v = typeof next === "function" ? next(prev) : next;
-      setDraft(session.id, v);
+      // Persist draft outside of the state updater to avoid the
+      // "setState while rendering another component" warning.
+      queueMicrotask(() => setDraft(session.id, v));
       return v;
     });
+  };
+
+  /** Move through this session's prompt history. dir: -1=older, +1=newer. */
+  const recallHistory = (dir: -1 | 1): boolean => {
+    const list = useUIStore.getState().promptHistory[session.id] ?? [];
+    if (list.length === 0) return false;
+    const cur = historyIdxRef.current;
+    let nextIdx: number;
+    if (dir === -1) {
+      nextIdx = cur === -1 ? list.length - 1 : Math.max(0, cur - 1);
+    } else {
+      if (cur === -1) return false;
+      nextIdx = cur + 1;
+      if (nextIdx >= list.length) {
+        historyIdxRef.current = -1;
+        setText("");
+        return true;
+      }
+    }
+    historyIdxRef.current = nextIdx;
+    setTextLocal(list[nextIdx] ?? "");
+    setDraft(session.id, list[nextIdx] ?? "");
+    return true;
   };
 
   const streaming = session.status === "streaming";
@@ -97,6 +140,8 @@ export function Composer({ session }: { session: SessionState }) {
     appendUser(session.id, trimmed);
     setStatus(session.id, "streaming");
     sendWs({ type: "prompt", sessionId: session.id, text: trimmed });
+    pushHistory(session.id, trimmed);
+    historyIdxRef.current = -1;
     setText("");
     setDraft(session.id, "");
   };
@@ -202,6 +247,21 @@ export function Composer({ session }: { session: SessionState }) {
                 } else if (e.key === "Escape" && streaming) {
                   e.preventDefault();
                   cancel();
+                } else if (e.key === "ArrowUp" && !e.shiftKey) {
+                  // Recall older prompt only when caret is at the start.
+                  const ta = e.currentTarget;
+                  if (ta.selectionStart === 0 && ta.selectionEnd === 0) {
+                    if (recallHistory(-1)) e.preventDefault();
+                  }
+                } else if (e.key === "ArrowDown" && !e.shiftKey) {
+                  const ta = e.currentTarget;
+                  if (ta.selectionStart === ta.value.length) {
+                    if (recallHistory(1)) e.preventDefault();
+                  }
+                } else if (e.key !== "ArrowUp" && e.key !== "ArrowDown") {
+                  // User typed something else — exit history-recall mode so subsequent
+                  // arrow keys behave normally.
+                  historyIdxRef.current = -1;
                 }
               }}
             />

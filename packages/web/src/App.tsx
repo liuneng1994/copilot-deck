@@ -12,6 +12,7 @@ import { TraceDrawer } from "./components/overlays/trace-drawer";
 import { StatusBar } from "./components/shell/status-bar";
 import { TopBar } from "./components/shell/top-bar";
 import { Sidebar, SidebarRail } from "./components/sidebar/sidebar";
+import { orderedSessions } from "./lib/session-order";
 import { useWsBridge } from "./lib/ws-bridge";
 import { useUIStore } from "./stores/ui-store";
 
@@ -29,12 +30,24 @@ export function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      if (e.key === "\\") {
         e.preventDefault();
         toggleSidebar();
-      } else if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+      } else if (e.key === "b") {
         e.preventDefault();
         toggleInspector();
+      } else if (/^[1-9]$/.test(e.key)) {
+        // Cmd/Ctrl + 1..9 → switch to nth session in sidebar order.
+        const state = useUIStore.getState();
+        const ordered = orderedSessions(state.sessions);
+        const idx = Number(e.key) - 1;
+        const target = ordered[idx];
+        if (target) {
+          e.preventDefault();
+          state.setActiveSession(target.id);
+        }
       }
     };
     window.addEventListener("keydown", onKey);

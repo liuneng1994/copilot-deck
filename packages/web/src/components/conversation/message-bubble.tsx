@@ -1,9 +1,10 @@
-import { Bot, User } from "lucide-react";
-import type { ReactNode } from "react";
+import { Bot, Copy, Pencil, RefreshCw, User } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "../../lib/cn";
-import type { Message } from "../../stores/ui-store";
+import { sendWs } from "../../lib/ws-client";
+import { type Message, useUIStore } from "../../stores/ui-store";
 import { CodeBlock } from "./code-block";
 import { LinkifyPaths } from "./file-link";
 
@@ -30,9 +31,11 @@ function linkifyChildren(children: ReactNode): ReactNode {
 export function MessageBubble({
   message,
   streaming,
+  sessionId,
 }: {
   message: Message;
   streaming?: boolean;
+  sessionId: string;
 }) {
   if (message.role === "system") {
     return (
@@ -46,7 +49,7 @@ export function MessageBubble({
 
   const isUser = message.role === "user";
   return (
-    <div className={cn("flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
+    <div className={cn("group/msg flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
       <div
         className={cn(
           "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border",
@@ -57,58 +60,156 @@ export function MessageBubble({
       >
         {isUser ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
       </div>
-      <div
-        className={cn(
-          "max-w-[80%] rounded-xl border px-3.5 py-2.5 text-sm",
-          isUser
-            ? "border-primary/30 bg-primary/10 text-foreground"
-            : "border-border bg-panel-elevated text-foreground",
-        )}
-      >
-        <div className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-          <span>{isUser ? "you" : "agent"}</span>
-          <span>·</span>
-          <span>{relativeTime(message.ts)}</span>
-        </div>
-        <div className="prose prose-invert prose-sm max-w-none prose-pre:m-0 prose-pre:bg-transparent prose-pre:border-0 prose-pre:p-0 prose-code:before:content-none prose-code:after:content-none">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              code({ className, children }) {
-                const codeStr = String(children ?? "").replace(/\n$/, "");
-                const match = /language-([\w-]+)/.exec(className ?? "");
-                const inline = !match && !codeStr.includes("\n");
-                return <CodeBlock code={codeStr} lang={match?.[1]} inline={inline} />;
-              },
-              pre({ children }) {
-                return <>{children}</>;
-              },
-              a({ href, children }) {
-                const external = typeof href === "string" && /^https?:\/\//i.test(href);
-                return (
-                  <a
-                    href={href}
-                    {...(external ? { target: "_blank", rel: "noreferrer noopener" } : {})}
-                  >
-                    {children}
-                  </a>
-                );
-              },
-              p({ children }) {
-                return <p>{linkifyChildren(children)}</p>;
-              },
-              li({ children }) {
-                return <li>{linkifyChildren(children)}</li>;
-              },
-            }}
-          >
-            {message.text || (streaming ? "…" : "")}
-          </ReactMarkdown>
-          {streaming && (
-            <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse rounded-sm bg-success align-middle" />
+      <div className="relative max-w-[80%]">
+        <div
+          className={cn(
+            "rounded-xl border px-3.5 py-2.5 text-sm",
+            isUser
+              ? "border-primary/30 bg-primary/10 text-foreground"
+              : "border-border bg-panel-elevated text-foreground",
           )}
+        >
+          <div className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+            <span>{isUser ? "you" : "agent"}</span>
+            <span>·</span>
+            <span>{relativeTime(message.ts)}</span>
+          </div>
+          <div className="prose prose-invert prose-sm max-w-none prose-pre:m-0 prose-pre:bg-transparent prose-pre:border-0 prose-pre:p-0 prose-code:before:content-none prose-code:after:content-none">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                code({ className, children }) {
+                  const codeStr = String(children ?? "").replace(/\n$/, "");
+                  const match = /language-([\w-]+)/.exec(className ?? "");
+                  const inline = !match && !codeStr.includes("\n");
+                  return <CodeBlock code={codeStr} lang={match?.[1]} inline={inline} />;
+                },
+                pre({ children }) {
+                  return <>{children}</>;
+                },
+                a({ href, children }) {
+                  const external = typeof href === "string" && /^https?:\/\//i.test(href);
+                  return (
+                    <a
+                      href={href}
+                      {...(external ? { target: "_blank", rel: "noreferrer noopener" } : {})}
+                    >
+                      {children}
+                    </a>
+                  );
+                },
+                p({ children }) {
+                  return <p>{linkifyChildren(children)}</p>;
+                },
+                li({ children }) {
+                  return <li>{linkifyChildren(children)}</li>;
+                },
+              }}
+            >
+              {message.text || (streaming ? "…" : "")}
+            </ReactMarkdown>
+            {streaming && (
+              <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse rounded-sm bg-success align-middle" />
+            )}
+          </div>
         </div>
+        {!streaming && <MessageToolbar message={message} sessionId={sessionId} isUser={isUser} />}
       </div>
     </div>
+  );
+}
+
+function MessageToolbar({
+  message,
+  sessionId,
+  isUser,
+}: {
+  message: Message;
+  sessionId: string;
+  isUser: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const setDraft = useUIStore((s) => s.setDraft);
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(message.text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {}
+  };
+
+  const onEditUser = () => {
+    setDraft(sessionId, message.text);
+    useUIStore.getState().bumpComposerLoad(sessionId);
+  };
+
+  /**
+   * Regenerate: re-issue the prior user prompt (the user prompt immediately
+   * preceding this agent message). We look it up at click time from the live
+   * store so the latest text wins.
+   */
+  const onRegenerate = () => {
+    const state = useUIStore.getState();
+    const sess = state.sessions[sessionId];
+    if (!sess) return;
+    const myIdx = sess.messages.findIndex((m) => m.id === message.id);
+    if (myIdx <= 0) return;
+    let priorUser: Message | undefined;
+    for (let i = myIdx - 1; i >= 0; i--) {
+      const m = sess.messages[i];
+      if (m && m.role === "user") {
+        priorUser = m;
+        break;
+      }
+    }
+    if (!priorUser) return;
+    state.appendUserMessage(sessionId, priorUser.text);
+    state.setSessionStatus(sessionId, "streaming");
+    state.pushPromptHistory(sessionId, priorUser.text);
+    sendWs({ type: "prompt", sessionId, text: priorUser.text });
+  };
+
+  return (
+    <div
+      className={cn(
+        "pointer-events-none absolute -top-2.5 flex gap-0.5 rounded-md border border-border bg-panel-elevated p-0.5 opacity-0 shadow-sm transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100",
+        isUser ? "left-2" : "right-2",
+      )}
+    >
+      <ToolbarButton onClick={onCopy} title={copied ? "Copied!" : "Copy message"}>
+        <Copy className={cn("h-3 w-3", copied && "text-success")} />
+      </ToolbarButton>
+      {isUser ? (
+        <ToolbarButton onClick={onEditUser} title="Edit & resend">
+          <Pencil className="h-3 w-3" />
+        </ToolbarButton>
+      ) : (
+        <ToolbarButton onClick={onRegenerate} title="Regenerate from prior user prompt">
+          <RefreshCw className="h-3 w-3" />
+        </ToolbarButton>
+      )}
+    </div>
+  );
+}
+
+function ToolbarButton({
+  onClick,
+  title,
+  children,
+}: {
+  onClick: () => void;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      {children}
+    </button>
   );
 }

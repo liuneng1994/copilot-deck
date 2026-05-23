@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
+import { orderedSessions } from "../../lib/session-order";
 import { sendWs } from "../../lib/ws-client";
 import { type SessionState, useUIStore } from "../../stores/ui-store";
 import { confirmDialog } from "../overlays/confirm-dialog";
@@ -59,6 +60,15 @@ export function Sidebar() {
       .filter(([_, list]) => list.length > 0)
       .map(([cwd, list]) => ({ cwd, list: list.sort((a, b) => b.updatedAt - a.updatedAt) }));
   }, [sessions, q]);
+
+  // Numeric hotkey hints (Cmd+1..9): map session.id → "1".."9" for the first 9
+  // sessions in display order (unfiltered).
+  const hotkeyIndex = useMemo(() => {
+    const ordered = orderedSessions(sessions);
+    const m = new Map<string, number>();
+    ordered.slice(0, 9).forEach((s, i) => m.set(s.id, i + 1));
+    return m;
+  }, [sessions]);
 
   /** Recently-used cwds, deduped and ordered by latest session activity. */
   const recentCwds = useMemo(() => {
@@ -180,6 +190,7 @@ export function Sidebar() {
                     session={s}
                     isActive={s.id === active}
                     onActivate={() => setActive(s.id)}
+                    hotkey={hotkeyIndex.get(s.id)}
                   />
                 ))}
               </ul>
@@ -205,10 +216,12 @@ function SidebarSessionItem({
   session: s,
   isActive,
   onActivate,
+  hotkey,
 }: {
   session: SessionState;
   isActive: boolean;
   onActivate: () => void;
+  hotkey?: number;
 }) {
   const dot = statusToDot(s.status);
   const [editing, setEditing] = useState(false);
@@ -290,6 +303,14 @@ function SidebarSessionItem({
               </span>
             )}
           </span>
+          {hotkey != null && (
+            <kbd
+              className="rounded bg-muted px-1 py-0.5 font-mono text-[9px] text-muted-foreground"
+              title={`⌘${hotkey} to switch`}
+            >
+              ⌘{hotkey}
+            </kbd>
+          )}
           {isActive && <ChevronRight className="h-3 w-3 opacity-60" />}
         </button>
       )}

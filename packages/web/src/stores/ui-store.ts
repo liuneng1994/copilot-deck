@@ -124,6 +124,8 @@ export interface UIState {
   filePreviewPath: string | null;
   /** Per-session unsent composer drafts. Persisted in localStorage. */
   drafts: Record<string, string>;
+  /** Per-session sent-prompt history for ↑/↓ recall. Persisted in localStorage. */
+  promptHistory: Record<string, string[]>;
 
   toggleSidebar: () => void;
   toggleInspector: () => void;
@@ -171,6 +173,14 @@ export interface UIState {
   setModelPickerOpen: (open: boolean) => void;
   setFilePreviewPath: (path: string | null) => void;
   setDraft: (sessionId: string, text: string) => void;
+  /**
+   * Force Composer to reload its text from the persisted draft. Increment-only
+   * counter Composer subscribes to; used by message-bubble Edit and similar
+   * actions that change the draft from outside the textarea.
+   */
+  composerLoadEpoch: Record<string, number>;
+  bumpComposerLoad: (sessionId: string) => void;
+  pushPromptHistory: (sessionId: string, text: string) => void;
   /** Wipe messages and tool calls for a session locally (does NOT touch the DB). */
   clearSessionMessages: (sessionId: string) => void;
 }
@@ -224,6 +234,25 @@ function saveDrafts(drafts: Record<string, string>): void {
   } catch {}
 }
 
+const HISTORY_KEY = "agent-view:prompt-history:v1";
+const HISTORY_MAX_PER_SESSION = 50;
+function loadPromptHistory(): Record<string, string[]> {
+  if (typeof localStorage === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed as Record<string, string[]>;
+  } catch {}
+  return {};
+}
+function savePromptHistory(history: Record<string, string[]>): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  } catch {}
+}
+
 export const useUIStore = create<UIState>((set) => ({
   sidebarCollapsed: false,
   inspectorCollapsed: false,
@@ -246,6 +275,8 @@ export const useUIStore = create<UIState>((set) => ({
   modelPickerOpen: false,
   filePreviewPath: null,
   drafts: loadDrafts(),
+  promptHistory: loadPromptHistory(),
+  composerLoadEpoch: {},
 
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   toggleInspector: () => set((s) => ({ inspectorCollapsed: !s.inspectorCollapsed })),
@@ -571,6 +602,25 @@ export const useUIStore = create<UIState>((set) => ({
       else delete next[sessionId];
       saveDrafts(next);
       return { drafts: next };
+    }),
+  bumpComposerLoad: (sessionId) =>
+    set((s) => ({
+      composerLoadEpoch: {
+        ...s.composerLoadEpoch,
+        [sessionId]: (s.composerLoadEpoch[sessionId] ?? 0) + 1,
+      },
+    })),
+  pushPromptHistory: (sessionId, text) =>
+    set((s) => {
+      const t = text.trim();
+      if (!t) return s;
+      const prev = s.promptHistory[sessionId] ?? [];
+      // De-dup if last entry is identical.
+      const filtered = prev[prev.length - 1] === t ? prev : [...prev, t];
+      const trimmed = filtered.slice(-HISTORY_MAX_PER_SESSION);
+      const next = { ...s.promptHistory, [sessionId]: trimmed };
+      savePromptHistory(next);
+      return { promptHistory: next };
     }),
   clearSessionMessages: (sessionId) =>
     set((state) => {
