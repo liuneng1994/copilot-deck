@@ -24,6 +24,7 @@ import {
   ARTIFACT_PANE_MIN,
   useArtifactStore,
 } from "./stores/artifact-store";
+import { useCheckpointStore } from "./stores/checkpoint-store";
 import {
   INSPECTOR_MAX,
   INSPECTOR_MIN,
@@ -46,6 +47,11 @@ export function App() {
   const wsConnected = useUIStore((s) => s.wsConnected);
   const activeId = useUIStore((s) => s.activeSessionId);
   const session = useUIStore((s) => (activeId ? s.sessions[activeId] : null));
+
+  // Load checkpoints for the active session on switch.
+  useEffect(() => {
+    if (activeId) void useCheckpointStore.getState().load(activeId);
+  }, [activeId]);
 
   const artifactOpen = useArtifactStore((s) =>
     activeId

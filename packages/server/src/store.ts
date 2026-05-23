@@ -85,6 +85,23 @@ CREATE TABLE IF NOT EXISTS trace_events (
 );
 CREATE INDEX IF NOT EXISTS idx_trace_session_ts ON trace_events(session_id, ts);
 CREATE INDEX IF NOT EXISTS idx_trace_ts ON trace_events(ts);
+
+CREATE TABLE IF NOT EXISTS checkpoints (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  message_id TEXT,
+  cwd TEXT NOT NULL,
+  -- git stash commit SHA (created via git stash create, NOT pushed to stash list)
+  ref TEXT NOT NULL,
+  -- HEAD sha at snapshot time, for context
+  head_sha TEXT,
+  -- short user-facing label (auto: "before prompt: ...")
+  label TEXT,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_session ON checkpoints(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_message ON checkpoints(session_id, message_id);
 `;
 
 const TRACE_MAX_ROWS = Number(process.env.AGENT_VIEW_TRACE_MAX ?? 5000);
@@ -151,6 +168,17 @@ export interface ReviewedFile {
   path: string;
   reviewed_at: number;
   last_diff_hash: string | null;
+}
+
+export interface CheckpointRow {
+  id: string;
+  sessionId: string;
+  messageId: string | null;
+  cwd: string;
+  ref: string;
+  headSha: string | null;
+  label: string | null;
+  createdAt: number;
 }
 
 export interface TraceEvent {
@@ -508,6 +536,62 @@ export class Store {
       }))
       .reverse();
   }
+
+  // ───── checkpoints ─────
+  insertCheckpoint(c: CheckpointRow): void {
+    this.db
+      .prepare(
+        `INSERT INTO checkpoints (id, session_id, message_id, cwd, ref, head_sha, label, created_at)
+         VALUES (@id, @sessionId, @messageId, @cwd, @ref, @headSha, @label, @createdAt)`,
+      )
+      .run({
+        id: c.id,
+        sessionId: c.sessionId,
+        messageId: c.messageId,
+        cwd: c.cwd,
+        ref: c.ref,
+        headSha: c.headSha,
+        label: c.label,
+        createdAt: c.createdAt,
+      });
+  }
+
+  listCheckpoints(sessionId: string): CheckpointRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, session_id, message_id, cwd, ref, head_sha, label, created_at
+         FROM checkpoints WHERE session_id = ? ORDER BY created_at ASC`,
+      )
+      .all(sessionId) as Record<string, unknown>[];
+    return rows.map(rowToCheckpoint);
+  }
+
+  getCheckpoint(id: string): CheckpointRow | null {
+    const r = this.db
+      .prepare(
+        `SELECT id, session_id, message_id, cwd, ref, head_sha, label, created_at
+         FROM checkpoints WHERE id = ?`,
+      )
+      .get(id) as Record<string, unknown> | undefined;
+    return r ? rowToCheckpoint(r) : null;
+  }
+
+  deleteCheckpoint(id: string): void {
+    this.db.prepare("DELETE FROM checkpoints WHERE id = ?").run(id);
+  }
+}
+
+function rowToCheckpoint(r: Record<string, unknown>): CheckpointRow {
+  return {
+    id: r.id as string,
+    sessionId: r.session_id as string,
+    messageId: (r.message_id ?? null) as string | null,
+    cwd: r.cwd as string,
+    ref: r.ref as string,
+    headSha: (r.head_sha ?? null) as string | null,
+    label: (r.label ?? null) as string | null,
+    createdAt: r.created_at as number,
+  };
 }
 
 function rowToSession(r: Record<string, unknown>): PersistedSession {

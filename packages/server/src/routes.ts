@@ -7,6 +7,11 @@ import path from "node:path";
 import { CURATED_MODELS } from "@agent-view/shared";
 import type { FastifyInstance } from "fastify";
 import { listFiles } from "./file-index.js";
+import {
+  deleteCheckpoint as deleteCheckpointGit,
+  previewRestore,
+  restoreCheckpoint,
+} from "./git-checkpoint.js";
 import { PathSafetyError, assertWithinCwd } from "./path-safety.js";
 import type { SessionManager } from "./session-manager.js";
 
@@ -112,6 +117,56 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
       return { ok: true, status, path: result.filePath };
     } catch (e) {
       reply.code(404);
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+
+  // ───── checkpoints ─────
+  app.get<{ Params: { id: string } }>("/api/sessions/:id/checkpoints", async (req, reply) => {
+    try {
+      return { checkpoints: manager.listCheckpoints(req.params.id) };
+    } catch (e) {
+      reply.code(404);
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+
+  app.get<{ Params: { id: string } }>("/api/checkpoints/:id/preview", async (req, reply) => {
+    try {
+      const r = await previewRestore({
+        store: manager.store,
+        checkpointId: req.params.id,
+      });
+      return { paths: r.paths, total: r.total, checkpoint: r.checkpoint };
+    } catch (e) {
+      reply.code(404);
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+
+  app.post<{ Params: { id: string }; Body: { removeAdded?: boolean } }>(
+    "/api/checkpoints/:id/restore",
+    async (req, reply) => {
+      try {
+        const r = await restoreCheckpoint({
+          store: manager.store,
+          checkpointId: req.params.id,
+          removeAdded: !!req.body?.removeAdded,
+        });
+        return { ok: true, changed: r.changed, checkpoint: r.checkpoint };
+      } catch (e) {
+        reply.code(400);
+        return { error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
+  app.delete<{ Params: { id: string } }>("/api/checkpoints/:id", async (req, reply) => {
+    try {
+      await deleteCheckpointGit({ store: manager.store, checkpointId: req.params.id });
+      return { ok: true };
+    } catch (e) {
+      reply.code(400);
       return { error: e instanceof Error ? e.message : String(e) };
     }
   });

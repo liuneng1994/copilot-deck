@@ -1,10 +1,12 @@
-import { Bot, Copy, Pencil, RefreshCw, User } from "lucide-react";
+import { Bot, Copy, History, Pencil, RefreshCw, User } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
 import { classify } from "../../lib/content-renderer/classify";
 import { renderContent, useHoistArtifacts } from "../../lib/content-renderer/render";
 import { sendWs } from "../../lib/ws-client";
+import { useCheckpointStore } from "../../stores/checkpoint-store";
 import { type Message, useUIStore } from "../../stores/ui-store";
+import { confirmDialog } from "../overlays/confirm-dialog";
 
 function relativeTime(ts: number) {
   const d = Date.now() - ts;
@@ -174,9 +176,12 @@ function MessageToolbar({
         <Copy className={cn("h-3 w-3", copied && "text-success")} />
       </ToolbarButton>
       {isUser ? (
-        <ToolbarButton onClick={onEditUser} title="Edit & resend">
-          <Pencil className="h-3 w-3" />
-        </ToolbarButton>
+        <>
+          <ToolbarButton onClick={onEditUser} title="Edit & resend">
+            <Pencil className="h-3 w-3" />
+          </ToolbarButton>
+          <RestoreCheckpointButton sessionId={sessionId} messageId={message.id} />
+        </>
       ) : (
         <ToolbarButton onClick={onRegenerate} title="Regenerate from prior user prompt">
           <RefreshCw className="h-3 w-3" />
@@ -190,19 +195,86 @@ function ToolbarButton({
   onClick,
   title,
   children,
+  disabled,
 }: {
   onClick: () => void;
   title: string;
   children: ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={title}
-      className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      disabled={disabled}
+      className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
     >
       {children}
     </button>
+  );
+}
+
+function RestoreCheckpointButton({
+  sessionId,
+  messageId,
+}: {
+  sessionId: string;
+  messageId: string;
+}) {
+  const checkpoint = useCheckpointStore((s) => s.findByMessage(sessionId, messageId));
+  const setNotice = useUIStore((s) => s.setNotice);
+  const [busy, setBusy] = useState(false);
+
+  if (!checkpoint) return null;
+
+  const onRestore = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { paths, total } = await useCheckpointStore.getState().preview(checkpoint.id);
+      const sample = paths.slice(0, 8).join("\n");
+      const ageMin = Math.max(0, Math.round((Date.now() - checkpoint.createdAt) / 60_000));
+      const description =
+        total === 0
+          ? "No files differ from this checkpoint — nothing to restore."
+          : `Restoring will overwrite ${total} file${total === 1 ? "" : "s"} in your worktree from a snapshot taken ${ageMin}m ago.\n\n${sample}${total > paths.length ? `\n…and ${total - paths.length} more` : ""}`;
+      const ok = await confirmDialog({
+        title: "Restore from checkpoint?",
+        description,
+        confirmLabel: total === 0 ? "OK" : "Restore",
+        cancelLabel: "Cancel",
+        tone: "danger",
+      });
+      if (!ok || total === 0) return;
+      const result = await useCheckpointStore
+        .getState()
+        .restore(sessionId, checkpoint.id, { removeAdded: false });
+      setNotice({
+        id: `ckpt-restore-${Date.now()}`,
+        kind: "info",
+        text: `Restored ${result.changed.length} file${result.changed.length === 1 ? "" : "s"} from checkpoint.`,
+        ts: Date.now(),
+      });
+    } catch (err) {
+      setNotice({
+        id: `ckpt-restore-err-${Date.now()}`,
+        kind: "warn",
+        text: `Checkpoint restore failed: ${err instanceof Error ? err.message : String(err)}`,
+        ts: Date.now(),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <ToolbarButton
+      onClick={onRestore}
+      title="Restore worktree to the snapshot taken before this prompt"
+      disabled={busy}
+    >
+      <History className={cn("h-3 w-3", busy && "animate-pulse")} />
+    </ToolbarButton>
   );
 }

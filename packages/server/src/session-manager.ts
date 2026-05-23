@@ -10,6 +10,7 @@ import type * as acp from "@agentclientprotocol/sdk";
 import { CopilotAgent } from "./acp/copilot-agent.js";
 import { type MessageStream, persistSessionUpdate } from "./acp/persist.js";
 import { PERMISSION_TIMEOUT_MS, readDefaultCopilotModel } from "./config.js";
+import { captureCheckpoint } from "./git-checkpoint.js";
 import {
   DEFAULT_RENDER_HINT_MODE,
   type RenderHintMode,
@@ -100,7 +101,7 @@ export class SessionManager {
   /** Default model read from ~/.copilot/settings.json (or env). */
   private readonly defaultModel: string;
 
-  constructor(private readonly store: Store) {
+  constructor(readonly store: Store) {
     this.defaultModel = readDefaultCopilotModel();
     // Hydrate sticky permission decisions.
     for (const p of store.listPermissions()) {
@@ -776,6 +777,22 @@ export class SessionManager {
       text,
       ts: now,
     });
+
+    // Best-effort git checkpoint *before* the agent touches anything.
+    // Skip slash commands & empty input — they don't mutate files.
+    const trimmedForCkpt = text.trimStart();
+    if (trimmedForCkpt.length > 0 && !trimmedForCkpt.startsWith("/")) {
+      captureCheckpoint({
+        store: this.store,
+        sessionId,
+        cwd: entry.cwd,
+        messageId: userMsgId,
+        label: trimmedForCkpt.slice(0, 80),
+      }).catch((e) => {
+        console.warn(`[checkpoint] capture failed for ${sessionId}:`, e?.message ?? e);
+      });
+    }
+
     const stream = this.streams.get(sessionId);
     if (stream) {
       stream.agentMessageId = null;
@@ -893,6 +910,11 @@ export class SessionManager {
     const persisted = this.store.getSession(sessionId);
     if (!persisted) throw new Error(`unknown session ${sessionId}`);
     return upsertAgentsMd(persisted.cwd);
+  }
+
+  /** List all checkpoints for a session (ascending by createdAt). */
+  listCheckpoints(sessionId: string) {
+    return this.store.listCheckpoints(sessionId);
   }
 
   list() {

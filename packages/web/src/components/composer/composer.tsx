@@ -7,6 +7,7 @@ import {
   parseSlash,
 } from "../../lib/builtin-commands";
 import { sendWs } from "../../lib/ws-client";
+import { useCheckpointStore } from "../../stores/checkpoint-store";
 import { type SessionState, useUIStore } from "../../stores/ui-store";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/input";
@@ -141,6 +142,8 @@ export function Composer({ session }: { session: SessionState }) {
     appendUser(session.id, trimmed);
     setStatus(session.id, "streaming");
     sendWs({ type: "prompt", sessionId: session.id, text: trimmed });
+    // Server may have just created a git checkpoint — refetch shortly.
+    setTimeout(() => useCheckpointStore.getState().invalidate(session.id), 400);
     pushHistory(session.id, trimmed);
     historyIdxRef.current = -1;
     setText("");
@@ -172,6 +175,7 @@ export function Composer({ session }: { session: SessionState }) {
     setStatus(session.id, "streaming");
     pushHistory(session.id, prior);
     sendWs({ type: "prompt", sessionId: session.id, text: prior });
+    setTimeout(() => useCheckpointStore.getState().invalidate(session.id), 400);
   };
 
   /** Replace the active /token with /name (or run immediately for built-ins). */
