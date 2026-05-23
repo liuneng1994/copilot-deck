@@ -18,10 +18,22 @@ export function ModelPickerOverlay() {
   const models = useUIStore((s) => s.models);
   const defaultModel = useUIStore((s) => s.defaultModel);
   const modelByCwd = useUIStore((s) => s.modelByCwd);
+  const modelBySession = useUIStore((s) => s.modelBySession);
   const activeId = useUIStore((s) => s.activeSessionId);
   const session = useUIStore((s) => (activeId ? s.sessions[activeId] : null));
   const cwd = session?.cwd ?? null;
-  const currentModel = cwd ? (modelByCwd[cwd] ?? defaultModel) : defaultModel;
+  /** Scope toggle: when a session is active, default to per-session; user can
+   * flip to cwd-wide. */
+  const [scope, setScope] = useState<"session" | "cwd">(activeId ? "session" : "cwd");
+  // Reset scope when picker opens or activeId changes.
+  useEffect(() => {
+    if (open) setScope(activeId ? "session" : "cwd");
+  }, [open, activeId]);
+
+  const cwdEffective = cwd ? (modelByCwd[cwd] ?? defaultModel) : defaultModel;
+  const sessionOverride = activeId ? (modelBySession[activeId] ?? null) : null;
+  const currentModel =
+    scope === "session" && activeId ? (sessionOverride ?? cwdEffective) : cwdEffective;
 
   const [query, setQuery] = useState("");
 
@@ -62,12 +74,25 @@ export function ModelPickerOverlay() {
   if (!open) return null;
 
   const pick = (id: string) => {
-    if (!cwd) return;
-    sendWs({ type: "set_model", cwd, model: id });
-    // Optimistic local update — model_changed broadcast will reconfirm.
-    useUIStore.getState().setModelForCwd(cwd, id);
+    if (scope === "session" && activeId) {
+      sendWs({ type: "set_session_model", sessionId: activeId, model: id });
+      useUIStore.getState().setModelForSession(activeId, id);
+    } else if (cwd) {
+      sendWs({ type: "set_model", cwd, model: id });
+      useUIStore.getState().setModelForCwd(cwd, id);
+    } else {
+      return;
+    }
     setOpen(false);
   };
+
+  const canPick = scope === "session" ? !!activeId : !!cwd;
+  const scopeHint =
+    scope === "session" && activeId
+      ? "Applies to this session only · detaches + reattaches via ACP loadSession"
+      : cwd
+        ? `Applies to all sessions in ${cwd} (without per-session override) · respawns the agent`
+        : "No active session — pick a cwd in the sidebar first";
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-20">
@@ -82,12 +107,38 @@ export function ModelPickerOverlay() {
           <Cpu className="h-4 w-4 text-muted-foreground" />
           <div className="flex-1">
             <div className="text-sm font-medium">Switch model</div>
-            <div className="mt-0.5 text-[11px] text-muted-foreground">
-              {cwd
-                ? `Applies to ${cwd} · respawns the Copilot agent`
-                : "No active session — pick a cwd in the sidebar first"}
-            </div>
+            <div className="mt-0.5 text-[11px] text-muted-foreground">{scopeHint}</div>
           </div>
+          {activeId && cwd && (
+            <div className="flex items-center gap-0.5 rounded border border-border bg-background p-0.5 text-[10px]">
+              <button
+                type="button"
+                onClick={() => setScope("session")}
+                className={cn(
+                  "rounded px-1.5 py-0.5",
+                  scope === "session"
+                    ? "bg-primary/20 text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                title="Switch model for this session only"
+              >
+                session
+              </button>
+              <button
+                type="button"
+                onClick={() => setScope("cwd")}
+                className={cn(
+                  "rounded px-1.5 py-0.5",
+                  scope === "cwd"
+                    ? "bg-primary/20 text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                title="Switch default model for this cwd"
+              >
+                cwd
+              </button>
+            </div>
+          )}
           <button
             type="button"
             className="rounded p-1 text-muted-foreground hover:text-foreground"
@@ -127,13 +178,13 @@ export function ModelPickerOverlay() {
                       <button
                         type="button"
                         onClick={() => pick(m.id)}
-                        disabled={!cwd}
+                        disabled={!canPick}
                         className={cn(
                           "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left",
                           isCurrent
                             ? "bg-primary/15 text-foreground"
                             : "text-muted-foreground hover:bg-muted",
-                          !cwd && "cursor-not-allowed opacity-50",
+                          !canPick && "cursor-not-allowed opacity-50",
                         )}
                       >
                         <span className="w-4 shrink-0">
@@ -163,8 +214,9 @@ export function ModelPickerOverlay() {
         </div>
 
         <footer className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
-          Switching kills the current Copilot child for this cwd. Existing messages remain; the next
-          prompt starts a fresh ACP session under the chosen model.
+          {scope === "session" && activeId
+            ? "Per-session override detaches this session and reattaches it on the (cwd, model) agent via ACP loadSession. Other sessions stay on the cwd default."
+            : "Switching kills the current Copilot child for this cwd. Existing messages remain; the next prompt starts a fresh ACP session under the chosen model."}
         </footer>
       </div>
     </div>

@@ -38,11 +38,14 @@ export type ModelChangeListener = (ev: {
   sessionIds: string[];
 }) => void;
 export type SessionRenameListener = (ev: { sessionId: string; title: string }) => void;
+export type SessionModelChangeListener = (ev: { sessionId: string; model: string }) => void;
 
 interface SessionEntry {
   id: string;
   cwd: string;
   agent: CopilotAgent;
+  /** Effective model used by the agent serving this session. */
+  model: string;
 }
 
 interface PendingPermission {
@@ -60,8 +63,13 @@ interface PendingPermission {
  * process / ACP connection.
  */
 export class SessionManager {
-  private agentsByCwd = new Map<string, CopilotAgent>();
+  /** Active CopilotAgent children keyed by `${cwd}::${model}` so different
+   * model overrides within the same cwd run side-by-side without trampling. */
+  private agents = new Map<string, CopilotAgent>();
   private sessions = new Map<string, SessionEntry>();
+  /** Sessions with an explicit per-session model override (sessionId → model).
+   * Hydrated from SQLite on startup. */
+  private modelBySession = new Map<string, string>();
   private listeners = new Set<SessionUpdateListener>();
   private permissionListeners = new Set<PermissionRequestListener>();
   private childExitListeners = new Set<ChildExitListener>();
@@ -81,6 +89,8 @@ export class SessionManager {
   private modelListeners = new Set<ModelChangeListener>();
   /** Listeners for session renames. */
   private renameListeners = new Set<SessionRenameListener>();
+  /** Listeners for per-session model changes. */
+  private sessionModelListeners = new Set<SessionModelChangeListener>();
   /** Default model read from ~/.copilot/settings.json (or env). */
   private readonly defaultModel: string;
 
@@ -94,6 +104,7 @@ export class SessionManager {
     store.markAllDetached();
     for (const s of store.listSessions()) {
       this.detachedSessions.add(s.id);
+      if (s.model) this.modelBySession.set(s.id, s.model);
     }
   }
 
@@ -127,6 +138,11 @@ export class SessionManager {
     return () => this.renameListeners.delete(l);
   }
 
+  onSessionModelChange(l: SessionModelChangeListener) {
+    this.sessionModelListeners.add(l);
+    return () => this.sessionModelListeners.delete(l);
+  }
+
   getDefaultModel(): string {
     return this.defaultModel;
   }
@@ -136,25 +152,43 @@ export class SessionManager {
     return Object.fromEntries(this.modelByCwd);
   }
 
+  /** Snapshot of {sessionId → model}. Only includes sessions with an
+   * explicit per-session override (default = inherit cwd). */
+  getModelsBySession(): Record<string, string> {
+    return Object.fromEntries(this.modelBySession);
+  }
+
+  /** Resolve the effective model for (cwd, sessionId?) — falls back through
+   * session override → cwd default → global default. */
+  resolveModel(cwd: string, sessionId?: string): string {
+    if (sessionId) {
+      const s = this.modelBySession.get(sessionId);
+      if (s) return s;
+    }
+    return this.modelByCwd.get(cwd) ?? this.defaultModel;
+  }
+
   /**
-   * Switch the model for a given cwd. If a child process is running for that
-   * cwd, it is shut down so the next prompt (or proactive respawn) starts
-   * with the new model. Returns the affected session ids.
+   * Switch the model for a given cwd. Sessions in that cwd that don't have
+   * their own per-session override get reattached on the (cwd, new-model) agent;
+   * sessions with an override are left as-is. Returns the affected session ids.
    */
   async setModel(cwd: string, model: string): Promise<string[]> {
-    const current = this.modelByCwd.get(cwd) ?? this.defaultModel;
+    const prev = this.modelByCwd.get(cwd) ?? this.defaultModel;
     this.modelByCwd.set(cwd, model);
     const affected: string[] = [];
-    if (current === model) {
-      // No-op for the agent process but still emit so the UI updates.
-    } else {
-      const agent = this.agentsByCwd.get(cwd);
-      if (agent) {
+    if (prev !== model) {
+      // Find sessions that follow the cwd default (no per-session override).
+      const oldKey = this.agentKey(cwd, prev);
+      const oldAgent = this.agents.get(oldKey);
+      if (oldAgent) {
         for (const [sid, entry] of this.sessions) {
-          if (entry.cwd === cwd) affected.push(sid);
+          if (entry.cwd === cwd && !this.modelBySession.has(sid)) {
+            affected.push(sid);
+          }
         }
-        // shutdown triggers onExit which will detach affected sessions.
-        await agent.shutdown();
+        // shutdown triggers onExit which will detach sessions on this agent.
+        await oldAgent.shutdown();
       }
     }
     for (const l of this.modelListeners) {
@@ -165,6 +199,77 @@ export class SessionManager {
       }
     }
     return affected;
+  }
+
+  /**
+   * Switch the model for a single session (per-session override). The session
+   * is detached from its current (cwd, prevModel) agent and reattached on the
+   * (cwd, newModel) agent via ACP loadSession so its LLM context is preserved.
+   * Other sessions sharing the previous agent are unaffected.
+   */
+  async setSessionModel(sessionId: string, model: string): Promise<void> {
+    const persisted = this.store.getSession(sessionId);
+    if (!persisted) throw new Error(`unknown session ${sessionId}`);
+    const cwd = persisted.cwd;
+    const prevModel = this.resolveModel(cwd, sessionId);
+    this.modelBySession.set(sessionId, model);
+    this.store.setSessionModel(sessionId, model);
+
+    if (prevModel !== model) {
+      // Detach the session from its current agent (without killing the
+      // process — other sessions may still be using it).
+      const entry = this.sessions.get(sessionId);
+      if (entry) {
+        try {
+          await entry.agent.connection.cancel({ sessionId });
+        } catch {
+          // Best-effort cancel; ignore errors.
+        }
+        this.sessions.delete(sessionId);
+        this.detachedSessions.add(sessionId);
+        this.streams.delete(sessionId);
+        this.store.markSessionDetached(sessionId, true);
+        // If the old agent now has no live sessions, shut it down to free RAM.
+        const oldKey = this.agentKey(cwd, prevModel);
+        const oldAgent = this.agents.get(oldKey);
+        if (oldAgent) {
+          let stillUsed = false;
+          for (const e of this.sessions.values()) {
+            if (e.agent === oldAgent) {
+              stillUsed = true;
+              break;
+            }
+          }
+          if (!stillUsed) {
+            try {
+              await oldAgent.shutdown();
+            } catch {
+              // ignore
+            }
+          }
+        }
+        // Reattach onto the (cwd, model) agent.
+        try {
+          await this.reattachSession(sessionId);
+        } catch (e) {
+          // If reattach fails (e.g. Copilot has no saved history), leave the
+          // session detached. The user can still re-create or retry.
+          console.warn(`[setSessionModel] reattach failed for ${sessionId}:`, e);
+        }
+      }
+    }
+
+    for (const l of this.sessionModelListeners) {
+      try {
+        l({ sessionId, model });
+      } catch (e) {
+        console.error("sessionModelChange listener error", e);
+      }
+    }
+  }
+
+  private agentKey(cwd: string, model: string): string {
+    return `${cwd}::${model}`;
   }
 
   private trace(ev: Omit<TraceEventDTO, "id">) {
@@ -191,6 +296,7 @@ export class SessionManager {
       modeOptions: s.modeOptions,
       availableCommands: s.availableCommands,
       plan: s.plan,
+      model: s.model,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
       detached: s.detached,
@@ -237,6 +343,7 @@ export class SessionManager {
     }
     this.detachedSessions.delete(sessionId);
     this.streams.delete(sessionId);
+    this.modelBySession.delete(sessionId);
     this.store.deleteSession(sessionId);
   }
 
@@ -287,8 +394,9 @@ export class SessionManager {
     }
   }
 
-  private async getOrCreateAgent(cwd: string): Promise<CopilotAgent> {
-    const existing = this.agentsByCwd.get(cwd);
+  private async getOrCreateAgent(cwd: string, model: string): Promise<CopilotAgent> {
+    const key = this.agentKey(cwd, model);
+    const existing = this.agents.get(key);
     if (existing) return existing;
 
     const client: acp.Client = {
@@ -331,14 +439,16 @@ export class SessionManager {
       },
     };
     const agent = new CopilotAgent(client, {
-      extraArgs: ["--model", this.modelByCwd.get(cwd) ?? this.defaultModel],
+      extraArgs: ["--model", model],
       onStderr: (c) => process.stderr.write(`[copilot stderr] ${c}`),
       onExit: (code, signal) => {
-        console.warn(`[copilot] child exited code=${code} signal=${signal} cwd=${cwd}`);
-        this.agentsByCwd.delete(cwd);
+        console.warn(
+          `[copilot] child exited code=${code} signal=${signal} cwd=${cwd} model=${model}`,
+        );
+        this.agents.delete(key);
         const droppedSessionIds: string[] = [];
         for (const [sid, entry] of this.sessions) {
-          if (entry.cwd === cwd) {
+          if (entry.agent === agent) {
             droppedSessionIds.push(sid);
             this.sessions.delete(sid);
             this.detachedSessions.add(sid);
@@ -361,7 +471,7 @@ export class SessionManager {
       },
     });
 
-    this.agentsByCwd.set(cwd, agent);
+    this.agents.set(key, agent);
     await agent.initialize();
     return agent;
   }
@@ -491,17 +601,18 @@ export class SessionManager {
   }
 
   async createSession(cwd: string): Promise<{ sessionId: string; modes?: acp.SessionModeState }> {
-    const agent = await this.getOrCreateAgent(cwd);
+    const model = this.resolveModel(cwd);
+    const agent = await this.getOrCreateAgent(cwd, model);
     this.trace({
       sessionId: null,
       cwd,
       direction: "out",
       kind: "newSession",
-      payload: { cwd },
+      payload: { cwd, model },
       ts: Date.now(),
     });
     const res = await agent.connection.newSession({ cwd, mcpServers: [] });
-    this.sessions.set(res.sessionId, { id: res.sessionId, cwd, agent });
+    this.sessions.set(res.sessionId, { id: res.sessionId, cwd, agent, model });
     this.detachedSessions.delete(res.sessionId);
     const now = Date.now();
     const modes = res.modes;
@@ -541,7 +652,8 @@ export class SessionManager {
     const persisted = this.store.getSession(sessionId);
     if (!persisted) throw new Error(`unknown session ${sessionId}`);
     const cwd = persisted.cwd;
-    const agent = await this.getOrCreateAgent(cwd);
+    const model = this.resolveModel(cwd, sessionId);
+    const agent = await this.getOrCreateAgent(cwd, model);
     if (!agent.supportsLoadSession()) {
       throw new Error("agent does not support loadSession");
     }
@@ -550,7 +662,7 @@ export class SessionManager {
       cwd,
       direction: "out",
       kind: "loadSession",
-      payload: { cwd, sessionId },
+      payload: { cwd, sessionId, model },
       ts: Date.now(),
     });
     this.replayingSessions.add(sessionId);
@@ -569,7 +681,7 @@ export class SessionManager {
     } finally {
       this.replayingSessions.delete(sessionId);
     }
-    this.sessions.set(sessionId, { id: sessionId, cwd, agent });
+    this.sessions.set(sessionId, { id: sessionId, cwd, agent, model });
     this.detachedSessions.delete(sessionId);
     this.streams.delete(sessionId);
     this.store.markSessionDetached(sessionId, false);
@@ -669,8 +781,8 @@ export class SessionManager {
   }
 
   async shutdownAll() {
-    await Promise.all([...this.agentsByCwd.values()].map((a) => a.shutdown()));
-    this.agentsByCwd.clear();
+    await Promise.all([...this.agents.values()].map((a) => a.shutdown()));
+    this.agents.clear();
     this.sessions.clear();
   }
 

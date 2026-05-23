@@ -130,6 +130,8 @@ export interface UIState {
   defaultModel: string | null;
   /** Per-cwd current model — empty means "use defaultModel". */
   modelByCwd: Record<string, string>;
+  /** Per-session model override — empty means "use cwd/default". */
+  modelBySession: Record<string, string>;
   /** Model picker overlay visibility. */
   modelPickerOpen: boolean;
   /** Inspector Files-tab: which path the user opened (clicked or set externally). */
@@ -187,8 +189,10 @@ export interface UIState {
     models: ModelInfo[],
     defaultModel: string,
     currentByCwd: Record<string, string>,
+    currentBySession: Record<string, string>,
   ) => void;
   setModelForCwd: (cwd: string, model: string) => void;
+  setModelForSession: (sessionId: string, model: string) => void;
   setModelPickerOpen: (open: boolean) => void;
   setFilePreviewPath: (path: string | null) => void;
   setDraft: (sessionId: string, text: string) => void;
@@ -327,6 +331,7 @@ export const useUIStore = create<UIState>((set) => ({
   models: [],
   defaultModel: null,
   modelByCwd: {},
+  modelBySession: {},
   modelPickerOpen: false,
   filePreviewPath: null,
   drafts: loadDrafts(),
@@ -624,6 +629,7 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => {
       const sessions: Record<string, SessionState> = { ...state.sessions };
       const toolCalls: Record<string, ToolCallState> = { ...state.toolCalls };
+      const modelBySession: Record<string, string> = { ...state.modelBySession };
       for (const h of hydrated) {
         // Don't trample an already-live session (e.g. one created in this tab pre-WS-ready).
         if (sessions[h.id] && sessions[h.id].messages.length > 0) continue;
@@ -670,8 +676,9 @@ export const useUIStore = create<UIState>((set) => ({
           updatedAt: h.updatedAt,
           detached: h.detached,
         };
+        if (h.model) modelBySession[h.id] = h.model;
       }
-      return { sessions, toolCalls, hydrated: true };
+      return { sessions, toolCalls, modelBySession, hydrated: true };
     }),
 
   appendTrace: (ev) =>
@@ -689,9 +696,16 @@ export const useUIStore = create<UIState>((set) => ({
   setHelpOpen: (open) => set({ helpOpen: open }),
   setFindOpen: (open) => set({ findOpen: open }),
   setNotice: (n) => set({ notice: n }),
-  setModels: (models, defaultModel, currentByCwd) =>
-    set({ models, defaultModel, modelByCwd: { ...currentByCwd } }),
+  setModels: (models, defaultModel, currentByCwd, currentBySession) =>
+    set({
+      models,
+      defaultModel,
+      modelByCwd: { ...currentByCwd },
+      modelBySession: { ...currentBySession },
+    }),
   setModelForCwd: (cwd, model) => set((s) => ({ modelByCwd: { ...s.modelByCwd, [cwd]: model } })),
+  setModelForSession: (sessionId, model) =>
+    set((s) => ({ modelBySession: { ...s.modelBySession, [sessionId]: model } })),
   setModelPickerOpen: (open) => set({ modelPickerOpen: open }),
   setFilePreviewPath: (path) => set({ filePreviewPath: path }),
   setDraft: (sessionId, text) =>

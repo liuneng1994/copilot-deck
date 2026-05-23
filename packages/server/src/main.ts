@@ -81,6 +81,13 @@ async function main() {
             title: ev.title,
           });
         }),
+        manager.onSessionModelChange((ev) => {
+          send({
+            type: "session_model_changed",
+            sessionId: ev.sessionId,
+            model: ev.model,
+          });
+        }),
       ];
 
       socket.on("close", () => {

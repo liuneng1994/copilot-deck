@@ -30,6 +30,7 @@ export type ClientToServer =
   | { type: "request_trace"; sessionId?: string; sinceId?: number; limit?: number }
   | { type: "list_models" }
   | { type: "set_model"; cwd: string; model: string }
+  | { type: "set_session_model"; sessionId: string; model: string }
   | { type: "reattach_session"; sessionId: string }
   | {
       type: "permission_reply";
@@ -101,6 +102,8 @@ export type ServerToClient =
       models: ModelInfo[];
       defaultModel: string;
       currentByCwd: Record<string, string>;
+      /** Per-session overrides (sessionId → modelId). */
+      currentBySession: Record<string, string>;
     }
   | {
       // Model for a cwd changed (broadcast). Includes pre-existing sessionIds
@@ -109,6 +112,13 @@ export type ServerToClient =
       cwd: string;
       model: string;
       sessionIds: string[];
+    }
+  | {
+      // Model for a specific session changed (broadcast). The session is
+      // detached + reattached on the (cwd, model) agent.
+      type: "session_model_changed";
+      sessionId: string;
+      model: string;
     }
   | {
       // A previously-detached session was successfully reattached via ACP
@@ -149,6 +159,8 @@ export interface HydratedSession {
   modeOptions: { id: string; name: string; description?: string }[] | null;
   availableCommands: { name: string; description?: string }[] | null;
   plan: PlanEntrySnapshot[] | null;
+  /** Per-session model override (null = inherit cwd/default). */
+  model: string | null;
   createdAt: number;
   updatedAt: number;
   detached: boolean;

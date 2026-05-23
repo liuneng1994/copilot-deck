@@ -19,7 +19,9 @@ CREATE TABLE IF NOT EXISTS sessions (
    * is read-only until the user re-opens it (which spawns a new child). */
   detached INTEGER DEFAULT 0,
   /** JSON-encoded ACP plan entries (most-recent plan update wins). */
-  plan TEXT
+  plan TEXT,
+  /** Per-session model override (null = inherit cwd default). */
+  model TEXT
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -99,6 +101,8 @@ export interface PersistedSession {
   updatedAt: number;
   detached: boolean;
   plan: PlanEntry[] | null;
+  /** Per-session model override (null = inherit cwd default). */
+  model: string | null;
 }
 
 export interface PersistedMessage {
@@ -147,6 +151,7 @@ export class Store {
     // Lightweight migration: ensure newer columns exist on older DBs that
     // were created before they were introduced.
     this.ensureColumn("sessions", "plan", "TEXT");
+    this.ensureColumn("sessions", "model", "TEXT");
   }
 
   /**
@@ -166,9 +171,10 @@ export class Store {
 
   // ───── sessions ─────
   upsertSession(
-    s: Omit<PersistedSession, "detached" | "plan"> & {
+    s: Omit<PersistedSession, "detached" | "plan" | "model"> & {
       detached?: boolean;
       plan?: PlanEntry[] | null;
+      model?: string | null;
     },
   ) {
     this.db
@@ -224,7 +230,7 @@ export class Store {
   listSessions(): PersistedSession[] {
     const rows = this.db
       .prepare(
-        `SELECT id, cwd, title, mode_id, mode_name, mode_options, available_commands, status, created_at, updated_at, detached, plan
+        `SELECT id, cwd, title, mode_id, mode_name, mode_options, available_commands, status, created_at, updated_at, detached, plan, model
          FROM sessions ORDER BY updated_at DESC`,
       )
       .all() as Record<string, unknown>[];
@@ -234,7 +240,7 @@ export class Store {
   getSession(id: string): PersistedSession | null {
     const row = this.db
       .prepare(
-        `SELECT id, cwd, title, mode_id, mode_name, mode_options, available_commands, status, created_at, updated_at, detached, plan
+        `SELECT id, cwd, title, mode_id, mode_name, mode_options, available_commands, status, created_at, updated_at, detached, plan, model
          FROM sessions WHERE id = ?`,
       )
       .get(id) as Record<string, unknown> | undefined;
@@ -245,6 +251,12 @@ export class Store {
     this.db
       .prepare("UPDATE sessions SET plan = ?, updated_at = ? WHERE id = ?")
       .run(plan ? JSON.stringify(plan) : null, Date.now(), id);
+  }
+
+  setSessionModel(id: string, model: string | null): void {
+    this.db
+      .prepare("UPDATE sessions SET model = ?, updated_at = ? WHERE id = ?")
+      .run(model, Date.now(), id);
   }
 
   touchSession(id: string, status?: string) {
@@ -441,6 +453,7 @@ function rowToSession(r: Record<string, unknown>): PersistedSession {
     updatedAt: r.updated_at as number,
     detached: (r.detached as number) === 1,
     plan: r.plan ? (JSON.parse(r.plan as string) as PlanEntry[]) : null,
+    model: (r.model ?? null) as string | null,
   };
 }
 

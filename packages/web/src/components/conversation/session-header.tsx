@@ -37,11 +37,14 @@ export function SessionHeader({ session }: { session: SessionState }) {
   const models = useUIStore((s) => s.models);
   const defaultModel = useUIStore((s) => s.defaultModel);
   const modelByCwd = useUIStore((s) => s.modelByCwd);
+  const modelBySession = useUIStore((s) => s.modelBySession);
   const setPickerOpen = useUIStore((s) => s.setModelPickerOpen);
   const removeSession = useUIStore((s) => s.removeSession);
-  const currentModelId = modelByCwd[session.cwd] ?? defaultModel ?? "";
+  const sessionOverrideId = modelBySession[session.id];
+  const currentModelId = sessionOverrideId ?? modelByCwd[session.cwd] ?? defaultModel ?? "";
   const currentModel = models.find((m) => m.id === currentModelId);
   const modelLabel = currentModel?.label ?? currentModelId.split(":")[0] ?? "model";
+  const isSessionOverride = !!sessionOverrideId;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -103,11 +106,16 @@ export function SessionHeader({ session }: { session: SessionState }) {
         <button
           type="button"
           onClick={() => setPickerOpen(true)}
-          title={`Switch model — current: ${currentModelId || "(unset)"}`}
+          title={`Switch model — current: ${currentModelId || "(unset)"}${isSessionOverride ? " (per-session override)" : ""}`}
           className="flex items-center gap-1.5 rounded border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <Cpu className="h-3 w-3" />
           <span className="max-w-[160px] truncate font-mono">{modelLabel}</span>
+          {isSessionOverride && (
+            <span className="rounded bg-primary/15 px-1 py-0.5 text-[8px] font-medium uppercase tracking-wider text-primary">
+              session
+            </span>
+          )}
         </button>
         <ModeSelector session={session} />
         <Popover open={menuOpen} onOpenChange={setMenuOpen}>

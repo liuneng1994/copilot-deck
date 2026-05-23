@@ -107,11 +107,16 @@ export const wsHandlers: HandlerMap = {
       models: CURATED_MODELS,
       defaultModel: manager.getDefaultModel(),
       currentByCwd: manager.getModelsByCwd(),
+      currentBySession: manager.getModelsBySession(),
     });
   },
 
   async set_model(msg, { manager }) {
     await manager.setModel(msg.cwd, msg.model);
+  },
+
+  async set_session_model(msg, { manager }) {
+    await manager.setSessionModel(msg.sessionId, msg.model);
   },
 
   async reattach_session(msg, { manager, send }) {
