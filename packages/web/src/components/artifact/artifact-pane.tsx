@@ -2,6 +2,7 @@ import { Download, ExternalLink, Maximize2, Minimize2, Pin, PinOff, X } from "lu
 import { useState } from "react";
 import { cn } from "../../lib/cn";
 import { renderContent } from "../../lib/content-renderer/render";
+import { CsvChart } from "../../lib/content-renderer/renderers/csv-chart";
 import {
   type Artifact,
   selectSessionArtifacts,
@@ -100,14 +101,44 @@ export function ArtifactPane({ sessionId, width }: { sessionId: string; width: n
 }
 
 function ArtifactBody({ artifact }: { artifact: Artifact }) {
+  const it = artifact.item;
+  const canChart = it.kind === "table" || it.kind === "csv";
+  const [view, setView] = useState<"data" | "chart">("data");
+  const effective = canChart ? view : "data";
+
   return (
-    <div className="artifact-body">
-      {renderContent({
-        item: artifact.item,
-        sessionId: artifact.sessionId,
-        msgId: artifact.sourceMsgId,
-        full: true,
-      })}
+    <div className="artifact-body flex h-full min-h-0 flex-col">
+      {canChart ? (
+        <div className="mb-2 inline-flex w-fit items-center gap-1 rounded-md border border-border bg-panel p-0.5 text-xs">
+          {(["data", "chart"] as const).map((v) => (
+            <button
+              type="button"
+              key={v}
+              onClick={() => setView(v)}
+              className={cn(
+                "rounded px-2 py-0.5 transition-colors",
+                effective === v
+                  ? "bg-accent/15 text-accent"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {v === "data" ? "Table" : "Chart"}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="min-h-0 flex-1">
+        {effective === "chart" && (it.kind === "table" || it.kind === "csv") ? (
+          <CsvChart header={it.header} rows={it.rows} />
+        ) : (
+          renderContent({
+            item: artifact.item,
+            sessionId: artifact.sessionId,
+            msgId: artifact.sourceMsgId,
+            full: true,
+          })
+        )}
+      </div>
     </div>
   );
 }

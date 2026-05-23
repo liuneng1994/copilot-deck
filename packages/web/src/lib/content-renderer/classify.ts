@@ -96,6 +96,22 @@ interface RawSpan {
   build: (text: string) => ContentItem | null;
 }
 
+function parseShellCommands(body: string): { cmd: string }[] | null {
+  // Recognise blocks like:
+  //   $ npm install
+  //   $ pnpm test --filter web
+  // Lines without a leading `$ ` are ignored. We deliberately keep this strict
+  // so that pasted output / scripts don't get misinterpreted as a command list.
+  const lines = body.split(/\r?\n/);
+  const cmds: { cmd: string }[] = [];
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, "");
+    const m = /^\s*\$\s+(.+)$/.exec(line);
+    if (m) cmds.push({ cmd: m[1] ?? "" });
+  }
+  return cmds.length > 0 ? cmds : null;
+}
+
 function fenceSpan(_text: string, f: FenceMatch, end: number): RawSpan {
   const id = idFor(f.lang || "code", f.offset);
   const body = f.body.replace(/\n$/, "");
@@ -116,6 +132,10 @@ function fenceSpan(_text: string, f: FenceMatch, end: number): RawSpan {
       if (f.lang === "tsv") {
         const p = parseDsv(body, "\t");
         if (p && p.rows.length > 0) return { kind: "csv", id, header: p.header, rows: p.rows };
+      }
+      if (f.lang === "bash" || f.lang === "sh" || f.lang === "shell" || f.lang === "zsh") {
+        const cmds = parseShellCommands(body);
+        if (cmds) return { kind: "shell", id, commands: cmds };
       }
       return {
         kind: "code",

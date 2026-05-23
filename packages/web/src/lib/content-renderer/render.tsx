@@ -4,9 +4,12 @@ import remarkGfm from "remark-gfm";
 import { CodeBlock } from "../../components/conversation/code-block";
 import { LinkifyPaths } from "../../components/conversation/file-link";
 import { useArtifactStore } from "../../stores/artifact-store";
+import { HtmlSandbox } from "./renderers/html-sandbox";
 import { JsonInline } from "./renderers/json-tree";
 import { MathBlock } from "./renderers/katex";
 import { MermaidInline } from "./renderers/mermaid";
+import { ShellInline } from "./renderers/shell";
+import { SvgSafe } from "./renderers/svg-safe";
 import { TableInline } from "./renderers/table";
 import { shouldHoist } from "./thresholds";
 import type { ContentItem } from "./types";
@@ -155,25 +158,13 @@ export function renderContent({
       );
 
     case "html":
+      return <HtmlSandbox key={item.id} src={item.src} full={full} />;
     case "svg":
-      return (
-        <div
-          key={item.id}
-          className="my-2 rounded-md border border-border bg-panel p-2 text-xs text-muted-foreground"
-        >
-          <span className="font-mono uppercase tracking-wider">{item.kind} preview</span> (open in
-          artifact pane)
-        </div>
-      );
+      return <SvgSafe key={item.id} src={item.src} full={full} />;
 
     case "shell":
       return (
-        <pre
-          key={item.id}
-          className="my-2 overflow-auto rounded-md border border-border bg-panel p-2 font-mono text-xs"
-        >
-          {item.commands.map((c) => `$ ${c.cmd}`).join("\n")}
-        </pre>
+        <ShellInline key={item.id} commands={item.commands} sessionId={sessionId} full={full} />
       );
   }
 }
