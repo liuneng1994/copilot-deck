@@ -1,8 +1,13 @@
 import type {
+  ExtensionOpDone,
+  ExtensionOpProgress,
   HydratedSession,
+  MarketplaceInfo,
+  MarketplacePlugin,
   ModelInfo,
   PermissionOption,
   PermissionToolCallSnapshot,
+  PluginInfo,
   TraceEventDTO,
 } from "@agent-view/shared";
 import { create } from "zustand";
@@ -99,7 +104,35 @@ export interface PermissionRequest {
   receivedAt: number;
 }
 
-export interface UIState {
+export interface ExtensionOpState {
+  kind: string;
+  target: string;
+  lines: string[];
+  done: boolean;
+  success?: boolean;
+  error?: string;
+}
+
+export interface ExtensionsSlice {
+  plugins: PluginInfo[] | null;
+  marketplaces: MarketplaceInfo[] | null;
+  marketplaceBrowse: Record<string, MarketplacePlugin[] | null>;
+  extOps: Record<string, ExtensionOpState>;
+  loadPlugins: () => Promise<void>;
+  loadMarketplaces: () => Promise<void>;
+  loadMarketplaceBrowse: (name: string) => Promise<void>;
+  installPlugin: (source: string) => Promise<string | undefined>;
+  uninstallPlugin: (name: string) => Promise<void>;
+  updatePlugin: (name: string) => Promise<string | undefined>;
+  updateAllPlugins: () => Promise<string | undefined>;
+  addMarketplace: (source: string) => Promise<void>;
+  removeMarketplace: (name: string) => Promise<void>;
+  updateMarketplace: (name: string) => Promise<string | undefined>;
+  recordExtOpProgress: (msg: ExtensionOpProgress) => void;
+  recordExtOpDone: (msg: ExtensionOpDone) => void;
+}
+
+export interface UIState extends ExtensionsSlice {
   sidebarCollapsed: boolean;
   inspectorCollapsed: boolean;
   activeSessionId: string | null;
@@ -227,6 +260,13 @@ function sigForBlock(b: ToolCallContentBlock): string {
   }
 }
 
+async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, init);
+  const body = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(body.error ?? `${res.status} ${res.statusText}`);
+  return body as T;
+}
+
 function summarizeInput(input: unknown): string | undefined {
   if (input == null) return undefined;
   if (typeof input === "string") return input.slice(0, 120);
@@ -314,7 +354,7 @@ function savePanelWidths(w: { sidebar: number; inspector: number }): void {
   } catch {}
 }
 
-export const useUIStore = create<UIState>((set) => ({
+export const useUIStore = create<UIState>((set, get) => ({
   sidebarCollapsed: false,
   inspectorCollapsed: false,
   activeSessionId: null,
@@ -323,6 +363,10 @@ export const useUIStore = create<UIState>((set) => ({
   sessions: {},
   toolCalls: {},
   permissionQueue: [],
+  plugins: null,
+  marketplaces: null,
+  marketplaceBrowse: {},
+  extOps: {},
   hydrated: false,
   trace: [],
   traceFilters: { sessionScope: true },
@@ -343,6 +387,133 @@ export const useUIStore = create<UIState>((set) => ({
   composerLoadEpoch: {},
   sidebarWidth: loadPanelWidths().sidebar,
   inspectorWidth: loadPanelWidths().inspector,
+
+  loadPlugins: async () => {
+    try {
+      const data = await fetchJson<{ plugins: PluginInfo[] }>("/api/extensions/plugins");
+      set({ plugins: data.plugins, lastError: null });
+    } catch (error) {
+      set({ lastError: error instanceof Error ? error.message : String(error) });
+      throw error;
+    }
+  },
+  loadMarketplaces: async () => {
+    try {
+      const data = await fetchJson<{ marketplaces: MarketplaceInfo[] }>(
+        "/api/extensions/plugin-marketplaces",
+      );
+      set({ marketplaces: data.marketplaces, lastError: null });
+    } catch (error) {
+      set({ lastError: error instanceof Error ? error.message : String(error) });
+      throw error;
+    }
+  },
+  loadMarketplaceBrowse: async (name) => {
+    set((s) => ({ marketplaceBrowse: { ...s.marketplaceBrowse, [name]: null } }));
+    try {
+      const data = await fetchJson<{ plugins: MarketplacePlugin[] }>(
+        `/api/extensions/plugin-marketplaces/${encodeURIComponent(name)}/browse`,
+      );
+      set((s) => ({
+        marketplaceBrowse: { ...s.marketplaceBrowse, [name]: data.plugins },
+        lastError: null,
+      }));
+    } catch (error) {
+      set({ lastError: error instanceof Error ? error.message : String(error) });
+      throw error;
+    }
+  },
+  installPlugin: async (source) => {
+    const data = await fetchJson<{ opId?: string }>("/api/extensions/plugins", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source }),
+    });
+    return data.opId;
+  },
+  uninstallPlugin: async (name) => {
+    await fetchJson<{ ok: boolean }>(`/api/extensions/plugins/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    });
+    await get().loadPlugins();
+  },
+  updatePlugin: async (name) => {
+    const data = await fetchJson<{ opId?: string }>(
+      `/api/extensions/plugins/${encodeURIComponent(name)}/update`,
+      { method: "POST" },
+    );
+    return data.opId;
+  },
+  updateAllPlugins: async () => {
+    const data = await fetchJson<{ opId?: string }>("/api/extensions/plugins/update-all", {
+      method: "POST",
+    });
+    return data.opId;
+  },
+  addMarketplace: async (source) => {
+    const data = await fetchJson<{ marketplaces: MarketplaceInfo[] }>(
+      "/api/extensions/plugin-marketplaces",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ source }),
+      },
+    );
+    set({ marketplaces: data.marketplaces });
+  },
+  removeMarketplace: async (name) => {
+    await fetchJson<{ ok: boolean }>(
+      `/api/extensions/plugin-marketplaces/${encodeURIComponent(name)}`,
+      { method: "DELETE" },
+    );
+    set((s) => {
+      const { [name]: _removed, ...browse } = s.marketplaceBrowse;
+      return { marketplaceBrowse: browse };
+    });
+    await get().loadMarketplaces();
+  },
+  updateMarketplace: async (name) => {
+    const data = await fetchJson<{ opId?: string }>(
+      `/api/extensions/plugin-marketplaces/${encodeURIComponent(name)}/update`,
+      { method: "POST" },
+    );
+    return data.opId;
+  },
+  recordExtOpProgress: (msg) =>
+    set((s) => {
+      const existing = s.extOps[msg.opId];
+      return {
+        extOps: {
+          ...s.extOps,
+          [msg.opId]: {
+            kind: msg.kind,
+            target: msg.target,
+            lines: [...(existing?.lines ?? []), msg.line].slice(-80),
+            done: false,
+          },
+        },
+      };
+    }),
+  recordExtOpDone: (msg) =>
+    set((s) => {
+      const existing = s.extOps[msg.opId] ?? {
+        kind: "operation",
+        target: msg.opId,
+        lines: [],
+        done: false,
+      };
+      return {
+        extOps: {
+          ...s.extOps,
+          [msg.opId]: {
+            ...existing,
+            done: true,
+            success: msg.success,
+            error: msg.error,
+          },
+        },
+      };
+    }),
 
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   toggleInspector: () => set((s) => ({ inspectorCollapsed: !s.inspectorCollapsed })),

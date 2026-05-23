@@ -260,6 +260,22 @@ export function useWsBridge() {
           store.setTrace(msg.events);
           break;
         }
+        case "extensions_list": {
+          if (msg.kind === "plugins") {
+            void store.loadPlugins();
+          } else if (msg.kind === "marketplaces") {
+            void store.loadMarketplaces();
+          }
+          break;
+        }
+        case "extension_op_progress": {
+          store.recordExtOpProgress(msg);
+          break;
+        }
+        case "extension_op_done": {
+          store.recordExtOpDone(msg);
+          break;
+        }
         case "models_snapshot": {
           store.setModels(msg.models, msg.defaultModel, msg.currentByCwd, msg.currentBySession);
           break;
