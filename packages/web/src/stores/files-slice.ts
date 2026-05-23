@@ -33,6 +33,7 @@ export interface FilesSlice {
   setSelectedFilePath(path: string | null): void;
   setFilesViewMode(mode: FilesViewMode): void;
   setFilesFilters(patch: Partial<FilesFilters>): void;
+  hydrateReviewed(sessionId: string, paths: string[]): void;
   markReviewed(sessionId: string, path: string, reviewed: boolean): void;
   invalidateFilesIndex(cwd: string): void;
   recordGitStatus(cwd: string, status: GitStatus): void;
@@ -51,6 +52,7 @@ const DEFAULT_FILTERS: FilesFilters = {
 };
 
 const LS_KEY = "av:files:filters";
+const VIEW_MODE_LS_KEY = "av:files:viewMode";
 
 function loadInitialFilters(): FilesFilters {
   if (typeof window === "undefined") return DEFAULT_FILTERS;
@@ -63,9 +65,29 @@ function loadInitialFilters(): FilesFilters {
   }
 }
 
+function loadInitialViewMode(): FilesViewMode {
+  if (typeof window === "undefined") return "files";
+  const raw = window.localStorage.getItem(VIEW_MODE_LS_KEY);
+  return raw === "files" || raw === "search" || raw === "timeline" ? raw : "files";
+}
+
+async function sha1(text: string): Promise<string> {
+  const bytes = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest("SHA-1", bytes);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function diffHash(cwd: string, path: string): Promise<string> {
+  const params = new URLSearchParams({ cwd, path, base: "HEAD" });
+  const response = await fetch(`/api/git/diff?${params.toString()}`);
+  if (!response.ok) throw new Error(await response.text());
+  const data = (await response.json()) as { diff?: string };
+  return sha1(data.diff ?? "");
+}
+
 export const createFilesSlice: StateCreator<FilesSlice & any, [], [], FilesSlice> = (set, get) => ({
   filesOverview: {},
-  filesViewMode: "files",
+  filesViewMode: loadInitialViewMode(),
   selectedFilePath: null,
   reviewed: {},
   filters: loadInitialFilters(),
@@ -98,6 +120,9 @@ export const createFilesSlice: StateCreator<FilesSlice & any, [], [], FilesSlice
   },
   setFilesViewMode(mode) {
     set({ filesViewMode: mode });
+    try {
+      window.localStorage.setItem(VIEW_MODE_LS_KEY, mode);
+    } catch {}
   },
   setFilesFilters(patch) {
     const next = { ...get().filters, ...patch };
@@ -106,11 +131,25 @@ export const createFilesSlice: StateCreator<FilesSlice & any, [], [], FilesSlice
       window.localStorage.setItem(LS_KEY, JSON.stringify(next));
     } catch {}
   },
+  hydrateReviewed(sessionId, paths) {
+    set({ reviewed: { ...get().reviewed, [sessionId]: new Set(paths) } });
+  },
   markReviewed(sessionId, path, reviewed) {
     const current = new Set(get().reviewed[sessionId] ?? []);
     if (reviewed) current.add(path);
     else current.delete(path);
     set({ reviewed: { ...get().reviewed, [sessionId]: current } });
+
+    void (async () => {
+      const { sendWs } = await import("../lib/ws-client");
+      if (!reviewed) {
+        sendWs({ type: "unmark_reviewed", sessionId, path });
+        return;
+      }
+      const cwd = get().sessions?.[sessionId]?.cwd;
+      if (!cwd) return;
+      sendWs({ type: "mark_reviewed", sessionId, path, diffHash: await diffHash(cwd, path) });
+    })().catch(() => {});
   },
   invalidateFilesIndex(cwd) {
     void get().loadFilesOverview(cwd);

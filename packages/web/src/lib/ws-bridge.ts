@@ -269,6 +269,12 @@ export function useWsBridge() {
         }
         case "hydrate": {
           store.hydrate(msg.sessions);
+          for (const session of msg.sessions) {
+            store.hydrateReviewed(
+              session.id,
+              (session.reviewed ?? []).map((item) => item.path),
+            );
+          }
           const after = useUIStore.getState();
           if (!after.activeSessionId && msg.sessions.length > 0) {
             after.setActiveSession(msg.sessions[0].id);

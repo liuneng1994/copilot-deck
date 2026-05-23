@@ -51,6 +51,17 @@ CREATE TABLE IF NOT EXISTS tool_calls (
 );
 CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id, ts);
 
+CREATE TABLE IF NOT EXISTS session_files (
+  session_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  source TEXT,
+  reviewed_at INTEGER,
+  last_diff_hash TEXT,
+  PRIMARY KEY (session_id, path),
+  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_session_files_reviewed ON session_files(session_id, reviewed_at);
+
 CREATE TABLE IF NOT EXISTS permissions (
   cwd TEXT NOT NULL,
   tool_name TEXT NOT NULL,
@@ -128,6 +139,12 @@ export interface PersistedToolCall {
   ts: number;
 }
 
+export interface ReviewedFile {
+  path: string;
+  reviewed_at: number;
+  last_diff_hash: string | null;
+}
+
 export interface TraceEvent {
   id?: number;
   sessionId: string | null;
@@ -152,6 +169,9 @@ export class Store {
     // were created before they were introduced.
     this.ensureColumn("sessions", "plan", "TEXT");
     this.ensureColumn("sessions", "model", "TEXT");
+    this.ensureColumn("session_files", "source", "TEXT");
+    this.ensureColumn("session_files", "reviewed_at", "INTEGER");
+    this.ensureColumn("session_files", "last_diff_hash", "TEXT");
   }
 
   /**
@@ -348,6 +368,36 @@ export class Store {
       )
       .get(id) as Record<string, unknown> | undefined;
     return row ? rowToToolCall(row) : null;
+  }
+
+  // ───── session files ─────
+  markReviewed(sessionId: string, path: string, diffHash: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO session_files (session_id, path, reviewed_at, last_diff_hash)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(session_id, path) DO UPDATE SET
+           reviewed_at = excluded.reviewed_at,
+           last_diff_hash = excluded.last_diff_hash`,
+      )
+      .run(sessionId, path, Date.now(), diffHash);
+  }
+
+  unmarkReviewed(sessionId: string, path: string): void {
+    this.db
+      .prepare("UPDATE session_files SET reviewed_at = NULL WHERE session_id = ? AND path = ?")
+      .run(sessionId, path);
+  }
+
+  loadReviewed(sessionId: string): ReviewedFile[] {
+    return this.db
+      .prepare(
+        `SELECT path, reviewed_at, last_diff_hash
+         FROM session_files
+         WHERE session_id = ? AND reviewed_at IS NOT NULL
+         ORDER BY reviewed_at ASC`,
+      )
+      .all(sessionId) as ReviewedFile[];
   }
 
   // ───── permissions ─────

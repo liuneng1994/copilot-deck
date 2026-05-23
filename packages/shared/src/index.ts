@@ -200,6 +200,25 @@ export interface GrepDoneMessage {
   error?: string;
 }
 
+export interface ReviewedFileSnapshot {
+  path: string;
+  reviewed_at: number;
+  last_diff_hash: string | null;
+}
+
+export interface MarkReviewedMsg {
+  type: "mark_reviewed";
+  sessionId: string;
+  path: string;
+  diffHash: string;
+}
+
+export interface UnmarkReviewedMsg {
+  type: "unmark_reviewed";
+  sessionId: string;
+  path: string;
+}
+
 export type ClientToServer =
   | { type: "create_session"; cwd: string }
   | { type: "prompt"; sessionId: string; text: string }
@@ -214,6 +233,8 @@ export type ClientToServer =
   | { type: "set_session_model"; sessionId: string; model: string }
   | { type: "reload_session"; sessionId: string }
   | { type: "reattach_session"; sessionId: string }
+  | MarkReviewedMsg
+  | UnmarkReviewedMsg
   | {
       type: "extensions_list_request";
       kind: ExtensionsKind;
@@ -373,6 +394,7 @@ export interface HydratedSession {
   createdAt: number;
   updatedAt: number;
   detached: boolean;
+  reviewed: ReviewedFileSnapshot[];
   messages: { id: string; role: string; text: string; ts: number }[];
   toolCalls: {
     id: string;

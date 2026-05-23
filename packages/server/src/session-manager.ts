@@ -270,6 +270,7 @@ export class SessionManager {
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
       detached: s.detached,
+      reviewed: this.store.loadReviewed(s.id),
       messages: this.store.listMessages(s.id).map((m) => ({
         id: m.id,
         role: m.role,
@@ -290,6 +291,16 @@ export class SessionManager {
         ts: c.ts,
       })),
     }));
+  }
+
+  markReviewed(sessionId: string, path: string, diffHash: string): void {
+    if (!this.store.getSession(sessionId)) throw new Error("session not found");
+    this.store.markReviewed(sessionId, path, diffHash);
+  }
+
+  unmarkReviewed(sessionId: string, path: string): void {
+    if (!this.store.getSession(sessionId)) throw new Error("session not found");
+    this.store.unmarkReviewed(sessionId, path);
   }
 
   /** Surface trace snapshot for a UI request. */

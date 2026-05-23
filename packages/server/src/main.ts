@@ -140,6 +140,30 @@ async function main() {
         } catch {
           return send({ type: "error", message: "invalid JSON" });
         }
+        if (msg.type === "mark_reviewed") {
+          try {
+            manager.markReviewed(msg.sessionId, msg.path, msg.diffHash);
+          } catch (e) {
+            send({
+              type: "error",
+              sessionId: msg.sessionId,
+              message: e instanceof Error ? e.message : String(e),
+            });
+          }
+          return;
+        }
+        if (msg.type === "unmark_reviewed") {
+          try {
+            manager.unmarkReviewed(msg.sessionId, msg.path);
+          } catch (e) {
+            send({
+              type: "error",
+              sessionId: msg.sessionId,
+              message: e instanceof Error ? e.message : String(e),
+            });
+          }
+          return;
+        }
         await dispatchWs(msg, ctx);
       });
     });
