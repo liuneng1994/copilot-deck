@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
 import { Sparkles, Zap } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
 
 export interface SlashCommand {
@@ -36,9 +36,7 @@ export function SlashPopover({
   const items = useMemo<SlashItem[]>(() => {
     const q = query.toLowerCase();
     const matches = (n: string, d?: string) =>
-      !q ||
-      n.toLowerCase().includes(q) ||
-      (d ?? "").toLowerCase().includes(q);
+      !q || n.toLowerCase().includes(q) || (d ?? "").toLowerCase().includes(q);
     const builtinsF = builtins.filter((b) => matches(b.name, b.description));
     const agentF = commands
       .filter((c) => matches(c.name, c.description))
@@ -51,6 +49,7 @@ export function SlashPopover({
     return [...builtinsF, ...agentF].slice(0, 30);
   }, [commands, builtins, query]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: deliberately reset highlight when query/open changes
   useEffect(() => {
     setActive(0);
   }, [query, open]);
@@ -96,6 +95,7 @@ export function SlashPopover({
           return (
             <li key={`${c.source}:${c.name}`}>
               <button
+                type="button"
                 onClick={() => onPick(c)}
                 onMouseEnter={() => setActive(i)}
                 className={cn(
@@ -106,10 +106,7 @@ export function SlashPopover({
                 )}
               >
                 <Icon
-                  className={cn(
-                    "h-3 w-3 shrink-0",
-                    isBuiltin ? "text-sky-400" : "text-amber-400",
-                  )}
+                  className={cn("h-3 w-3 shrink-0", isBuiltin ? "text-sky-400" : "text-amber-400")}
                 />
                 <span className="font-mono text-foreground">/{c.name}</span>
                 {c.description && (
@@ -120,9 +117,7 @@ export function SlashPopover({
                 <span
                   className={cn(
                     "shrink-0 rounded px-1 py-0.5 text-[9px] uppercase tracking-wider",
-                    isBuiltin
-                      ? "bg-sky-500/10 text-sky-300"
-                      : "bg-amber-500/10 text-amber-300",
+                    isBuiltin ? "bg-sky-500/10 text-sky-300" : "bg-amber-500/10 text-amber-300",
                   )}
                 >
                   {isBuiltin ? (c.category ?? "ui") : "agent"}

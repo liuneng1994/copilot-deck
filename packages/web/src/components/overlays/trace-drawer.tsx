@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useUIStore } from "../../stores/ui-store";
 
 function fmtTs(ts: number) {
   const d = new Date(ts);
-  return d.toLocaleTimeString([], { hour12: false }) + "." + String(d.getMilliseconds()).padStart(3, "0");
+  return `${d.toLocaleTimeString([], { hour12: false })}.${String(d.getMilliseconds()).padStart(3, "0")}`;
 }
 
 export function TraceDrawer() {
@@ -19,6 +19,7 @@ export function TraceDrawer() {
 
   // Auto-scroll to the bottom of the trace list as new events arrive.
   const listRef = useRef<HTMLDivElement | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on every new trace event
   useEffect(() => {
     if (!open) return;
     const el = listRef.current;
@@ -31,7 +32,7 @@ export function TraceDrawer() {
   useEffect(() => {
     if (!open || fetched.current) return;
     fetched.current = true;
-    fetch(`/api/trace?limit=200`)
+    fetch("/api/trace?limit=200")
       .then((r) => r.json() as Promise<{ events: typeof trace }>)
       .then((j) => useUIStore.getState().setTrace(j.events))
       .catch(() => undefined);
@@ -40,7 +41,12 @@ export function TraceDrawer() {
   const filtered = useMemo(() => {
     return trace.filter((ev) => {
       if (filters.direction && ev.direction !== filters.direction) return false;
-      if (filters.sessionScope && activeSessionId && ev.sessionId && ev.sessionId !== activeSessionId)
+      if (
+        filters.sessionScope &&
+        activeSessionId &&
+        ev.sessionId &&
+        ev.sessionId !== activeSessionId
+      )
         return false;
       return true;
     });
@@ -53,7 +59,9 @@ export function TraceDrawer() {
       <header className="flex items-center justify-between border-b border-border px-3 py-2 text-sm">
         <div className="flex items-center gap-2">
           <span className="font-medium">Trace</span>
-          <span className="text-xs text-muted-foreground">{filtered.length} / {trace.length}</span>
+          <span className="text-xs text-muted-foreground">
+            {filtered.length} / {trace.length}
+          </span>
         </div>
         <div className="flex items-center gap-2 text-xs">
           <label className="flex items-center gap-1">
@@ -75,10 +83,18 @@ export function TraceDrawer() {
             <option value="in">incoming</option>
             <option value="out">outgoing</option>
           </select>
-          <button className="rounded border border-border px-2 py-0.5 text-xs hover:bg-bg" onClick={clearTrace}>
+          <button
+            type="button"
+            className="rounded border border-border px-2 py-0.5 text-xs hover:bg-bg"
+            onClick={clearTrace}
+          >
             clear
           </button>
-          <button className="text-muted-foreground hover:text-foreground" onClick={() => setOpen(false)}>
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => setOpen(false)}
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -92,6 +108,7 @@ export function TraceDrawer() {
             return (
               <div key={ev.id} className="border-b border-border/50 px-2 py-1">
                 <button
+                  type="button"
                   className="flex w-full items-center gap-2 text-left hover:bg-bg/40"
                   onClick={() => setExpanded((m) => ({ ...m, [ev.id]: !m[ev.id] }))}
                 >

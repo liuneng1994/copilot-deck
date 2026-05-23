@@ -1,4 +1,4 @@
-import { createHighlighter, type Highlighter } from "shiki";
+import { type Highlighter, createHighlighter } from "shiki";
 
 const BUNDLED_LANGS = [
   "ts",

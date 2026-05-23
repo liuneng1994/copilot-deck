@@ -1,8 +1,8 @@
 import { diffLines } from "diff";
 import { ExternalLink } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { highlightToHtml } from "../../lib/shiki";
 import { cn } from "../../lib/cn";
+import { highlightToHtml } from "../../lib/shiki";
 
 interface DiffRow {
   kind: "add" | "del" | "ctx";
@@ -66,9 +66,10 @@ function extractLinesFromHtml(html: string): string[] {
   // Split on the line span boundaries; Shiki emits one `<span class="line">…</span>` per line.
   const out: string[] = [];
   const re = /<span class="line">([\s\S]*?)<\/span>/g;
-  let mm: RegExpExecArray | null;
-  while ((mm = re.exec(body))) {
+  let mm = re.exec(body);
+  while (mm !== null) {
     out.push(mm[1]);
+    mm = re.exec(body);
   }
   if (out.length === 0) {
     // Fallback: split text node by newlines
@@ -87,10 +88,7 @@ export function DiffView({
   newText?: string;
 }) {
   const [view, setView] = useState<"unified" | "split">("unified");
-  const rows = useMemo(
-    () => computeRows(oldText ?? "", newText ?? ""),
-    [oldText, newText],
-  );
+  const rows = useMemo(() => computeRows(oldText ?? "", newText ?? ""), [oldText, newText]);
   const adds = rows.filter((r) => r.kind === "add").length;
   const dels = rows.filter((r) => r.kind === "del").length;
   const lang = useMemo(() => langFromPath(path), [path]);
@@ -101,10 +99,7 @@ export function DiffView({
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      highlightToHtml(oldText ?? "", lang),
-      highlightToHtml(newText ?? "", lang),
-    ])
+    Promise.all([highlightToHtml(oldText ?? "", lang), highlightToHtml(newText ?? "", lang)])
       .then(([o, n]) => {
         if (cancelled) return;
         setOldHtml(extractLinesFromHtml(o));
@@ -122,19 +117,14 @@ export function DiffView({
   }, [oldText, newText, lang]);
 
   const renderRow = (r: DiffRow, i: number) => {
-    const bg =
-      r.kind === "add"
-        ? "bg-success/15"
-        : r.kind === "del"
-          ? "bg-destructive/15"
-          : "";
+    const bg = r.kind === "add" ? "bg-success/15" : r.kind === "del" ? "bg-destructive/15" : "";
     const sign = r.kind === "add" ? "+" : r.kind === "del" ? "−" : " ";
     const html =
       r.kind === "add"
         ? newHtml?.[(r.newNo ?? 1) - 1]
         : r.kind === "del"
           ? oldHtml?.[(r.oldNo ?? 1) - 1]
-          : oldHtml?.[(r.oldNo ?? 1) - 1] ?? newHtml?.[(r.newNo ?? 1) - 1];
+          : (oldHtml?.[(r.oldNo ?? 1) - 1] ?? newHtml?.[(r.newNo ?? 1) - 1]);
     return (
       <div
         key={i}
@@ -151,6 +141,7 @@ export function DiffView({
         </span>
         <span className="select-none px-1 text-muted-foreground">{sign}</span>
         {html ? (
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki produces sanitized highlight HTML
           <span dangerouslySetInnerHTML={{ __html: html }} />
         ) : (
           <span>{r.text}</span>
@@ -169,21 +160,33 @@ export function DiffView({
         key={i}
         className="grid grid-cols-[36px_1fr_36px_1fr] font-mono text-[12px] leading-[1.5]"
       >
-        <span className={cn("select-none border-r border-border/40 px-1 text-right text-[10px] text-muted-foreground", leftBg)}>
+        <span
+          className={cn(
+            "select-none border-r border-border/40 px-1 text-right text-[10px] text-muted-foreground",
+            leftBg,
+          )}
+        >
           {r.oldNo ?? ""}
         </span>
         <span className={cn("border-r border-border/40 px-2", leftBg)}>
           {leftHtml != null ? (
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki produces sanitized highlight HTML
             <span dangerouslySetInnerHTML={{ __html: leftHtml }} />
           ) : (
             <span>{r.kind !== "add" ? r.text : ""}</span>
           )}
         </span>
-        <span className={cn("select-none border-r border-border/40 px-1 text-right text-[10px] text-muted-foreground", rightBg)}>
+        <span
+          className={cn(
+            "select-none border-r border-border/40 px-1 text-right text-[10px] text-muted-foreground",
+            rightBg,
+          )}
+        >
           {r.newNo ?? ""}
         </span>
         <span className={cn("px-2", rightBg)}>
           {rightHtml != null ? (
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki produces sanitized highlight HTML
             <span dangerouslySetInnerHTML={{ __html: rightHtml }} />
           ) : (
             <span>{r.kind !== "del" ? r.text : ""}</span>
@@ -206,6 +209,7 @@ export function DiffView({
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <button
+            type="button"
             onClick={() => setView(view === "unified" ? "split" : "unified")}
             className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
           >

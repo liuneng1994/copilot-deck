@@ -248,10 +248,7 @@ export const BUILTIN_COMMANDS: BuiltinCommand[] = [
     description: "(CLI built-in) Re-auth GitHub — handled by the CLI",
     category: "system",
     run: () => {
-      notice(
-        "/login is a CLI built-in. Run `copilot` in a terminal to re-authenticate.",
-        "warn",
-      );
+      notice("/login is a CLI built-in. Run `copilot` in a terminal to re-authenticate.", "warn");
       return true;
     },
   },

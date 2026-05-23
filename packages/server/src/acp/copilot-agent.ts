@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 
@@ -20,10 +20,7 @@ export class CopilotAgent {
   private initialized = false;
   private initPromise: Promise<acp.InitializeResponse> | null = null;
 
-  constructor(
-    client: acp.Client,
-    opts: CopilotAgentOptions = {},
-  ) {
+  constructor(client: acp.Client, opts: CopilotAgentOptions = {}) {
     const executable = opts.executable ?? process.env.COPILOT_CLI_PATH ?? "copilot";
     const args = ["--acp", "--stdio", ...(opts.extraArgs ?? [])];
 

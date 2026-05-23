@@ -1,7 +1,7 @@
 import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
-import { highlightToHtml, type SupportedLang } from "../../lib/shiki";
 import { cn } from "../../lib/cn";
+import { type SupportedLang, highlightToHtml } from "../../lib/shiki";
 
 const COLLAPSE_THRESHOLD = 40;
 
@@ -60,6 +60,7 @@ export function CodeBlock({
         <div className="flex items-center gap-2">
           {isLong && (
             <button
+              type="button"
               onClick={() => setExpanded(!expanded)}
               className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-muted"
               title={expanded ? "Collapse" : "Expand"}
@@ -77,6 +78,7 @@ export function CodeBlock({
           <span className="text-[10px] text-muted-foreground">· {lineCount} lines</span>
         </div>
         <button
+          type="button"
           onClick={onCopy}
           className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
         >
@@ -84,15 +86,10 @@ export function CodeBlock({
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <div
-        className={cn(
-          "shiki-host overflow-auto",
-          expanded ? "max-h-[480px]" : "max-h-32",
-        )}
-      >
+      <div className={cn("shiki-host overflow-auto", expanded ? "max-h-[480px]" : "max-h-32")}>
         {html ? (
           <div
-            // Shiki returns sanitized <pre><code>…</code></pre>
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki produces sanitized highlight HTML
             dangerouslySetInnerHTML={{ __html: html }}
           />
         ) : (

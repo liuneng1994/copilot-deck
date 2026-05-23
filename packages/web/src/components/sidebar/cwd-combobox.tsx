@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Clock, Folder } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 
 interface DirEntry {
@@ -163,6 +163,7 @@ export function CwdCombobox({
             const Icon = it.kind === "recent" ? Clock : Folder;
             return (
               <button
+                type="button"
                 key={`${it.kind}:${it.path}`}
                 onMouseEnter={() => setHoverIdx(i)}
                 onMouseDown={(e) => {
@@ -175,7 +176,9 @@ export function CwdCombobox({
                 )}
               >
                 <Icon className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                <span className="flex-1 truncate" title={it.path}>{it.path}</span>
+                <span className="flex-1 truncate" title={it.path}>
+                  {it.path}
+                </span>
                 {it.kind === "recent" && (
                   <span className="text-[9px] uppercase tracking-wider opacity-60">recent</span>
                 )}

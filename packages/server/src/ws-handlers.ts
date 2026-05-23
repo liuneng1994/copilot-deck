@@ -1,0 +1,125 @@
+// WebSocket message handlers. Each entry is a handler for one ClientToServer
+// message kind. Keeping them in a map (instead of a switch) lets us add new
+// commands without touching the connection lifecycle in main.ts.
+
+import { CURATED_MODELS, type ClientToServer, type ServerToClient } from "@agent-view/shared";
+import type { FastifyBaseLogger } from "fastify";
+import type { SessionManager } from "./session-manager.js";
+
+export interface WsContext {
+  manager: SessionManager;
+  send: (msg: ServerToClient) => void;
+  log: FastifyBaseLogger;
+}
+
+type ClientMsg = ClientToServer;
+type Handler<K extends ClientMsg["type"]> = (
+  msg: Extract<ClientMsg, { type: K }>,
+  ctx: WsContext,
+) => Promise<void> | void;
+
+type HandlerMap = { [K in ClientMsg["type"]]: Handler<K> };
+
+export const wsHandlers: HandlerMap = {
+  async create_session(msg, { manager, send }) {
+    const { sessionId, modes } = await manager.createSession(msg.cwd);
+    send({
+      type: "session_created",
+      sessionId,
+      cwd: msg.cwd,
+      modes: modes
+        ? {
+            currentModeId: modes.currentModeId,
+            availableModes: modes.availableModes.map((m) => ({
+              id: m.id,
+              name: m.name,
+              description: m.description ?? undefined,
+            })),
+          }
+        : undefined,
+    });
+  },
+
+  async prompt(msg, { manager, send }) {
+    const res = await manager.prompt(msg.sessionId, msg.text);
+    send({ type: "prompt_done", sessionId: msg.sessionId, stopReason: res.stopReason });
+  },
+
+  async cancel(msg, { manager }) {
+    await manager.cancel(msg.sessionId);
+  },
+
+  async set_mode(msg, { manager }) {
+    await manager.setMode(msg.sessionId, msg.modeId);
+  },
+
+  delete_session(msg, { manager }) {
+    manager.deleteSession(msg.sessionId);
+  },
+
+  request_trace(msg, { manager, send }) {
+    const events = manager.listTrace({
+      sessionId: msg.sessionId,
+      sinceId: msg.sinceId,
+      limit: msg.limit,
+    });
+    send({ type: "trace_snapshot", events });
+  },
+
+  list_models(_msg, { manager, send }) {
+    send({
+      type: "models_snapshot",
+      models: CURATED_MODELS,
+      defaultModel: manager.getDefaultModel(),
+      currentByCwd: manager.getModelsByCwd(),
+    });
+  },
+
+  async set_model(msg, { manager }) {
+    await manager.setModel(msg.cwd, msg.model);
+  },
+
+  async reattach_session(msg, { manager, send }) {
+    try {
+      await manager.reattachSession(msg.sessionId);
+      send({ type: "session_reattached", sessionId: msg.sessionId });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      send({
+        type: "error",
+        sessionId: msg.sessionId,
+        message: `Reattach failed: ${message}`,
+      });
+    }
+  },
+
+  permission_reply(msg, { manager, log }) {
+    const handled = manager.replyPermission(msg.requestId, msg.outcome, msg.optionId);
+    if (!handled) {
+      log.warn({ requestId: msg.requestId }, "stale permission reply");
+    }
+  },
+};
+
+/**
+ * Dispatch a parsed client message to its handler. Unknown types are ignored.
+ * Errors thrown by handlers are caught and reported back over the socket.
+ */
+export async function dispatchWs(msg: ClientToServer, ctx: WsContext): Promise<void> {
+  const handler = wsHandlers[msg.type] as Handler<typeof msg.type> | undefined;
+  if (!handler) {
+    ctx.log.warn({ type: msg.type }, "unknown ws message type");
+    return;
+  }
+  try {
+    await handler(msg as never, ctx);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    ctx.log.error({ err }, "ws handler error");
+    ctx.send({
+      type: "error",
+      sessionId: "sessionId" in msg ? msg.sessionId : undefined,
+      message,
+    });
+  }
+}

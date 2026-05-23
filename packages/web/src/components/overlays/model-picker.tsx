@@ -1,9 +1,9 @@
+import type { ModelGroup } from "@agent-view/shared";
 import { Check, Cpu, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useUIStore } from "../../stores/ui-store";
-import { sendWs } from "../../lib/ws-client";
 import { cn } from "../../lib/cn";
-import type { ModelGroup } from "@agent-view/shared";
+import { sendWs } from "../../lib/ws-client";
+import { useUIStore } from "../../stores/ui-store";
 
 const GROUP_ORDER: ModelGroup[] = ["claude", "gpt", "other"];
 const GROUP_LABEL: Record<ModelGroup, string> = {
@@ -70,14 +70,14 @@ export function ModelPickerOverlay() {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-20"
-      onClick={() => setOpen(false)}
-    >
-      <div
-        className="flex max-h-[70vh] w-[560px] max-w-full flex-col overflow-hidden rounded-xl border border-border bg-panel shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-20">
+      <button
+        type="button"
+        aria-label="Close model picker"
+        className="absolute inset-0 cursor-default bg-transparent"
+        onClick={() => setOpen(false)}
+      />
+      <div className="relative flex max-h-[70vh] w-[560px] max-w-full flex-col overflow-hidden rounded-xl border border-border bg-panel shadow-2xl">
         <header className="flex items-center gap-2 border-b border-border px-4 py-3">
           <Cpu className="h-4 w-4 text-muted-foreground" />
           <div className="flex-1">
@@ -89,6 +89,7 @@ export function ModelPickerOverlay() {
             </div>
           </div>
           <button
+            type="button"
             className="rounded p-1 text-muted-foreground hover:text-foreground"
             onClick={() => setOpen(false)}
             aria-label="Close"
@@ -99,7 +100,6 @@ export function ModelPickerOverlay() {
 
         <div className="border-b border-border px-3 py-2">
           <input
-            autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter models…"
@@ -125,6 +125,7 @@ export function ModelPickerOverlay() {
                   return (
                     <li key={m.id}>
                       <button
+                        type="button"
                         onClick={() => pick(m.id)}
                         disabled={!cwd}
                         className={cn(
@@ -162,9 +163,8 @@ export function ModelPickerOverlay() {
         </div>
 
         <footer className="border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
-          Switching kills the current Copilot child for this cwd. Existing
-          messages remain; the next prompt starts a fresh ACP session under the
-          chosen model.
+          Switching kills the current Copilot child for this cwd. Existing messages remain; the next
+          prompt starts a fresh ACP session under the chosen model.
         </footer>
       </div>
     </div>

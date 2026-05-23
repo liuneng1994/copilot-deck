@@ -1,7 +1,7 @@
 import { Cpu, MoreHorizontal } from "lucide-react";
+import { type SessionState, useUIStore } from "../../stores/ui-store";
 import { Button } from "../ui/button";
 import { StatusDot } from "../ui/status-dot";
-import { useUIStore, type SessionState } from "../../stores/ui-store";
 import { ModeSelector } from "./mode-selector";
 
 function statusLabel(s: SessionState["status"]) {
@@ -47,6 +47,7 @@ export function SessionHeader({ session }: { session: SessionState }) {
       </div>
       <div className="flex items-center gap-1">
         <button
+          type="button"
           onClick={() => setPickerOpen(true)}
           title={`Switch model — current: ${currentModelId || "(unset)"}`}
           className="flex items-center gap-1.5 rounded border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"

@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 import Database from "better-sqlite3";
 
 const SCHEMA = `
@@ -174,18 +174,16 @@ export class Store {
 
   markSessionDetached(sessionId: string, detached: boolean) {
     this.db
-      .prepare(
-        `UPDATE sessions SET detached = ?, updated_at = ? WHERE id = ?`,
-      )
+      .prepare("UPDATE sessions SET detached = ?, updated_at = ? WHERE id = ?")
       .run(detached ? 1 : 0, Date.now(), sessionId);
   }
 
   markAllDetached() {
-    this.db.prepare(`UPDATE sessions SET detached = 1`).run();
+    this.db.prepare("UPDATE sessions SET detached = 1").run();
   }
 
   deleteSession(sessionId: string) {
-    this.db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
+    this.db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
   }
 
   listSessions(): PersistedSession[] {
@@ -211,12 +209,10 @@ export class Store {
   touchSession(id: string, status?: string) {
     if (status !== undefined) {
       this.db
-        .prepare(`UPDATE sessions SET updated_at = ?, status = ? WHERE id = ?`)
+        .prepare("UPDATE sessions SET updated_at = ?, status = ? WHERE id = ?")
         .run(Date.now(), status, id);
     } else {
-      this.db
-        .prepare(`UPDATE sessions SET updated_at = ? WHERE id = ?`)
-        .run(Date.now(), id);
+      this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(Date.now(), id);
     }
   }
 
@@ -224,18 +220,20 @@ export class Store {
   insertMessage(m: PersistedMessage) {
     this.db
       .prepare(
-        `INSERT OR REPLACE INTO messages (id, session_id, role, text, ts) VALUES (?, ?, ?, ?, ?)`,
+        "INSERT OR REPLACE INTO messages (id, session_id, role, text, ts) VALUES (?, ?, ?, ?, ?)",
       )
       .run(m.id, m.sessionId, m.role, m.text, m.ts);
   }
 
   updateMessageText(id: string, text: string) {
-    this.db.prepare(`UPDATE messages SET text = ? WHERE id = ?`).run(text, id);
+    this.db.prepare("UPDATE messages SET text = ? WHERE id = ?").run(text, id);
   }
 
   listMessages(sessionId: string): PersistedMessage[] {
     const rows = this.db
-      .prepare(`SELECT id, session_id, role, text, ts FROM messages WHERE session_id = ? ORDER BY ts ASC`)
+      .prepare(
+        "SELECT id, session_id, role, text, ts FROM messages WHERE session_id = ? ORDER BY ts ASC",
+      )
       .all(sessionId) as Record<string, unknown>[];
     return rows.map((r) => ({
       id: r.id as string,
@@ -310,14 +308,17 @@ export class Store {
   }
 
   clearPermission(cwd: string, toolName: string) {
-    this.db
-      .prepare(`DELETE FROM permissions WHERE cwd = ? AND tool_name = ?`)
-      .run(cwd, toolName);
+    this.db.prepare("DELETE FROM permissions WHERE cwd = ? AND tool_name = ?").run(cwd, toolName);
   }
 
-  listPermissions(): { cwd: string; toolName: string; decision: "allowed" | "denied"; updatedAt: number }[] {
+  listPermissions(): {
+    cwd: string;
+    toolName: string;
+    decision: "allowed" | "denied";
+    updatedAt: number;
+  }[] {
     const rows = this.db
-      .prepare(`SELECT cwd, tool_name, decision, updated_at FROM permissions`)
+      .prepare("SELECT cwd, tool_name, decision, updated_at FROM permissions")
       .all() as Record<string, unknown>[];
     return rows.map((r) => ({
       cwd: r.cwd as string,
@@ -331,7 +332,7 @@ export class Store {
   insertTrace(t: TraceEvent): number {
     const info = this.db
       .prepare(
-        `INSERT INTO trace_events (session_id, cwd, direction, kind, payload, ts) VALUES (?, ?, ?, ?, ?, ?)`,
+        "INSERT INTO trace_events (session_id, cwd, direction, kind, payload, ts) VALUES (?, ?, ?, ?, ?, ?)",
       )
       .run(t.sessionId, t.cwd, t.direction, t.kind, JSON.stringify(t.payload), t.ts);
     this.pruneTrace();
@@ -341,28 +342,30 @@ export class Store {
   private pruneCounter = 0;
   private pruneTrace() {
     if (++this.pruneCounter % 200 !== 0) return;
-    const count = (this.db.prepare(`SELECT COUNT(*) as c FROM trace_events`).get() as { c: number }).c;
+    const count = (this.db.prepare("SELECT COUNT(*) as c FROM trace_events").get() as { c: number })
+      .c;
     if (count <= TRACE_MAX_ROWS) return;
     this.db
       .prepare(
-        `DELETE FROM trace_events WHERE id IN (SELECT id FROM trace_events ORDER BY id ASC LIMIT ?)`,
+        "DELETE FROM trace_events WHERE id IN (SELECT id FROM trace_events ORDER BY id ASC LIMIT ?)",
       )
       .run(count - TRACE_MAX_ROWS);
   }
 
   listTrace(opts: { sessionId?: string; sinceId?: number; limit?: number } = {}): TraceEvent[] {
     const limit = Math.min(opts.limit ?? 500, 2000);
-    let sql = `SELECT id, session_id, cwd, direction, kind, payload, ts FROM trace_events WHERE 1=1`;
+    let sql =
+      "SELECT id, session_id, cwd, direction, kind, payload, ts FROM trace_events WHERE 1=1";
     const params: unknown[] = [];
     if (opts.sessionId) {
-      sql += ` AND session_id = ?`;
+      sql += " AND session_id = ?";
       params.push(opts.sessionId);
     }
     if (opts.sinceId != null) {
-      sql += ` AND id > ?`;
+      sql += " AND id > ?";
       params.push(opts.sinceId);
     }
-    sql += ` ORDER BY id DESC LIMIT ?`;
+    sql += " ORDER BY id DESC LIMIT ?";
     params.push(limit);
     const rows = this.db.prepare(sql).all(...params) as Record<string, unknown>[];
     return rows

@@ -5,20 +5,20 @@
 @layer base {
   :root {
     /* Dark-first palette (HSL triplets to feed Tailwind) */
-    --background: 218 16% 5%;          /* #0b0d10 */
-    --foreground: 215 16% 91%;         /* #e6e9ee */
+    --background: 218 16% 5%; /* #0b0d10 */
+    --foreground: 215 16% 91%; /* #e6e9ee */
 
-    --panel: 216 17% 9%;               /* #11151a */
-    --panel-elevated: 216 17% 12%;     /* #171c23 */
+    --panel: 216 17% 9%; /* #11151a */
+    --panel-elevated: 216 17% 12%; /* #171c23 */
 
-    --muted: 216 15% 14%;              /* #1c222a */
-    --muted-foreground: 215 12% 65%;   /* #9aa3af */
+    --muted: 216 15% 14%; /* #1c222a */
+    --muted-foreground: 215 12% 65%; /* #9aa3af */
 
-    --border: 215 17% 16%;             /* #1f2630 */
+    --border: 215 17% 16%; /* #1f2630 */
     --input: 215 17% 16%;
     --ring: 217 91% 70%;
 
-    --primary: 217 91% 70%;            /* accent blue #8ab4f8 */
+    --primary: 217 91% 70%; /* accent blue #8ab4f8 */
     --primary-foreground: 218 16% 8%;
 
     --secondary: 216 15% 18%;
@@ -27,40 +27,60 @@
     --accent: 217 91% 70%;
     --accent-foreground: 218 16% 8%;
 
-    --destructive: 343 81% 75%;        /* #f38ba8 */
+    --destructive: 343 81% 75%; /* #f38ba8 */
     --destructive-foreground: 218 16% 8%;
 
-    --success: 124 50% 78%;            /* #a6e3a1 */
+    --success: 124 50% 78%; /* #a6e3a1 */
     --success-foreground: 218 16% 8%;
 
-    --warning: 41 88% 80%;             /* #f9e2af */
+    --warning: 41 88% 80%; /* #f9e2af */
     --warning-foreground: 218 16% 8%;
 
     --radius: 0.5rem;
     color-scheme: dark;
   }
 
-  html, body, #root { height: 100%; margin: 0; }
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 
-  * { @apply border-border; box-sizing: border-box; }
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
 
   /* Slim scrollbars */
-  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
   *::-webkit-scrollbar-thumb {
     background: hsl(var(--border));
     border-radius: 8px;
     border: 2px solid transparent;
     background-clip: padding-box;
   }
-  *::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); background-clip: padding-box; border: 2px solid transparent; }
-  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }
 
 @layer utilities {
-  .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
 }

@@ -1,8 +1,8 @@
+import { Bot, Terminal, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Bot, Terminal, User } from "lucide-react";
 import { cn } from "../../lib/cn";
-import { type Message } from "../../stores/ui-store";
+import type { Message } from "../../stores/ui-store";
 import { CodeBlock } from "./code-block";
 
 function relativeTime(ts: number) {
@@ -64,9 +64,7 @@ export function MessageBubble({
                 const codeStr = String(children ?? "").replace(/\n$/, "");
                 const match = /language-([\w-]+)/.exec(className ?? "");
                 const inline = !match && !codeStr.includes("\n");
-                return (
-                  <CodeBlock code={codeStr} lang={match?.[1]} inline={inline} />
-                );
+                return <CodeBlock code={codeStr} lang={match?.[1]} inline={inline} />;
               },
               pre({ children }) {
                 return <>{children}</>;

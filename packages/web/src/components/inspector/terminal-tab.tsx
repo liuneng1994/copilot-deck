@@ -1,5 +1,5 @@
-import { useMemo } from "react";
 import { TerminalSquare } from "lucide-react";
+import { useMemo } from "react";
 import type { SessionState, ToolCallContentBlock, ToolCallState } from "../../stores/ui-store";
 
 interface Entry {

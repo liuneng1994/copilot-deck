@@ -1,16 +1,17 @@
 import { Check, ChevronDown, Sparkles } from "lucide-react";
+import { cn } from "../../lib/cn";
+import { sendWs } from "../../lib/ws-client";
+import type { SessionState } from "../../stores/ui-store";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { sendWs } from "../../lib/ws-client";
-import { cn } from "../../lib/cn";
-import { type SessionState } from "../../stores/ui-store";
 
 export function ModeSelector({ session }: { session: SessionState }) {
   const options = session.modeOptions ?? [];
   if (options.length === 0) {
     return null;
   }
-  const current = session.modeName ?? options.find((o) => o.value === session.modeId)?.name ?? "mode";
+  const current =
+    session.modeName ?? options.find((o) => o.value === session.modeId)?.name ?? "mode";
 
   return (
     <Popover>
@@ -29,10 +30,10 @@ export function ModeSelector({ session }: { session: SessionState }) {
           const selected = o.value === session.modeId;
           return (
             <button
+              type="button"
               key={o.value}
               onClick={() =>
-                !selected &&
-                sendWs({ type: "set_mode", sessionId: session.id, modeId: o.value })
+                !selected && sendWs({ type: "set_mode", sessionId: session.id, modeId: o.value })
               }
               className={cn(
                 "flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-muted",
@@ -40,10 +41,7 @@ export function ModeSelector({ session }: { session: SessionState }) {
               )}
             >
               <Check
-                className={cn(
-                  "mt-0.5 h-3 w-3 shrink-0",
-                  selected ? "text-primary" : "opacity-0",
-                )}
+                className={cn("mt-0.5 h-3 w-3 shrink-0", selected ? "text-primary" : "opacity-0")}
               />
               <span className="flex-1">
                 <span className="font-medium text-foreground">{o.name}</span>

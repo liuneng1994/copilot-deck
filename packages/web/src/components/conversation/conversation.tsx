@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useUIStore, type SessionState, type ToolCallState } from "../../stores/ui-store";
+import { type SessionState, type ToolCallState, useUIStore } from "../../stores/ui-store";
 import { MessageBubble } from "./message-bubble";
 import { ToolCallCard } from "./tool-call-card";
 
@@ -26,6 +26,7 @@ export function Conversation({ session }: { session: SessionState }) {
   }, [session.messages, session.toolCallIds, allToolCalls]);
 
   // Auto-scroll to bottom on new content (unless user scrolled up).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on items change, ref reads are intentional
   useEffect(() => {
     const el = ref.current;
     if (!el) return;

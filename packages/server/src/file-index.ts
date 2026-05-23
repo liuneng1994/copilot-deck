@@ -1,6 +1,6 @@
+import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
 
 const IGNORE_DIRS = new Set([
   "node_modules",
@@ -127,7 +127,13 @@ function fuzzyScore(path: string, query: string): number | null {
     const idx = lp.indexOf(ch, pi);
     if (idx < 0) return null;
     // bonus for matching at start or after separator
-    if (idx === 0 || lp[idx - 1] === "/" || lp[idx - 1] === "." || lp[idx - 1] === "-" || lp[idx - 1] === "_") {
+    if (
+      idx === 0 ||
+      lp[idx - 1] === "/" ||
+      lp[idx - 1] === "." ||
+      lp[idx - 1] === "-" ||
+      lp[idx - 1] === "_"
+    ) {
       score += 10;
     }
     if (idx === prevMatchIdx + 1) score += 5; // consecutive

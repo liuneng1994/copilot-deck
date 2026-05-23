@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
 import { AlertCircle, Bell, Bug, GitBranch } from "lucide-react";
-import { StatusDot } from "../ui/status-dot";
+import { useEffect, useState } from "react";
 import { useUIStore } from "../../stores/ui-store";
+import { StatusDot } from "../ui/status-dot";
 
 interface GitInfo {
   repo: boolean;
@@ -11,9 +11,7 @@ interface GitInfo {
 
 export function StatusBar() {
   const wsConnected = useUIStore((s) => s.wsConnected);
-  const session = useUIStore((s) =>
-    s.activeSessionId ? s.sessions[s.activeSessionId] : null,
-  );
+  const session = useUIStore((s) => (s.activeSessionId ? s.sessions[s.activeSessionId] : null));
   const pendingPerms = useUIStore((s) => s.permissionQueue.length);
   const [git, setGit] = useState<GitInfo | null>(null);
 
@@ -63,31 +61,39 @@ export function StatusBar() {
           </span>
         )}
         {git?.repo && git.branch && (
-          <span className="flex items-center gap-1" title={`git branch (${git.dirty ? "dirty" : "clean"})`}>
+          <span
+            className="flex items-center gap-1"
+            title={`git branch (${git.dirty ? "dirty" : "clean"})`}
+          >
             <GitBranch className="h-3 w-3" />
             {git.branch}
             {git.dirty && <span className="text-amber-400">*</span>}
           </span>
         )}
-        <span
+        <button
+          type="button"
           className="cursor-pointer font-mono hover:text-foreground"
           onClick={() => session && navigator.clipboard.writeText(session.id)}
           title={session ? `${session.id} — click to copy` : ""}
         >
           sess {shortId}
-        </span>
+        </button>
       </div>
       <div className="flex items-center gap-3">
         <span title={session ? "Context window usage" : "No session"}>ctx {ctxLabel}</span>
         <button
+          type="button"
           className="flex items-center gap-1 hover:text-foreground"
           title="JSON-RPC trace"
-          onClick={() => useUIStore.getState().setTraceDrawerOpen(!useUIStore.getState().traceDrawerOpen)}
+          onClick={() =>
+            useUIStore.getState().setTraceDrawerOpen(!useUIStore.getState().traceDrawerOpen)
+          }
         >
           <Bug className="h-3 w-3" />
           trace
         </button>
         <button
+          type="button"
           className="flex items-center gap-1 hover:text-foreground"
           title="Pending permission requests"
         >

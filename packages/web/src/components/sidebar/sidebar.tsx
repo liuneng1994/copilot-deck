@@ -1,13 +1,22 @@
-import { ChevronRight, FolderOpen, FolderPlus, MessageSquare, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
+import {
+  ChevronRight,
+  FolderOpen,
+  FolderPlus,
+  MessageSquare,
+  Plus,
+  RotateCcw,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
+import { cn } from "../../lib/cn";
+import { sendWs } from "../../lib/ws-client";
+import { type SessionState, useUIStore } from "../../stores/ui-store";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { ScrollArea } from "../ui/scroll-area";
 import { StatusDot } from "../ui/status-dot";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
-import { cn } from "../../lib/cn";
-import { useUIStore, type SessionState } from "../../stores/ui-store";
-import { sendWs } from "../../lib/ws-client";
 import { CwdCombobox } from "./cwd-combobox";
 
 function statusToDot(status: SessionState["status"]) {
@@ -57,9 +66,7 @@ export function Sidebar() {
       const cur = lastSeen.get(s.cwd) ?? 0;
       if (s.updatedAt > cur) lastSeen.set(s.cwd, s.updatedAt);
     }
-    return [...lastSeen.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([cwd]) => cwd);
+    return [...lastSeen.entries()].sort((a, b) => b[1] - a[1]).map(([cwd]) => cwd);
   }, [sessions]);
 
   const createSession = () => {
@@ -152,15 +159,17 @@ export function Sidebar() {
             <div className="px-2 py-8 text-center text-xs text-muted-foreground">
               No sessions yet.
               <br />
-              Enter a path and hit{" "}
-              <kbd className="rounded bg-muted px-1 py-0.5 text-[10px]">+</kbd>.
+              Enter a path and hit <kbd className="rounded bg-muted px-1 py-0.5 text-[10px]">+</kbd>
+              .
             </div>
           )}
           {groups.map(({ cwd, list }) => (
             <div key={cwd} className="mb-3">
               <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                 <FolderOpen className="h-3 w-3" />
-                <span className="truncate" title={cwd}>{cwd}</span>
+                <span className="truncate" title={cwd}>
+                  {cwd}
+                </span>
               </div>
               <ul className="space-y-0.5">
                 {list.map((s) => {
@@ -169,6 +178,7 @@ export function Sidebar() {
                   return (
                     <li key={s.id} className="group/item relative">
                       <button
+                        type="button"
                         onClick={() => setActive(s.id)}
                         className={cn(
                           "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 pr-7 text-left text-xs transition-colors",
@@ -177,7 +187,9 @@ export function Sidebar() {
                             : "text-muted-foreground hover:bg-muted hover:text-foreground",
                           s.detached && !isActive && "opacity-60",
                         )}
-                        title={s.detached ? "Detached — child exited; history is read-only" : undefined}
+                        title={
+                          s.detached ? "Detached — child exited; history is read-only" : undefined
+                        }
                       >
                         <StatusDot status={dot.status} pulse={dot.pulse} />
                         <MessageSquare className="h-3 w-3 shrink-0 opacity-50" />
@@ -192,6 +204,7 @@ export function Sidebar() {
                         {isActive && <ChevronRight className="h-3 w-3 opacity-60" />}
                       </button>
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           if (!confirm("Delete this session and its history?")) return;
@@ -205,6 +218,7 @@ export function Sidebar() {
                       </button>
                       {s.detached && (
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             sendWs({ type: "reattach_session", sessionId: s.id });

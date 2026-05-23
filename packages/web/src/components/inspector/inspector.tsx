@@ -3,14 +3,14 @@ import {
   FileCode2,
   FolderTree,
   ListChecks,
-  Settings2,
   ScrollText,
+  Settings2,
   TerminalSquare,
 } from "lucide-react";
-import { Button } from "../ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { useUIStore } from "../../stores/ui-store";
 import { ToolCallCard } from "../conversation/tool-call-card";
+import { Button } from "../ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { FilesTab } from "./files-tab";
 import { TerminalTab } from "./terminal-tab";
 
@@ -24,9 +24,7 @@ function Empty({ label }: { label: string }) {
 
 export function Inspector() {
   const toggle = useUIStore((s) => s.toggleInspector);
-  const session = useUIStore((s) =>
-    s.activeSessionId ? s.sessions[s.activeSessionId] : null,
-  );
+  const session = useUIStore((s) => (s.activeSessionId ? s.sessions[s.activeSessionId] : null));
   const toolCalls = useUIStore((s) => s.toolCalls);
   const tab = useUIStore((s) => s.inspectorTab);
   const setTab = useUIStore((s) => s.setInspectorTab);
@@ -50,27 +48,42 @@ export function Inspector() {
         className="flex flex-1 flex-col min-h-0"
       >
         <TabsList className="mx-2 mt-2">
-          <TabsTrigger value="plan" className="gap-1"><ListChecks className="h-3 w-3" />Plan</TabsTrigger>
+          <TabsTrigger value="plan" className="gap-1">
+            <ListChecks className="h-3 w-3" />
+            Plan
+          </TabsTrigger>
           <TabsTrigger value="tools" className="gap-1">
             <FolderTree className="h-3 w-3" />
             Tools
             {sessionCalls.length > 0 && (
-              <span className="ml-0.5 rounded bg-muted px-1 text-[9px]">
-                {sessionCalls.length}
-              </span>
+              <span className="ml-0.5 rounded bg-muted px-1 text-[9px]">{sessionCalls.length}</span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="files" className="gap-1"><FileCode2 className="h-3 w-3" />Files</TabsTrigger>
-          <TabsTrigger value="terminal" className="gap-1"><TerminalSquare className="h-3 w-3" />Term</TabsTrigger>
+          <TabsTrigger value="files" className="gap-1">
+            <FileCode2 className="h-3 w-3" />
+            Files
+          </TabsTrigger>
+          <TabsTrigger value="terminal" className="gap-1">
+            <TerminalSquare className="h-3 w-3" />
+            Term
+          </TabsTrigger>
         </TabsList>
         <TabsList className="mx-2 mt-1">
-          <TabsTrigger value="logs" className="gap-1"><ScrollText className="h-3 w-3" />Logs</TabsTrigger>
-          <TabsTrigger value="config" className="gap-1"><Settings2 className="h-3 w-3" />Config</TabsTrigger>
+          <TabsTrigger value="logs" className="gap-1">
+            <ScrollText className="h-3 w-3" />
+            Logs
+          </TabsTrigger>
+          <TabsTrigger value="config" className="gap-1">
+            <Settings2 className="h-3 w-3" />
+            Config
+          </TabsTrigger>
         </TabsList>
 
         <div className="flex-1 min-h-0 overflow-auto px-1 pb-3">
           <TabsContent value="plan">
-            <Empty label={session ? "No plan emitted yet for this session." : "Select a session."} />
+            <Empty
+              label={session ? "No plan emitted yet for this session." : "Select a session."}
+            />
           </TabsContent>
           <TabsContent value="tools" className="space-y-1">
             {!session ? (
@@ -127,9 +140,7 @@ export function Inspector() {
                 <div>
                   <dt className="text-muted-foreground">Available commands</dt>
                   <dd>
-                    {session.availableCommands?.length
-                      ? session.availableCommands.length
-                      : "—"}
+                    {session.availableCommands?.length ? session.availableCommands.length : "—"}
                   </dd>
                 </div>
                 <div>

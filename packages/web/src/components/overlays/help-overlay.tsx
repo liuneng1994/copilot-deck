@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
 import { useEffect } from "react";
-import { useUIStore } from "../../stores/ui-store";
 import { BUILTIN_COMMANDS } from "../../lib/builtin-commands";
+import { useUIStore } from "../../stores/ui-store";
 
 const SHORTCUTS: { keys: string; desc: string }[] = [
   { keys: "⌘ \\", desc: "Toggle sidebar" },
@@ -38,14 +38,14 @@ export function HelpOverlay() {
   const order = ["view", "session", "system", "help"];
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={() => setOpen(false)}
-    >
-      <div
-        className="flex max-h-[80vh] w-[640px] max-w-full flex-col overflow-hidden rounded-xl border border-border bg-panel shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <button
+        type="button"
+        aria-label="Close help overlay"
+        className="absolute inset-0 cursor-default bg-transparent"
+        onClick={() => setOpen(false)}
+      />
+      <div className="relative flex max-h-[80vh] w-[640px] max-w-full flex-col overflow-hidden rounded-xl border border-border bg-panel shadow-2xl">
         <header className="flex items-center justify-between border-b border-border px-4 py-3">
           <div>
             <div className="text-sm font-medium">Agent View — Help</div>
@@ -54,6 +54,7 @@ export function HelpOverlay() {
             </div>
           </div>
           <button
+            type="button"
             className="rounded p-1 text-muted-foreground hover:text-foreground"
             onClick={() => setOpen(false)}
             aria-label="Close help"
@@ -95,9 +96,7 @@ export function HelpOverlay() {
                 <ul className="space-y-1">
                   {grouped.get(cat)!.map((c) => (
                     <li key={c.name} className="flex items-baseline gap-3">
-                      <span className="w-24 shrink-0 font-mono text-foreground">
-                        /{c.name}
-                      </span>
+                      <span className="w-24 shrink-0 font-mono text-foreground">/{c.name}</span>
                       <span className="text-muted-foreground">{c.description}</span>
                     </li>
                   ))}

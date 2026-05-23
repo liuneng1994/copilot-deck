@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "../../lib/cn";
-import { type ToolCallContentBlock, type ToolCallState } from "../../stores/ui-store";
+import type { ToolCallContentBlock, ToolCallState } from "../../stores/ui-store";
 import { DiffView } from "./diff-view";
 
 function statusVisual(s: ToolCallState["status"]) {
@@ -56,6 +56,7 @@ export function ToolCallCard({ call }: { call: ToolCallState }) {
   return (
     <div className="mx-10 my-1 overflow-hidden rounded-lg border border-border bg-panel-elevated text-xs">
       <button
+        type="button"
         onClick={() => setOpen(!open)}
         className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/40"
       >
@@ -89,9 +90,7 @@ export function ToolCallCard({ call }: { call: ToolCallState }) {
         <div className="border-t border-border bg-panel/60 p-3">
           {call.rawInput != null && (
             <details className="mb-2">
-              <summary className="cursor-pointer text-[11px] text-muted-foreground">
-                Input
-              </summary>
+              <summary className="cursor-pointer text-[11px] text-muted-foreground">Input</summary>
               <pre className="mt-1 max-h-40 overflow-auto rounded bg-background p-2 font-mono text-[11px] text-foreground">
                 {jsonOrText(call.rawInput)}
               </pre>
@@ -101,7 +100,7 @@ export function ToolCallCard({ call }: { call: ToolCallState }) {
             <p className="text-[11px] text-muted-foreground">Awaiting agent…</p>
           )}
           {call.content.map((block, i) => (
-            <ContentBlock key={i} block={block} />
+            <ContentBlock key={`${call.id}:${i}`} block={block} />
           ))}
         </div>
       )}
@@ -113,11 +112,7 @@ function ContentBlock({ block }: { block: ToolCallContentBlock }) {
   if (block.kind === "diff") {
     return (
       <div className="mb-2">
-        <DiffView
-          path={block.path}
-          oldText={block.oldText}
-          newText={block.newText}
-        />
+        <DiffView path={block.path} oldText={block.oldText} newText={block.newText} />
       </div>
     );
   }

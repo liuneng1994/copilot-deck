@@ -1,7 +1,7 @@
+import { ExternalLink, Eye, FileText, Pencil } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { ExternalLink, FileText, Pencil, Eye } from "lucide-react";
-import type { SessionState, ToolCallState } from "../../stores/ui-store";
 import { highlightToHtml } from "../../lib/shiki";
+import type { SessionState, ToolCallState } from "../../stores/ui-store";
 
 type Touch = "read" | "write" | "exec" | "other";
 
@@ -33,7 +33,12 @@ function touchForCall(call: ToolCallState): Touch {
   if (k.includes("read") || k.includes("view") || k.includes("search") || k.includes("list")) {
     return "read";
   }
-  if (k.includes("execute") || k.includes("terminal") || k.includes("shell") || k.includes("bash")) {
+  if (
+    k.includes("execute") ||
+    k.includes("terminal") ||
+    k.includes("shell") ||
+    k.includes("bash")
+  ) {
     return "exec";
   }
   return "other";
@@ -121,10 +126,9 @@ function langFromPath(p: string): string {
 }
 
 function openInEditor(p: string, cwd: string) {
-  void fetch(
-    `/api/open-in-editor?path=${encodeURIComponent(p)}&cwd=${encodeURIComponent(cwd)}`,
-    { method: "POST" },
-  );
+  void fetch(`/api/open-in-editor?path=${encodeURIComponent(p)}&cwd=${encodeURIComponent(cwd)}`, {
+    method: "POST",
+  });
 }
 
 function FilePreview({ path, cwd }: { path: string; cwd: string }) {
@@ -179,7 +183,7 @@ function FilePreview({ path, cwd }: { path: string; cwd: string }) {
       </div>
       <div
         className="max-h-[60vh] overflow-auto text-[11px] [&_pre]:!m-0 [&_pre]:!bg-transparent [&_pre]:p-2"
-        // eslint-disable-next-line react/no-danger
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki produces sanitized highlight HTML
         dangerouslySetInnerHTML={{ __html: state.html }}
       />
     </div>
@@ -194,9 +198,7 @@ interface Props {
 export function FilesTab({ session, toolCalls }: Props) {
   const calls = useMemo(
     () =>
-      session.toolCallIds
-        .map((id) => toolCalls[id])
-        .filter((c): c is ToolCallState => Boolean(c)),
+      session.toolCallIds.map((id) => toolCalls[id]).filter((c): c is ToolCallState => Boolean(c)),
     [session.toolCallIds, toolCalls],
   );
   const files = useMemo(() => aggregateFiles(calls), [calls]);
@@ -214,20 +216,14 @@ export function FilesTab({ session, toolCalls }: Props) {
     <div className="space-y-2 px-1 py-1">
       <ul className="space-y-0.5">
         {files.map((f) => (
-          <li key={f.path}>
-            <div
-              role="button"
-              tabIndex={0}
+          <li
+            key={f.path}
+            className={`group relative flex items-stretch rounded ${selected === f.path ? "bg-muted/70" : "hover:bg-muted/50"}`}
+          >
+            <button
+              type="button"
               onClick={() => setSelected((s) => (s === f.path ? null : f.path))}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  setSelected((s) => (s === f.path ? null : f.path));
-                }
-              }}
-              className={`group flex w-full cursor-pointer items-start gap-1.5 rounded px-2 py-1 text-left text-[11px] hover:bg-muted/50 ${
-                selected === f.path ? "bg-muted/70" : ""
-              }`}
+              className="flex flex-1 cursor-pointer items-start gap-1.5 px-2 py-1 text-left text-[11px]"
               title={f.path}
             >
               <span
@@ -250,18 +246,18 @@ export function FilesTab({ session, toolCalls }: Props) {
                   {f.touch} · {f.callCount} call{f.callCount > 1 ? "s" : ""}
                 </span>
               </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openInEditor(f.path, session.cwd);
-                }}
-                className="invisible self-center rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground group-hover:visible"
-                title="Open in editor"
-              >
-                <ExternalLink className="h-3 w-3" />
-              </button>
-            </div>
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                openInEditor(f.path, session.cwd);
+              }}
+              className="invisible mr-1 self-center rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground group-hover:visible"
+              title="Open in editor"
+            >
+              <ExternalLink className="h-3 w-3" />
+            </button>
           </li>
         ))}
       </ul>

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
+import { type ToolCallContentBlock, type ToolCallStatus, useUIStore } from "../stores/ui-store";
 import { connectWs, onWsMessage } from "./ws-client";
-import { useUIStore, type ToolCallContentBlock, type ToolCallStatus } from "../stores/ui-store";
 
 // Lightweight typed view over the ACP SessionNotification.update payload we care about.
 interface AcpUpdate {

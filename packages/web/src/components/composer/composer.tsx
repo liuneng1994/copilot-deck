@@ -1,17 +1,17 @@
 import { Paperclip, RotateCcw, Send, Square } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  BUILTIN_BY_NAME,
+  BUILTIN_COMMANDS,
+  type BuiltinCommand,
+  parseSlash,
+} from "../../lib/builtin-commands";
+import { sendWs } from "../../lib/ws-client";
+import { type SessionState, useUIStore } from "../../stores/ui-store";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/input";
-import { sendWs } from "../../lib/ws-client";
-import { useUIStore, type SessionState } from "../../stores/ui-store";
-import { SlashPopover, type SlashItem } from "./slash-popover";
 import { MentionPopover } from "./mention-popover";
-import {
-  BUILTIN_COMMANDS,
-  BUILTIN_BY_NAME,
-  parseSlash,
-  type BuiltinCommand,
-} from "../../lib/builtin-commands";
+import { type SlashItem, SlashPopover } from "./slash-popover";
 
 export function Composer({ session }: { session: SessionState }) {
   const [text, setText] = useState("");
@@ -52,12 +52,13 @@ export function Composer({ session }: { session: SessionState }) {
   const slashOpen = !!slashContext && !streaming;
   const mentionOpen = !!mentionContext && !!session.cwd && !streaming && !slashOpen;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: auto-resize triggers when text mutates, not its read-only props
   useLayoutEffect(() => {
     const ta = taRef.current;
     if (!ta) return;
     ta.style.height = "0px";
     const max = 12 * 20;
-    ta.style.height = Math.min(ta.scrollHeight, max) + "px";
+    ta.style.height = `${Math.min(ta.scrollHeight, max)}px`;
   }, [text]);
 
   /** Execute a built-in command and clear the composer. */
@@ -195,7 +196,8 @@ export function Composer({ session }: { session: SessionState }) {
                 </Button>
                 {(agentCommands.length > 0 || true) && (
                   <span className="text-[10px] text-muted-foreground">
-                    type <kbd className="rounded bg-muted px-1 py-0.5 text-[9px]">/</kbd> for {agentCommands.length + builtinItems.length} commands
+                    type <kbd className="rounded bg-muted px-1 py-0.5 text-[9px]">/</kbd> for{" "}
+                    {agentCommands.length + builtinItems.length} commands
                   </span>
                 )}
                 <span className="text-[10px] text-muted-foreground">

@@ -1,22 +1,18 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import path from "node:path";
-import type * as acp from "@agentclientprotocol/sdk";
 import type {
+  HydratedSession,
   PermissionOption,
   PermissionOutcome,
   PermissionToolCallSnapshot,
   TraceEventDTO,
-  HydratedSession,
 } from "@agent-view/shared";
+import type * as acp from "@agentclientprotocol/sdk";
 import { CopilotAgent } from "./acp/copilot-agent.js";
-import { Store } from "./store.js";
+import { type MessageStream, persistSessionUpdate } from "./acp/persist.js";
+import { PERMISSION_TIMEOUT_MS, readDefaultCopilotModel } from "./config.js";
+import type { Store } from "./store.js";
 
-export type SessionUpdateListener = (
-  sessionId: string,
-  update: acp.SessionNotification,
-) => void;
+export type SessionUpdateListener = (sessionId: string, update: acp.SessionNotification) => void;
 
 export interface PermissionRequestEvent {
   requestId: string;
@@ -36,7 +32,11 @@ export interface ChildExitEvent {
 
 export type ChildExitListener = (ev: ChildExitEvent) => void;
 export type TraceListener = (ev: TraceEventDTO) => void;
-export type ModelChangeListener = (ev: { cwd: string; model: string; sessionIds: string[] }) => void;
+export type ModelChangeListener = (ev: {
+  cwd: string;
+  model: string;
+  sessionIds: string[];
+}) => void;
 
 interface SessionEntry {
   id: string;
@@ -51,14 +51,6 @@ interface PendingPermission {
   cwd: string;
   toolName: string;
 }
-
-/** In-flight accumulator for the current agent reply text, plus the persisted user msg id. */
-interface MessageStream {
-  agentMessageId: string | null;
-  agentBuf: string;
-}
-
-const PERMISSION_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * SessionManager owns Copilot agent child processes and their ACP sessions.
@@ -298,11 +290,10 @@ export class SessionManager {
           payload: params,
           ts: Date.now(),
         });
-        this.persistSessionUpdate(cwd, params);
+        this.persistUpdate(cwd, params);
         this.emit(params.sessionId, params);
       },
     };
-
     const agent = new CopilotAgent(client, {
       extraArgs: ["--model", this.modelByCwd.get(cwd) ?? this.defaultModel],
       onStderr: (c) => process.stderr.write(`[copilot stderr] ${c}`),
@@ -408,9 +399,7 @@ export class SessionManager {
     this.pendingPermissions.delete(requestId);
     clearTimeout(pending.timer);
 
-    let picked = optionId
-      ? pending.options.find((o) => o.optionId === optionId)
-      : undefined;
+    let picked = optionId ? pending.options.find((o) => o.optionId === optionId) : undefined;
     if (!picked) {
       // Fall back: map outcome → first matching option kind.
       const want: acp.PermissionOption["kind"][] =
@@ -642,163 +631,7 @@ export class SessionManager {
   /**
    * Mirror an incoming sessionUpdate into SQLite. Best-effort; failures are logged.
    */
-  private persistSessionUpdate(cwd: string, params: acp.SessionNotification): void {
-    try {
-      const sid = params.sessionId;
-      const update = params.update as Record<string, unknown> & { sessionUpdate?: string };
-      const kind = update?.sessionUpdate;
-      const now = Date.now();
-
-      const ensureStream = (): MessageStream => {
-        let s = this.streams.get(sid);
-        if (!s) {
-          s = { agentMessageId: null, agentBuf: "" };
-          this.streams.set(sid, s);
-        }
-        return s;
-      };
-
-      const ensureSession = () => {
-        const existing = this.store.getSession(sid);
-        if (existing) return existing;
-        const seed = {
-          id: sid,
-          cwd,
-          title: null as string | null,
-          status: "idle" as string | null,
-          modeId: null as string | null,
-          modeName: null as string | null,
-          modeOptions: null as { id: string; name: string; description?: string }[] | null,
-          availableCommands: null as { name: string; description?: string }[] | null,
-          createdAt: now,
-          updatedAt: now,
-          detached: false,
-        };
-        this.store.upsertSession(seed);
-        return seed;
-      };
-
-      if (kind === "agent_message_chunk" || kind === "user_message_chunk") {
-        const content = update.content as { type?: string; text?: string } | undefined;
-        const text = content?.type === "text" ? (content.text ?? "") : "";
-        if (!text) return;
-        ensureSession();
-        const stream = ensureStream();
-        if (kind === "agent_message_chunk") {
-          if (!stream.agentMessageId) {
-            stream.agentMessageId = randomUUID();
-            stream.agentBuf = text;
-            this.store.insertMessage({
-              id: stream.agentMessageId,
-              sessionId: sid,
-              role: "agent",
-              text,
-              ts: now,
-            });
-          } else {
-            stream.agentBuf += text;
-            this.store.updateMessageText(stream.agentMessageId, stream.agentBuf);
-          }
-        } else {
-          // user_message_chunk (rare — usually we recorded on prompt). Append to a fresh msg.
-          this.store.insertMessage({
-            id: randomUUID(),
-            sessionId: sid,
-            role: "user",
-            text,
-            ts: now,
-          });
-        }
-        return;
-      }
-
-      if (kind === "tool_call" || kind === "tool_call_update") {
-        ensureSession();
-        // Flush any current agent stream — tool calls slot into the message timeline.
-        const stream = this.streams.get(sid);
-        if (stream) {
-          stream.agentMessageId = null;
-          stream.agentBuf = "";
-        }
-        const u = update as Record<string, unknown>;
-        const id = String(u.toolCallId ?? u.id ?? "");
-        if (!id) return;
-        const existing = this.store.getToolCall(id);
-        const merged = {
-          id,
-          sessionId: sid,
-          kind: (u.kind as string | undefined) ?? existing?.kind ?? "",
-          title: (u.title as string | undefined) ?? existing?.title ?? "",
-          status: (u.status as string | undefined) ?? existing?.status ?? "pending",
-          rawInput: u.rawInput ?? existing?.rawInput ?? null,
-          rawOutput: u.rawOutput ?? existing?.rawOutput ?? null,
-          content:
-            (u.content as unknown[] | undefined) ?? existing?.content ?? ([] as unknown[]),
-          locations:
-            (u.locations as { path: string; line?: number }[] | undefined) ??
-            existing?.locations ??
-            null,
-          startedAt: existing?.startedAt ?? now,
-          finishedAt:
-            (u.status as string | undefined) === "completed" ||
-            (u.status as string | undefined) === "failed"
-              ? now
-              : (existing?.finishedAt ?? null),
-          ts: now,
-        };
-        this.store.upsertToolCall(merged);
-        this.store.touchSession(sid);
-        return;
-      }
-
-      if (kind === "current_mode_update") {
-        const persisted = ensureSession();
-        const modeId = (update.currentModeId as string | undefined) ?? null;
-        const opt = persisted.modeOptions?.find((m) => m.id === modeId);
-        this.store.upsertSession({
-          ...persisted,
-          modeId,
-          modeName: opt?.name ?? persisted.modeName,
-          updatedAt: now,
-        });
-        return;
-      }
-
-      if (kind === "available_commands_update") {
-        const persisted = ensureSession();
-        const cmds = (update.availableCommands as { name: string; description?: string }[] | undefined) ?? [];
-        this.store.upsertSession({
-          ...persisted,
-          availableCommands: cmds,
-          updatedAt: now,
-        });
-        return;
-      }
-
-      if (kind === "session_info_update") {
-        // Best-effort title from first user prompt; skip for now (UI derives).
-        ensureSession();
-        this.store.touchSession(sid);
-        return;
-      }
-    } catch (e) {
-      console.error("persistSessionUpdate error", e);
-    }
+  private persistUpdate(cwd: string, params: acp.SessionNotification): void {
+    persistSessionUpdate({ cwd, store: this.store, streams: this.streams }, params);
   }
-}
-
-
-/** Read the user default model from ~/.copilot/settings.json, falling back to env or hardcoded. */
-function readDefaultCopilotModel(): string {
-  const envModel = process.env.COPILOT_DEFAULT_MODEL?.trim();
-  if (envModel) return envModel;
-  try {
-    const p = path.join(homedir(), ".copilot", "settings.json");
-    const raw = readFileSync(p, "utf8");
-    const json = JSON.parse(raw) as { model?: unknown };
-    if (typeof json.model === "string" && json.model) return json.model;
-  } catch {
-    // fall through
-  }
-  return "claude-sonnet-4.5";
 }

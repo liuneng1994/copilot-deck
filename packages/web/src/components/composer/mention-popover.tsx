@@ -19,6 +19,7 @@ export function MentionPopover({
   const [active, setActive] = useState(0);
   const [loading, setLoading] = useState(false);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: deliberately reset highlight when query/open changes
   useEffect(() => {
     setActive(0);
   }, [query, open]);
@@ -95,6 +96,7 @@ export function MentionPopover({
             return (
               <li key={f}>
                 <button
+                  type="button"
                   onClick={() => onPick(f)}
                   onMouseEnter={() => setActive(i)}
                   className={cn(

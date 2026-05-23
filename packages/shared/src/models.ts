@@ -15,11 +15,31 @@ export interface ModelInfo {
 
 export const CURATED_MODELS: ModelInfo[] = [
   // Claude — Opus
-  { id: "claude-opus-4.7-high", label: "Claude Opus 4.7", group: "claude", tag: "high reasoning · internal" },
-  { id: "claude-opus-4.7-xhigh", label: "Claude Opus 4.7", group: "claude", tag: "xhigh reasoning · internal" },
-  { id: "claude-opus-4.7-1m-internal", label: "Claude Opus 4.7", group: "claude", tag: "1M context · internal" },
+  {
+    id: "claude-opus-4.7-high",
+    label: "Claude Opus 4.7",
+    group: "claude",
+    tag: "high reasoning · internal",
+  },
+  {
+    id: "claude-opus-4.7-xhigh",
+    label: "Claude Opus 4.7",
+    group: "claude",
+    tag: "xhigh reasoning · internal",
+  },
+  {
+    id: "claude-opus-4.7-1m-internal",
+    label: "Claude Opus 4.7",
+    group: "claude",
+    tag: "1M context · internal",
+  },
   { id: "claude-opus-4.7", label: "Claude Opus 4.7", group: "claude" },
-  { id: "claude-opus-4.6-1m", label: "Claude Opus 4.6", group: "claude", tag: "1M context · internal" },
+  {
+    id: "claude-opus-4.6-1m",
+    label: "Claude Opus 4.6",
+    group: "claude",
+    tag: "1M context · internal",
+  },
   { id: "claude-opus-4.6", label: "Claude Opus 4.6", group: "claude" },
   { id: "claude-opus-4.5", label: "Claude Opus 4.5", group: "claude" },
   // Claude — Sonnet / Haiku

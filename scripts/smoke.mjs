@@ -17,11 +17,13 @@ ws.addEventListener("message", (ev) => {
   if (msg.type === "session_created") {
     sessionId = msg.sessionId;
     console.log("[session] created", sessionId, "cwd=", msg.cwd);
-    ws.send(JSON.stringify({
-      type: "prompt",
-      sessionId,
-      text: "Reply with the single word 'pong'. No punctuation, no extra text.",
-    }));
+    ws.send(
+      JSON.stringify({
+        type: "prompt",
+        sessionId,
+        text: "Reply with the single word 'pong'. No punctuation, no extra text.",
+      }),
+    );
   } else if (msg.type === "session_update") {
     const u = msg.update;
     if (u.sessionUpdate === "agent_message_chunk" && u.content?.type === "text") {
@@ -45,6 +47,12 @@ ws.addEventListener("message", (ev) => {
 });
 
 ws.addEventListener("close", () => console.log("[ws] close"));
-ws.addEventListener("error", (e) => { console.error("[ws] error", e); process.exit(1); });
+ws.addEventListener("error", (e) => {
+  console.error("[ws] error", e);
+  process.exit(1);
+});
 
-setTimeout(() => { console.error("[timeout] no prompt_done in 120s"); process.exit(2); }, 120_000);
+setTimeout(() => {
+  console.error("[timeout] no prompt_done in 120s");
+  process.exit(2);
+}, 120_000);

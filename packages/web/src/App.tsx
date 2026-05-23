@@ -1,16 +1,16 @@
 import { useEffect } from "react";
-import { TopBar } from "./components/shell/top-bar";
-import { StatusBar } from "./components/shell/status-bar";
-import { Sidebar, SidebarRail } from "./components/sidebar/sidebar";
-import { Inspector, InspectorRail } from "./components/inspector/inspector";
-import { SessionHeader } from "./components/conversation/session-header";
-import { Conversation, NoSessionPlaceholder } from "./components/conversation/conversation";
 import { Composer } from "./components/composer/composer";
+import { Conversation, NoSessionPlaceholder } from "./components/conversation/conversation";
+import { SessionHeader } from "./components/conversation/session-header";
+import { Inspector, InspectorRail } from "./components/inspector/inspector";
+import { HelpOverlay } from "./components/overlays/help-overlay";
+import { ModelPickerOverlay } from "./components/overlays/model-picker";
+import { NoticeBanner } from "./components/overlays/notice-banner";
 import { PermissionDialog } from "./components/overlays/permission-dialog";
 import { TraceDrawer } from "./components/overlays/trace-drawer";
-import { HelpOverlay } from "./components/overlays/help-overlay";
-import { NoticeBanner } from "./components/overlays/notice-banner";
-import { ModelPickerOverlay } from "./components/overlays/model-picker";
+import { StatusBar } from "./components/shell/status-bar";
+import { TopBar } from "./components/shell/top-bar";
+import { Sidebar, SidebarRail } from "./components/sidebar/sidebar";
 import { useWsBridge } from "./lib/ws-bridge";
 import { useUIStore } from "./stores/ui-store";
 
@@ -88,6 +88,7 @@ function GlobalErrorBanner() {
     <div className="flex items-center justify-between border-b border-destructive/30 bg-destructive/10 px-4 py-1.5 text-xs text-destructive">
       <span className="truncate">⚠ {err}</span>
       <button
+        type="button"
         onClick={() => clear(null)}
         className="ml-3 rounded px-2 py-0.5 hover:bg-destructive/20"
       >

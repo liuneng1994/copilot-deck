@@ -1,5 +1,7 @@
-import { ShieldAlert } from "lucide-react";
 import type { PermissionOption } from "@agent-view/shared";
+import { ShieldAlert } from "lucide-react";
+import { sendWs } from "../../lib/ws-client";
+import { useUIStore } from "../../stores/ui-store";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -9,8 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
-import { sendWs } from "../../lib/ws-client";
-import { useUIStore } from "../../stores/ui-store";
 
 function variantFor(kind: PermissionOption["kind"]) {
   if (kind === "allow_always") return "default" as const;
@@ -91,9 +91,7 @@ export function PermissionDialog() {
         </div>
 
         {queue.length > 1 && (
-          <p className="text-[10px] text-muted-foreground">
-            +{queue.length - 1} more queued
-          </p>
+          <p className="text-[10px] text-muted-foreground">+{queue.length - 1} more queued</p>
         )}
 
         <DialogFooter>

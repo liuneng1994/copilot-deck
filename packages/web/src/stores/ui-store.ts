@@ -1,11 +1,11 @@
-import { create } from "zustand";
 import type {
+  HydratedSession,
+  ModelInfo,
   PermissionOption,
   PermissionToolCallSnapshot,
-  HydratedSession,
   TraceEventDTO,
-  ModelInfo,
 } from "@agent-view/shared";
+import { create } from "zustand";
 
 export type SessionStatus = "idle" | "streaming" | "awaiting_perm" | "error";
 export type MessageRole = "user" | "agent" | "system";
@@ -135,10 +135,7 @@ export interface UIState {
   appendAgentChunk: (sessionId: string, chunk: string) => void;
   appendSystemMessage: (sessionId: string, text: string) => void;
   setSessionStatus: (sessionId: string, status: SessionStatus) => void;
-  setAvailableCommands: (
-    sessionId: string,
-    cmds: { name: string; description?: string }[],
-  ) => void;
+  setAvailableCommands: (sessionId: string, cmds: { name: string; description?: string }[]) => void;
   setMode: (sessionId: string, currentValue: string, options: ModeOption[]) => void;
 
   upsertToolCall: (call: Partial<ToolCallState> & { id: string; sessionId: string }) => void;
@@ -161,7 +158,11 @@ export interface UIState {
   setInspectorTab: (tab: UIState["inspectorTab"]) => void;
   setHelpOpen: (open: boolean) => void;
   setNotice: (n: UIState["notice"]) => void;
-  setModels: (models: ModelInfo[], defaultModel: string, currentByCwd: Record<string, string>) => void;
+  setModels: (
+    models: ModelInfo[],
+    defaultModel: string,
+    currentByCwd: Record<string, string>,
+  ) => void;
   setModelForCwd: (cwd: string, model: string) => void;
   setModelPickerOpen: (open: boolean) => void;
   /** Wipe messages and tool calls for a session locally (does NOT touch the DB). */
@@ -193,7 +194,7 @@ function summarizeInput(input: unknown): string | undefined {
         if (typeof obj[k] === "string") return `${k}: ${(obj[k] as string).slice(0, 100)}`;
       }
     }
-    return s.slice(0, 100) + "…";
+    return `${s.slice(0, 100)}…`;
   } catch {
     return undefined;
   }
@@ -294,10 +295,7 @@ export const useUIStore = create<UIState>((set) => ({
           { ...last, text: last.text + chunk, ts: Date.now() },
         ];
       } else {
-        messages = [
-          ...s.messages,
-          { id: nowId(), role: "agent", text: chunk, ts: Date.now() },
-        ];
+        messages = [...s.messages, { id: nowId(), role: "agent", text: chunk, ts: Date.now() }];
       }
       return {
         sessions: { ...state.sessions, [sessionId]: { ...s, messages, updatedAt: Date.now() } },
@@ -313,10 +311,7 @@ export const useUIStore = create<UIState>((set) => ({
           ...state.sessions,
           [sessionId]: {
             ...s,
-            messages: [
-              ...s.messages,
-              { id: nowId(), role: "system", text, ts: Date.now() },
-            ],
+            messages: [...s.messages, { id: nowId(), role: "system", text, ts: Date.now() }],
             updatedAt: Date.now(),
           },
         },
@@ -380,11 +375,8 @@ export const useUIStore = create<UIState>((set) => ({
         locations: call.locations ?? existing?.locations,
         startedAt: existing?.startedAt ?? now,
         finishedAt:
-          call.status === "completed" || call.status === "failed"
-            ? now
-            : existing?.finishedAt,
-        inputSummary:
-          existing?.inputSummary ?? summarizeInput(call.rawInput ?? existing?.rawInput),
+          call.status === "completed" || call.status === "failed" ? now : existing?.finishedAt,
+        inputSummary: existing?.inputSummary ?? summarizeInput(call.rawInput ?? existing?.rawInput),
       };
 
       const sessions = { ...state.sessions };
@@ -509,7 +501,7 @@ export const useUIStore = create<UIState>((set) => ({
         sessions[h.id] = {
           id: h.id,
           cwd: h.cwd,
-          title: h.title ?? (messages[0]?.text.slice(0, 60) ?? "Session"),
+          title: h.title ?? messages[0]?.text.slice(0, 60) ?? "Session",
           status: h.detached ? "idle" : ((h.status as SessionStatus) ?? "idle"),
           modeName: h.modeName ?? undefined,
           modeId: h.modeId ?? undefined,
@@ -543,8 +535,7 @@ export const useUIStore = create<UIState>((set) => ({
   setNotice: (n) => set({ notice: n }),
   setModels: (models, defaultModel, currentByCwd) =>
     set({ models, defaultModel, modelByCwd: { ...currentByCwd } }),
-  setModelForCwd: (cwd, model) =>
-    set((s) => ({ modelByCwd: { ...s.modelByCwd, [cwd]: model } })),
+  setModelForCwd: (cwd, model) => set((s) => ({ modelByCwd: { ...s.modelByCwd, [cwd]: model } })),
   setModelPickerOpen: (open) => set({ modelPickerOpen: open }),
   clearSessionMessages: (sessionId) =>
     set((state) => {
