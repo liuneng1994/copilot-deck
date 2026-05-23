@@ -1,9 +1,11 @@
 import { promises as fs } from "node:fs";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import Fastify from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
 import type { ClientToServer, ServerToClient } from "@agent-view/shared";
 import { SessionManager } from "./session-manager.js";
+import { listFiles } from "./file-index.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
 const HOST = process.env.HOST ?? "127.0.0.1";
@@ -44,6 +46,60 @@ async function main() {
       return { error: message };
     }
   });
+
+  app.get<{ Querystring: { cwd?: string; q?: string; limit?: string } }>(
+    "/api/files",
+    async (req, reply) => {
+      const cwd = req.query.cwd?.trim();
+      if (!cwd || !path.isAbsolute(cwd)) {
+        reply.code(400);
+        return { error: "absolute cwd required" };
+      }
+      try {
+        const matches = await listFiles({
+          cwd,
+          query: req.query.q ?? "",
+          limit: Math.min(Number(req.query.limit ?? 50) || 50, 200),
+        });
+        return { cwd, files: matches };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        reply.code(500);
+        return { error: message };
+      }
+    },
+  );
+
+  app.post<{ Querystring: { path?: string; cwd?: string } }>(
+    "/api/open-in-editor",
+    async (req, reply) => {
+      const target = req.query.path?.trim();
+      if (!target) {
+        reply.code(400);
+        return { error: "path required" };
+      }
+      const cwd = req.query.cwd && path.isAbsolute(req.query.cwd) ? req.query.cwd : undefined;
+      const abs = path.isAbsolute(target)
+        ? target
+        : cwd
+          ? path.resolve(cwd, target)
+          : target;
+      const editorCmd = process.env.AGENT_VIEW_EDITOR ?? "code";
+      try {
+        const child = spawn(editorCmd, [abs], {
+          stdio: "ignore",
+          detached: true,
+        });
+        child.on("error", (e) => app.log.warn({ err: e }, "open-in-editor spawn failed"));
+        child.unref();
+        return { ok: true, path: abs };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        reply.code(500);
+        return { error: message };
+      }
+    },
+  );
 
   app.register(async (instance) => {
     instance.get("/ws", { websocket: true }, (socket) => {

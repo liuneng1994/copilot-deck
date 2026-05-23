@@ -5,7 +5,18 @@ import { useUIStore, type ToolCallContentBlock, type ToolCallStatus } from "../s
 // Lightweight typed view over the ACP SessionNotification.update payload we care about.
 interface AcpUpdate {
   sessionUpdate: string;
-  content?: { type: string; text?: string };
+  // For agent_message_chunk / user_message_chunk this is a single content object.
+  // For tool_call / tool_call_update this is an array of content blocks (diff / terminal / text).
+  content?:
+    | { type: string; text?: string }
+    | Array<{
+        type?: string;
+        path?: string;
+        oldText?: string;
+        newText?: string;
+        content?: { type: string; text?: string };
+        [k: string]: unknown;
+      }>;
   availableCommands?: { name: string; description?: string }[];
   configOptions?: {
     currentValue: string;
@@ -18,12 +29,6 @@ interface AcpUpdate {
   status?: ToolCallStatus;
   rawInput?: unknown;
   rawOutput?: unknown;
-  // tool_call_update may carry `content` arrays describing diff/terminal/etc.
-  contents?: Array<{
-    type?: string;
-    content?: { type: string; text?: string };
-    [k: string]: unknown;
-  }>;
   diff?: {
     path?: string;
     oldText?: string;
@@ -48,17 +53,17 @@ function inferKindFromAcp(
 
 function blocksFromUpdate(u: AcpUpdate): ToolCallContentBlock[] {
   const out: ToolCallContentBlock[] = [];
-  if (Array.isArray(u.contents)) {
-    for (const c of u.contents) {
+  const arr = Array.isArray(u.content) ? u.content : null;
+  if (arr) {
+    for (const c of arr) {
       const kind = inferKindFromAcp(c);
       const block: ToolCallContentBlock = { kind, raw: c };
       const inner = (c as { content?: { type?: string; text?: string } }).content;
       if (inner?.type === "text" && typeof inner.text === "string") block.text = inner.text;
-      if (kind === "diff" && typeof c === "object" && c) {
-        const d = c as { path?: string; oldText?: string; newText?: string };
-        block.path = d.path;
-        block.oldText = d.oldText;
-        block.newText = d.newText;
+      if (kind === "diff") {
+        block.path = c.path;
+        block.oldText = c.oldText;
+        block.newText = c.newText;
       }
       out.push(block);
     }
@@ -111,11 +116,13 @@ export function useWsBridge() {
             store.upsertSession({ id: sid, cwd: "", title: "New session", status: "idle" });
           }
           switch (u.sessionUpdate) {
-            case "agent_message_chunk":
-              if (u.content?.type === "text" && u.content.text) {
-                store.appendAgentChunk(sid, u.content.text);
+            case "agent_message_chunk": {
+              const c = u.content;
+              if (c && !Array.isArray(c) && c.type === "text" && c.text) {
+                store.appendAgentChunk(sid, c.text);
               }
               break;
+            }
             case "user_message_chunk":
               break;
             case "available_commands_update":

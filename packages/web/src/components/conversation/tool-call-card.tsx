@@ -10,6 +10,7 @@ import {
 import { useState } from "react";
 import { cn } from "../../lib/cn";
 import { type ToolCallContentBlock, type ToolCallState } from "../../stores/ui-store";
+import { DiffView } from "./diff-view";
 
 function statusVisual(s: ToolCallState["status"]) {
   switch (s) {
@@ -110,29 +111,13 @@ export function ToolCallCard({ call }: { call: ToolCallState }) {
 
 function ContentBlock({ block }: { block: ToolCallContentBlock }) {
   if (block.kind === "diff") {
-    const adds = (block.newText?.split("\n").length ?? 0);
-    const dels = (block.oldText?.split("\n").length ?? 0);
     return (
-      <div className="mb-2 rounded border border-border bg-background">
-        <div className="flex items-center justify-between border-b border-border px-2 py-1 text-[11px]">
-          <span className="font-mono text-foreground">{block.path ?? "(diff)"}</span>
-          <span className="text-muted-foreground">
-            <span className="text-success">+{adds}</span> /{" "}
-            <span className="text-destructive">−{dels}</span>
-          </span>
-        </div>
-        <pre className="max-h-72 overflow-auto p-2 font-mono text-[11px]">
-          {(block.oldText ?? "").split("\n").map((l, i) => (
-            <div key={`o${i}`} className="text-destructive">
-              − {l}
-            </div>
-          ))}
-          {(block.newText ?? "").split("\n").map((l, i) => (
-            <div key={`n${i}`} className="text-success">
-              + {l}
-            </div>
-          ))}
-        </pre>
+      <div className="mb-2">
+        <DiffView
+          path={block.path}
+          oldText={block.oldText}
+          newText={block.newText}
+        />
       </div>
     );
   }

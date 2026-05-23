@@ -3,6 +3,7 @@ import remarkGfm from "remark-gfm";
 import { Bot, Terminal, User } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { type Message } from "../../stores/ui-store";
+import { CodeBlock } from "./code-block";
 
 function relativeTime(ts: number) {
   const d = Date.now() - ts;
@@ -55,8 +56,23 @@ export function MessageBubble({
           <span>·</span>
           <span>{relativeTime(message.ts)}</span>
         </div>
-        <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-panel prose-pre:border prose-pre:border-border prose-pre:text-[13px] prose-code:before:content-none prose-code:after:content-none prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:text-[12px]">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        <div className="prose prose-invert prose-sm max-w-none prose-pre:m-0 prose-pre:bg-transparent prose-pre:border-0 prose-pre:p-0 prose-code:before:content-none prose-code:after:content-none">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              code({ className, children }) {
+                const codeStr = String(children ?? "").replace(/\n$/, "");
+                const match = /language-([\w-]+)/.exec(className ?? "");
+                const inline = !match && !codeStr.includes("\n");
+                return (
+                  <CodeBlock code={codeStr} lang={match?.[1]} inline={inline} />
+                );
+              },
+              pre({ children }) {
+                return <>{children}</>;
+              },
+            }}
+          >
             {message.text || (streaming ? "…" : "")}
           </ReactMarkdown>
           {streaming && (

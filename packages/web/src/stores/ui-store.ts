@@ -109,6 +109,17 @@ export interface UIState {
 
 const nowId = () => Math.random().toString(36).slice(2, 10);
 
+function sigForBlock(b: ToolCallContentBlock): string {
+  if (b.kind === "diff") return `diff:${b.path ?? ""}:${b.oldText ?? ""}:${b.newText ?? ""}`;
+  if (b.kind === "text") return `text:${b.text ?? ""}`;
+  if (b.kind === "terminal") return `term:${b.text ?? JSON.stringify(b.raw ?? "")}`;
+  try {
+    return `${b.kind}:${JSON.stringify(b.raw ?? "")}`;
+  } catch {
+    return `${b.kind}:?`;
+  }
+}
+
 function summarizeInput(input: unknown): string | undefined {
   if (input == null) return undefined;
   if (typeof input === "string") return input.slice(0, 120);
@@ -316,6 +327,8 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => {
       const existing = state.toolCalls[id];
       if (!existing) return state;
+      const sig = sigForBlock(block);
+      if (existing.content.some((b) => sigForBlock(b) === sig)) return state;
       return {
         toolCalls: {
           ...state.toolCalls,
