@@ -1,0 +1,17 @@
+node_modules
+dist
+.vite
+.DS_Store
+*.log
+data/
+.env
+.env.local
+
+# Local dev server logs
+.dev-logs/
+
+# Playwright CLI runtime cache (screenshots/snapshots/console logs)
+.playwright-cli/
+
+# Copilot session state
+.copilot/
