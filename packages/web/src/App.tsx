@@ -4,6 +4,7 @@ import { Conversation, NoSessionPlaceholder } from "./components/conversation/co
 import { FindBar } from "./components/conversation/find-bar";
 import { SessionHeader } from "./components/conversation/session-header";
 import { Inspector, InspectorRail } from "./components/inspector/inspector";
+import { ResizeHandle } from "./components/layout/resize-handle";
 import { ConfirmDialogHost } from "./components/overlays/confirm-dialog";
 import { HelpOverlay } from "./components/overlays/help-overlay";
 import { ModelPickerOverlay } from "./components/overlays/model-picker";
@@ -15,7 +16,13 @@ import { TopBar } from "./components/shell/top-bar";
 import { Sidebar, SidebarRail } from "./components/sidebar/sidebar";
 import { orderedSessions } from "./lib/session-order";
 import { useWsBridge } from "./lib/ws-bridge";
-import { useUIStore } from "./stores/ui-store";
+import {
+  INSPECTOR_MAX,
+  INSPECTOR_MIN,
+  SIDEBAR_MAX,
+  SIDEBAR_MIN,
+  useUIStore,
+} from "./stores/ui-store";
 
 export function App() {
   useWsBridge();
@@ -24,6 +31,10 @@ export function App() {
   const inspectorCollapsed = useUIStore((s) => s.inspectorCollapsed);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const toggleInspector = useUIStore((s) => s.toggleInspector);
+  const sidebarWidth = useUIStore((s) => s.sidebarWidth);
+  const inspectorWidth = useUIStore((s) => s.inspectorWidth);
+  const setSidebarWidth = useUIStore((s) => s.setSidebarWidth);
+  const setInspectorWidth = useUIStore((s) => s.setInspectorWidth);
   const wsConnected = useUIStore((s) => s.wsConnected);
   const activeId = useUIStore((s) => s.activeSessionId);
   const session = useUIStore((s) => (activeId ? s.sessions[activeId] : null));
@@ -64,7 +75,22 @@ export function App() {
     <div className="flex h-screen w-screen flex-col bg-background text-foreground">
       <TopBar />
       <div className="flex min-h-0 flex-1">
-        {sidebarCollapsed ? <SidebarRail onExpand={toggleSidebar} /> : <Sidebar />}
+        {sidebarCollapsed ? (
+          <SidebarRail onExpand={toggleSidebar} />
+        ) : (
+          <>
+            <Sidebar />
+            <ResizeHandle
+              side="left"
+              value={sidebarWidth}
+              min={SIDEBAR_MIN}
+              max={SIDEBAR_MAX}
+              defaultValue={256}
+              ariaLabel="Resize sidebar"
+              onChange={setSidebarWidth}
+            />
+          </>
+        )}
 
         <main className="flex min-w-0 flex-1 flex-col">
           {!wsConnected && <DisconnectedBanner />}
@@ -84,7 +110,22 @@ export function App() {
           )}
         </main>
 
-        {inspectorCollapsed ? <InspectorRail onExpand={toggleInspector} /> : <Inspector />}
+        {inspectorCollapsed ? (
+          <InspectorRail onExpand={toggleInspector} />
+        ) : (
+          <>
+            <ResizeHandle
+              side="right"
+              value={inspectorWidth}
+              min={INSPECTOR_MIN}
+              max={INSPECTOR_MAX}
+              defaultValue={320}
+              ariaLabel="Resize inspector"
+              onChange={setInspectorWidth}
+            />
+            <Inspector />
+          </>
+        )}
       </div>
       <StatusBar />
       <PermissionDialog />

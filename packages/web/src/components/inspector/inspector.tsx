@@ -32,6 +32,7 @@ export function Inspector() {
   const toolCalls = useUIStore((s) => s.toolCalls);
   const tab = useUIStore((s) => s.inspectorTab);
   const setTab = useUIStore((s) => s.setInspectorTab);
+  const width = useUIStore((s) => s.inspectorWidth);
 
   const sessionCalls = session
     ? session.toolCallIds.map((id) => toolCalls[id]).filter(Boolean)
@@ -56,7 +57,10 @@ export function Inspector() {
   }, [scrollKey]);
 
   return (
-    <aside className="flex h-full w-80 shrink-0 flex-col border-l border-border bg-panel">
+    <aside
+      className="flex h-full shrink-0 flex-col border-l border-border bg-panel"
+      style={{ width }}
+    >
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <span className="text-xs font-medium text-muted-foreground">Inspector</span>
         <Button variant="ghost" size="icon" onClick={toggle} title="Collapse (⌘B)">

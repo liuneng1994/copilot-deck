@@ -137,6 +137,9 @@ export interface UIState {
   drafts: Record<string, string>;
   /** Per-session sent-prompt history for ↑/↓ recall. Persisted in localStorage. */
   promptHistory: Record<string, string[]>;
+  /** Sidebar / Inspector pane widths in px. Persisted in localStorage. */
+  sidebarWidth: number;
+  inspectorWidth: number;
 
   toggleSidebar: () => void;
   toggleInspector: () => void;
@@ -188,6 +191,9 @@ export interface UIState {
   setModelPickerOpen: (open: boolean) => void;
   setFilePreviewPath: (path: string | null) => void;
   setDraft: (sessionId: string, text: string) => void;
+  /** Update the sidebar/inspector width (px) with min/max clamp; persists to localStorage. */
+  setSidebarWidth: (px: number) => void;
+  setInspectorWidth: (px: number) => void;
   /**
    * Force Composer to reload its text from the persisted draft. Increment-only
    * counter Composer subscribes to; used by message-bubble Edit and similar
@@ -268,6 +274,38 @@ function savePromptHistory(history: Record<string, string[]>): void {
   } catch {}
 }
 
+const PANEL_WIDTHS_KEY = "agent-view:panel-widths:v1";
+export const SIDEBAR_MIN = 180;
+export const SIDEBAR_MAX = 480;
+export const INSPECTOR_MIN = 240;
+export const INSPECTOR_MAX = 640;
+function loadPanelWidths(): { sidebar: number; inspector: number } {
+  const defaults = { sidebar: 256, inspector: 320 };
+  if (typeof localStorage === "undefined") return defaults;
+  try {
+    const raw = localStorage.getItem(PANEL_WIDTHS_KEY);
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw) as { sidebar?: unknown; inspector?: unknown };
+    return {
+      sidebar:
+        typeof parsed.sidebar === "number" && parsed.sidebar >= SIDEBAR_MIN
+          ? Math.min(SIDEBAR_MAX, parsed.sidebar)
+          : defaults.sidebar,
+      inspector:
+        typeof parsed.inspector === "number" && parsed.inspector >= INSPECTOR_MIN
+          ? Math.min(INSPECTOR_MAX, parsed.inspector)
+          : defaults.inspector,
+    };
+  } catch {}
+  return defaults;
+}
+function savePanelWidths(w: { sidebar: number; inspector: number }): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(PANEL_WIDTHS_KEY, JSON.stringify(w));
+  } catch {}
+}
+
 export const useUIStore = create<UIState>((set) => ({
   sidebarCollapsed: false,
   inspectorCollapsed: false,
@@ -293,6 +331,8 @@ export const useUIStore = create<UIState>((set) => ({
   drafts: loadDrafts(),
   promptHistory: loadPromptHistory(),
   composerLoadEpoch: {},
+  sidebarWidth: loadPanelWidths().sidebar,
+  inspectorWidth: loadPanelWidths().inspector,
 
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   toggleInspector: () => set((s) => ({ inspectorCollapsed: !s.inspectorCollapsed })),
@@ -660,6 +700,20 @@ export const useUIStore = create<UIState>((set) => ({
       else delete next[sessionId];
       saveDrafts(next);
       return { drafts: next };
+    }),
+  setSidebarWidth: (px) =>
+    set((s) => {
+      const clamped = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.round(px)));
+      if (clamped === s.sidebarWidth) return s;
+      savePanelWidths({ sidebar: clamped, inspector: s.inspectorWidth });
+      return { sidebarWidth: clamped };
+    }),
+  setInspectorWidth: (px) =>
+    set((s) => {
+      const clamped = Math.max(INSPECTOR_MIN, Math.min(INSPECTOR_MAX, Math.round(px)));
+      if (clamped === s.inspectorWidth) return s;
+      savePanelWidths({ sidebar: s.sidebarWidth, inspector: clamped });
+      return { inspectorWidth: clamped };
     }),
   bumpComposerLoad: (sessionId) =>
     set((s) => ({

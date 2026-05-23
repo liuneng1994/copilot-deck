@@ -37,6 +37,7 @@ export function Sidebar() {
   const active = useUIStore((s) => s.activeSessionId);
   const setActive = useUIStore((s) => s.setActiveSession);
   const setLastError = useUIStore((s) => s.setLastError);
+  const width = useUIStore((s) => s.sidebarWidth);
 
   const groups = useMemo(() => {
     const byCwd = new Map<string, SessionState[]>();
@@ -115,7 +116,10 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-border bg-panel">
+    <aside
+      className="flex h-full shrink-0 flex-col border-r border-border bg-panel"
+      style={{ width }}
+    >
       <div className="flex items-center gap-1.5 border-b border-border px-3 py-2">
         <CwdCombobox
           value={cwdInput}
