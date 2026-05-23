@@ -2,7 +2,7 @@
 // delegate to manager / store / fs helpers, return JSON.
 
 import { spawn } from "node:child_process";
-import { promises as fs } from "node:fs";
+import { promises as fs, createReadStream } from "node:fs";
 import path from "node:path";
 import { CURATED_MODELS } from "@agent-view/shared";
 import type { FastifyInstance } from "fastify";
@@ -12,6 +12,62 @@ import type { SessionManager } from "./session-manager.js";
 
 interface Deps {
   manager: SessionManager;
+}
+
+const DEFAULT_FILE_RANGE_BYTES = 65_536;
+const MAX_FILE_RANGE_BYTES = 2_000_000;
+const RAW_FILE_MAX_BYTES = 20 * 1024 * 1024;
+const BINARY_SNIFF_BYTES = 4096;
+
+function parseNonNegativeInt(value: string | undefined, fallback: number, max?: number): number {
+  if (value == null || value.trim() === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  const whole = Math.floor(parsed);
+  return max == null ? whole : Math.min(whole, max);
+}
+
+function firstNonWhitespace(buffer: Buffer): number | undefined {
+  for (const byte of buffer) {
+    if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d) return byte;
+  }
+  return undefined;
+}
+
+function sniffMime(buffer: Buffer, isBinary: boolean): string {
+  if (
+    buffer.length >= 8 &&
+    buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  ) {
+    return "image/png";
+  }
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (buffer.length >= 4 && buffer.subarray(0, 4).toString("ascii") === "GIF8") {
+    return "image/gif";
+  }
+  if (
+    buffer.length >= 12 &&
+    buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+    buffer.subarray(8, 12).toString("ascii") === "WEBP"
+  ) {
+    return "image/webp";
+  }
+
+  const head = buffer.subarray(0, BINARY_SNIFF_BYTES).toString("utf8").trimStart().toLowerCase();
+  if (head.startsWith("<svg") || (head.startsWith("<?xml") && head.includes("<svg"))) {
+    return "image/svg+xml";
+  }
+
+  if (isBinary) return "application/octet-stream";
+  const first = firstNonWhitespace(buffer);
+  if (first === 0x7b || first === 0x5b) return "application/json";
+  return "text/plain";
+}
+
+function isImageMime(mime: string): boolean {
+  return mime.startsWith("image/");
 }
 
 export function registerRoutes(app: FastifyInstance, deps: Deps): void {
@@ -129,56 +185,94 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
     },
   );
 
-  app.get<{ Querystring: { path?: string; cwd?: string; max?: string } }>(
-    "/api/file",
-    async (req, reply) => {
-      const target = req.query.path?.trim();
-      if (!target) {
+  // Returns a bounded range (default 64 KiB); older behavior read the whole file up to 256 KiB.
+  app.get<{
+    Querystring: { path?: string; cwd?: string; offset?: string; length?: string; max?: string };
+  }>("/api/file", async (req, reply) => {
+    const target = req.query.path?.trim();
+    if (!target) {
+      reply.code(400);
+      return { error: "path required" };
+    }
+    const cwd = req.query.cwd?.trim();
+    if (!cwd || !path.isAbsolute(cwd)) {
+      reply.code(400);
+      return { error: "absolute cwd required" };
+    }
+    if (!isKnownCwd(cwd)) {
+      reply.code(400);
+      return { error: "cwd not in active session list" };
+    }
+    const abs = path.isAbsolute(target) ? path.normalize(target) : path.resolve(cwd, target);
+    const offset = parseNonNegativeInt(req.query.offset, 0);
+    const length = parseNonNegativeInt(
+      req.query.length ?? req.query.max,
+      DEFAULT_FILE_RANGE_BYTES,
+      MAX_FILE_RANGE_BYTES,
+    );
+    try {
+      const { realTarget } = await assertWithinCwd(abs, cwd, manager);
+      const stat = await fs.stat(realTarget);
+      if (!stat.isFile()) {
         reply.code(400);
-        return { error: "path required" };
+        return { error: "not a file" };
       }
-      const cwd = req.query.cwd?.trim();
-      if (!cwd || !path.isAbsolute(cwd)) {
-        reply.code(400);
-        return { error: "absolute cwd required" };
-      }
-      if (!isKnownCwd(cwd)) {
-        reply.code(400);
-        return { error: "cwd not in active session list" };
-      }
-      const abs = path.isAbsolute(target) ? path.normalize(target) : path.resolve(cwd, target);
-      const maxBytes = Math.min(Number(req.query.max ?? 256_000) || 256_000, 2_000_000);
+
+      const fh = await fs.open(realTarget, "r");
       try {
-        const { realTarget } = await assertWithinCwd(abs, cwd, manager);
-        const stat = await fs.stat(realTarget);
-        if (!stat.isFile()) {
-          reply.code(400);
-          return { error: "not a file" };
-        }
-        if (stat.size > maxBytes) {
-          const fh = await fs.open(realTarget, "r");
-          try {
-            const buf = Buffer.alloc(maxBytes);
-            await fh.read(buf, 0, maxBytes, 0);
-            return {
-              path: realTarget,
-              size: stat.size,
-              truncated: true,
-              content: buf.toString("utf8"),
-            };
-          } finally {
-            await fh.close();
+        const rangeBytes = Math.max(0, Math.min(length, Math.max(0, stat.size - offset)));
+        const rangeBuffer = Buffer.alloc(rangeBytes);
+        const { bytesRead } =
+          rangeBytes > 0 ? await fh.read(rangeBuffer, 0, rangeBytes, offset) : { bytesRead: 0 };
+        const contentBuffer = rangeBuffer.subarray(0, bytesRead);
+
+        let firstBytes: Buffer | undefined;
+        const sniffLength = Math.min(BINARY_SNIFF_BYTES, stat.size);
+        if (offset === 0 && bytesRead >= sniffLength) {
+          firstBytes = contentBuffer.subarray(0, sniffLength);
+        } else {
+          firstBytes = Buffer.alloc(sniffLength);
+          if (sniffLength > 0) {
+            const { bytesRead: firstBytesRead } = await fh.read(firstBytes, 0, sniffLength, 0);
+            firstBytes = firstBytes.subarray(0, firstBytesRead);
           }
         }
-        const content = await fs.readFile(realTarget, "utf8");
-        return { path: realTarget, size: stat.size, truncated: false, content };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        reply.code(err instanceof PathSafetyError ? 403 : 404);
-        return { error: message };
+
+        const isBinary = firstBytes.includes(0);
+        const mime = sniffMime(firstBytes, isBinary);
+        const isImage = isImageMime(mime);
+        const response: {
+          size: number;
+          offset: number;
+          length: number;
+          isBinary: boolean;
+          isImage: boolean;
+          mime: string;
+          content?: string;
+          truncated: boolean;
+        } = {
+          size: stat.size,
+          offset,
+          length: bytesRead,
+          isBinary,
+          isImage,
+          mime: isBinary && !isImage ? "application/octet-stream" : mime,
+          truncated: offset + bytesRead < stat.size,
+        };
+
+        if (!isBinary && !isImage) {
+          response.content = contentBuffer.toString("utf8");
+        }
+        return response;
+      } finally {
+        await fh.close();
       }
-    },
-  );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      reply.code(err instanceof PathSafetyError ? 403 : 404);
+      return { error: message };
+    }
+  });
 
   app.get<{ Querystring: { path?: string; q?: string; limit?: string } }>(
     "/api/list-dir",
@@ -310,4 +404,56 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
       return md;
     },
   );
+
+  app.get<{ Querystring: { path?: string; cwd?: string } }>("/api/file/raw", async (req, reply) => {
+    const target = req.query.path?.trim();
+    if (!target) {
+      reply.code(400);
+      return { error: "path required" };
+    }
+    const cwd = req.query.cwd?.trim();
+    if (!cwd || !path.isAbsolute(cwd)) {
+      reply.code(400);
+      return { error: "absolute cwd required" };
+    }
+    if (!isKnownCwd(cwd)) {
+      reply.code(400);
+      return { error: "cwd not in active session list" };
+    }
+    const abs = path.isAbsolute(target) ? path.normalize(target) : path.resolve(cwd, target);
+
+    try {
+      const { realTarget } = await assertWithinCwd(abs, cwd, manager);
+      const stat = await fs.stat(realTarget);
+      if (!stat.isFile()) {
+        reply.code(400);
+        return { error: "not a file" };
+      }
+      if (stat.size > RAW_FILE_MAX_BYTES) {
+        reply.code(413);
+        return { error: "file too large" };
+      }
+
+      const fh = await fs.open(realTarget, "r");
+      let firstBytes = Buffer.alloc(Math.min(BINARY_SNIFF_BYTES, stat.size));
+      try {
+        if (firstBytes.length > 0) {
+          const { bytesRead } = await fh.read(firstBytes, 0, firstBytes.length, 0);
+          firstBytes = firstBytes.subarray(0, bytesRead);
+        }
+      } finally {
+        await fh.close();
+      }
+
+      const mime = sniffMime(firstBytes, firstBytes.includes(0));
+      return reply
+        .header("Cache-Control", "private, max-age=0")
+        .type(mime)
+        .send(createReadStream(realTarget));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      reply.code(err instanceof PathSafetyError ? 403 : 404);
+      return { error: message };
+    }
+  });
 }
