@@ -134,6 +134,8 @@ export interface UIState {
   modelBySession: Record<string, string>;
   /** Model picker overlay visibility. */
   modelPickerOpen: boolean;
+  /** Settings drawer visibility. */
+  settingsOpen: boolean;
   /** Inspector Files-tab: which path the user opened (clicked or set externally). */
   filePreviewPath: string | null;
   /** Per-session unsent composer drafts. Persisted in localStorage. */
@@ -194,6 +196,7 @@ export interface UIState {
   setModelForCwd: (cwd: string, model: string) => void;
   setModelForSession: (sessionId: string, model: string) => void;
   setModelPickerOpen: (open: boolean) => void;
+  setSettingsOpen: (open: boolean) => void;
   setFilePreviewPath: (path: string | null) => void;
   setDraft: (sessionId: string, text: string) => void;
   /** Update the sidebar/inspector width (px) with min/max clamp; persists to localStorage. */
@@ -333,6 +336,7 @@ export const useUIStore = create<UIState>((set) => ({
   modelByCwd: {},
   modelBySession: {},
   modelPickerOpen: false,
+  settingsOpen: false,
   filePreviewPath: null,
   drafts: loadDrafts(),
   promptHistory: loadPromptHistory(),
@@ -707,6 +711,7 @@ export const useUIStore = create<UIState>((set) => ({
   setModelForSession: (sessionId, model) =>
     set((s) => ({ modelBySession: { ...s.modelBySession, [sessionId]: model } })),
   setModelPickerOpen: (open) => set({ modelPickerOpen: open }),
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
   setFilePreviewPath: (path) => set({ filePreviewPath: path }),
   setDraft: (sessionId, text) =>
     set((s) => {

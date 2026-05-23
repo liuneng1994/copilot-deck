@@ -10,6 +10,7 @@ import { HelpOverlay } from "./components/overlays/help-overlay";
 import { ModelPickerOverlay } from "./components/overlays/model-picker";
 import { NoticeBanner } from "./components/overlays/notice-banner";
 import { PermissionDialog } from "./components/overlays/permission-dialog";
+import { SettingsDrawer } from "./components/overlays/settings-drawer";
 import { TraceDrawer } from "./components/overlays/trace-drawer";
 import { StatusBar } from "./components/shell/status-bar";
 import { TopBar } from "./components/shell/top-bar";
@@ -55,6 +56,9 @@ export function App() {
         e.preventDefault();
         const st = useUIStore.getState();
         st.setFindOpen(!st.findOpen);
+      } else if (e.key === ",") {
+        e.preventDefault();
+        useUIStore.getState().setSettingsOpen(true);
       } else if (/^[1-9]$/.test(e.key)) {
         // Cmd/Ctrl + 1..9 → switch to nth session in sidebar order.
         const state = useUIStore.getState();
@@ -132,6 +136,7 @@ export function App() {
       <TraceDrawer />
       <HelpOverlay />
       <ModelPickerOverlay />
+      <SettingsDrawer />
       <ConfirmDialogHost />
     </div>
   );

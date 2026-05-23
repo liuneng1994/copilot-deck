@@ -1,4 +1,5 @@
 import { Bot, Command, Moon, Settings } from "lucide-react";
+import { useUIStore } from "../../stores/ui-store";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
@@ -26,11 +27,16 @@ export function TopBar() {
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Settings"
+              onClick={() => useUIStore.getState().setSettingsOpen(true)}
+            >
               <Settings className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Settings (todo)</TooltipContent>
+          <TooltipContent>Settings</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
