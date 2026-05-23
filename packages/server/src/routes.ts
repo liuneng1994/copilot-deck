@@ -7,6 +7,7 @@ import path from "node:path";
 import { CURATED_MODELS } from "@agent-view/shared";
 import type { FastifyInstance } from "fastify";
 import { listFiles } from "./file-index.js";
+import { PathSafetyError, assertWithinCwd } from "./path-safety.js";
 import type { SessionManager } from "./session-manager.js";
 
 interface Deps {
@@ -15,6 +16,7 @@ interface Deps {
 
 export function registerRoutes(app: FastifyInstance, deps: Deps): void {
   const { manager } = deps;
+  const isKnownCwd = (cwd: string) => manager.list().some((s) => s.cwd === cwd);
 
   app.get("/api/health", async () => ({ ok: true }));
 
@@ -26,8 +28,9 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
     currentByCwd: manager.getModelsByCwd(),
   }));
 
-  app.post<{ Body: { path?: string } }>("/api/mkdir", async (req, reply) => {
+  app.post<{ Body: { path?: string; cwd?: string } }>("/api/mkdir", async (req, reply) => {
     const raw = typeof req.body?.path === "string" ? req.body.path.trim() : "";
+    const cwd = typeof req.body?.cwd === "string" ? req.body.cwd.trim() : undefined;
     if (!raw) {
       reply.code(400);
       return { error: "path required" };
@@ -36,19 +39,28 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
       reply.code(400);
       return { error: "absolute path required" };
     }
+    if (cwd && !path.isAbsolute(cwd)) {
+      reply.code(400);
+      return { error: "absolute cwd required" };
+    }
+    if (cwd && !isKnownCwd(cwd)) {
+      reply.code(400);
+      return { error: "cwd not in active session list" };
+    }
     const target = path.normalize(raw);
     if (target === "/" || target === "/root" || target === "/home") {
       reply.code(400);
       return { error: "refusing to create root-level directory" };
     }
     try {
+      if (cwd) await assertWithinCwd(target, cwd, manager);
       const before = await fs.stat(target).catch(() => null);
       const existed = !!before?.isDirectory();
       await fs.mkdir(target, { recursive: true });
       return { ok: true, path: target, created: !existed };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      reply.code(500);
+      reply.code(err instanceof PathSafetyError ? 403 : 500);
       return { error: message };
     }
   });
@@ -61,16 +73,21 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
         reply.code(400);
         return { error: "absolute cwd required" };
       }
+      if (!isKnownCwd(cwd)) {
+        reply.code(400);
+        return { error: "cwd not in active session list" };
+      }
       try {
+        const { realCwd } = await assertWithinCwd(cwd, cwd, manager);
         const matches = await listFiles({
-          cwd,
+          cwd: realCwd,
           query: req.query.q ?? "",
           limit: Math.min(Number(req.query.limit ?? 50) || 50, 200),
         });
         return { cwd, files: matches };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        reply.code(500);
+        reply.code(err instanceof PathSafetyError ? 403 : 500);
         return { error: message };
       }
     },
@@ -84,20 +101,29 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
         reply.code(400);
         return { error: "path required" };
       }
-      const cwd = req.query.cwd && path.isAbsolute(req.query.cwd) ? req.query.cwd : undefined;
-      const abs = path.isAbsolute(target) ? target : cwd ? path.resolve(cwd, target) : target;
+      const cwd = req.query.cwd?.trim();
+      if (!cwd || !path.isAbsolute(cwd)) {
+        reply.code(400);
+        return { error: "absolute cwd required" };
+      }
+      if (!isKnownCwd(cwd)) {
+        reply.code(400);
+        return { error: "cwd not in active session list" };
+      }
+      const abs = path.isAbsolute(target) ? path.normalize(target) : path.resolve(cwd, target);
       const editorCmd = process.env.AGENT_VIEW_EDITOR ?? "code";
       try {
-        const child = spawn(editorCmd, [abs], {
+        const { realTarget } = await assertWithinCwd(abs, cwd, manager);
+        const child = spawn(editorCmd, [realTarget], {
           stdio: "ignore",
           detached: true,
         });
         child.on("error", (e) => app.log.warn({ err: e }, "open-in-editor spawn failed"));
         child.unref();
-        return { ok: true, path: abs };
+        return { ok: true, path: realTarget };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        reply.code(500);
+        reply.code(err instanceof PathSafetyError ? 403 : 500);
         return { error: message };
       }
     },
@@ -111,26 +137,31 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
         reply.code(400);
         return { error: "path required" };
       }
-      const cwd = req.query.cwd && path.isAbsolute(req.query.cwd) ? req.query.cwd : undefined;
-      const abs = path.isAbsolute(target)
-        ? path.normalize(target)
-        : cwd
-          ? path.resolve(cwd, target)
-          : path.resolve(target);
+      const cwd = req.query.cwd?.trim();
+      if (!cwd || !path.isAbsolute(cwd)) {
+        reply.code(400);
+        return { error: "absolute cwd required" };
+      }
+      if (!isKnownCwd(cwd)) {
+        reply.code(400);
+        return { error: "cwd not in active session list" };
+      }
+      const abs = path.isAbsolute(target) ? path.normalize(target) : path.resolve(cwd, target);
       const maxBytes = Math.min(Number(req.query.max ?? 256_000) || 256_000, 2_000_000);
       try {
-        const stat = await fs.stat(abs);
+        const { realTarget } = await assertWithinCwd(abs, cwd, manager);
+        const stat = await fs.stat(realTarget);
         if (!stat.isFile()) {
           reply.code(400);
           return { error: "not a file" };
         }
         if (stat.size > maxBytes) {
-          const fh = await fs.open(abs, "r");
+          const fh = await fs.open(realTarget, "r");
           try {
             const buf = Buffer.alloc(maxBytes);
             await fh.read(buf, 0, maxBytes, 0);
             return {
-              path: abs,
+              path: realTarget,
               size: stat.size,
               truncated: true,
               content: buf.toString("utf8"),
@@ -139,11 +170,11 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
             await fh.close();
           }
         }
-        const content = await fs.readFile(abs, "utf8");
-        return { path: abs, size: stat.size, truncated: false, content };
+        const content = await fs.readFile(realTarget, "utf8");
+        return { path: realTarget, size: stat.size, truncated: false, content };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        reply.code(404);
+        reply.code(err instanceof PathSafetyError ? 403 : 404);
         return { error: message };
       }
     },

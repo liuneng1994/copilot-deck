@@ -18,27 +18,10 @@ const IGNORE_DIRS = new Set([
 ]);
 
 const MAX_FILES_PER_INDEX = 20000;
-const CACHE_TTL_MS = 60_000;
 
-interface CacheEntry {
-  files: string[];
-  loadedAt: number;
-}
-
-const cache = new Map<string, CacheEntry>();
-
-async function hasGit(cwd: string): Promise<boolean> {
-  try {
-    const st = await fs.stat(path.join(cwd, ".git"));
-    return st.isDirectory() || st.isFile();
-  } catch {
-    return false;
-  }
-}
-
-function gitLsFiles(cwd: string): Promise<string[]> {
+function runFilesCommand(command: string, args: string[], cwd: string): Promise<string[]> {
   return new Promise((resolve, reject) => {
-    const child = spawn("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
+    const child = spawn(command, args, {
       cwd,
       stdio: ["ignore", "pipe", "ignore"],
     });
@@ -50,13 +33,24 @@ function gitLsFiles(cwd: string): Promise<string[]> {
     child.on("error", reject);
     child.on("close", (code) => {
       if (code !== 0) {
-        reject(new Error(`git ls-files exited ${code}`));
+        reject(new Error(`${command} exited ${code}`));
         return;
       }
-      const list = buf.split("\n").filter(Boolean).slice(0, MAX_FILES_PER_INDEX);
-      resolve(list);
+      resolve(buf.split("\n").filter(Boolean).slice(0, MAX_FILES_PER_INDEX));
     });
   });
+}
+
+function rgFiles(cwd: string): Promise<string[]> {
+  return runFilesCommand(
+    "rg",
+    ["--files", "--hidden", "--no-ignore-vcs=false", "--glob", "!.git/**"],
+    cwd,
+  );
+}
+
+function gitLsFiles(cwd: string): Promise<string[]> {
+  return runFilesCommand("git", ["ls-files", "--cached", "--others", "--exclude-standard"], cwd);
 }
 
 async function walkFs(cwd: string): Promise<string[]> {
@@ -89,24 +83,16 @@ async function walkFs(cwd: string): Promise<string[]> {
 }
 
 async function loadIndex(cwd: string): Promise<string[]> {
-  if (await hasGit(cwd)) {
-    try {
-      return await gitLsFiles(cwd);
-    } catch {
-      // fall through to fs walk
-    }
+  try {
+    return await rgFiles(cwd);
+  } catch {
+    // fall back to git, then fs walk
   }
-  return walkFs(cwd);
-}
-
-async function getIndex(cwd: string): Promise<string[]> {
-  const cached = cache.get(cwd);
-  if (cached && Date.now() - cached.loadedAt < CACHE_TTL_MS) {
-    return cached.files;
+  try {
+    return await gitLsFiles(cwd);
+  } catch {
+    return walkFs(cwd);
   }
-  const files = await loadIndex(cwd);
-  cache.set(cwd, { files, loadedAt: Date.now() });
-  return files;
 }
 
 /**
@@ -115,9 +101,9 @@ async function getIndex(cwd: string): Promise<string[]> {
  *   - score rewards: matches near path separators, consecutive matches,
  *     matches in the basename, shorter overall path.
  */
-function fuzzyScore(path: string, query: string): number | null {
+function fuzzyScore(filePath: string, query: string): number | null {
   if (query.length === 0) return 0;
-  const lp = path.toLowerCase();
+  const lp = filePath.toLowerCase();
   const lq = query.toLowerCase();
   let pi = 0;
   let score = 0;
@@ -126,7 +112,6 @@ function fuzzyScore(path: string, query: string): number | null {
     const ch = lq[qi];
     const idx = lp.indexOf(ch, pi);
     if (idx < 0) return null;
-    // bonus for matching at start or after separator
     if (
       idx === 0 ||
       lp[idx - 1] === "/" ||
@@ -136,17 +121,15 @@ function fuzzyScore(path: string, query: string): number | null {
     ) {
       score += 10;
     }
-    if (idx === prevMatchIdx + 1) score += 5; // consecutive
+    if (idx === prevMatchIdx + 1) score += 5;
     score += 1;
     prevMatchIdx = idx;
     pi = idx + 1;
   }
-  // Boost basename matches
   const slash = lp.lastIndexOf("/");
   const base = lp.slice(slash + 1);
   if (base.includes(lq)) score += 20;
-  // Penalty for path length
-  score -= Math.floor(path.length / 40);
+  score -= Math.floor(filePath.length / 40);
   return score;
 }
 
@@ -155,7 +138,7 @@ export async function listFiles(opts: {
   query: string;
   limit: number;
 }): Promise<string[]> {
-  const files = await getIndex(opts.cwd);
+  const files = await loadIndex(opts.cwd);
   if (!opts.query) {
     return files.slice(0, opts.limit);
   }
@@ -168,6 +151,4 @@ export async function listFiles(opts: {
   return scored.slice(0, opts.limit).map((r) => r.path);
 }
 
-export function invalidateIndex(cwd: string) {
-  cache.delete(cwd);
-}
+export function invalidateIndex(_cwd: string) {}
