@@ -6,9 +6,14 @@
 import type { ClientToServer, ServerToClient } from "@agent-view/shared";
 import fastifyWebsocket from "@fastify/websocket";
 import Fastify from "fastify";
-import { registerMcpRoutes } from "./extensions/routes-mcp.js";
-import { registerPluginRoutes } from "./extensions/routes-plugins.js";
-import { registerSkillsRoutes } from "./extensions/routes-skills.js";
+import { invalidateMcpUserCache, registerMcpRoutes } from "./extensions/routes-mcp.js";
+import {
+  invalidateMarketplaceCache,
+  invalidatePluginCache,
+  registerPluginRoutes,
+} from "./extensions/routes-plugins.js";
+import { invalidateSkillsCache, registerSkillsRoutes } from "./extensions/routes-skills.js";
+import { startExtensionWatchers } from "./extensions/watchers.js";
 import { registerRoutes } from "./routes.js";
 import { SessionManager } from "./session-manager.js";
 import { Store } from "./store.js";
@@ -27,6 +32,18 @@ async function main() {
   const broadcast = (msg: ServerToClient) => {
     for (const send of clients) send(msg);
   };
+
+  const extensionWatchers = startExtensionWatchers({
+    manager,
+    broadcast,
+    invalidate: {
+      plugins: invalidatePluginCache,
+      marketplaces: invalidateMarketplaceCache,
+      mcpUser: invalidateMcpUserCache,
+      skillsRepo: invalidateSkillsCache,
+      skillsGlobal: () => invalidateSkillsCache(),
+    },
+  });
 
   registerRoutes(app, { manager });
   registerMcpRoutes(app, { manager });
@@ -120,6 +137,7 @@ async function main() {
 
   const shutdown = async () => {
     app.log.info("shutting down");
+    await extensionWatchers.close();
     await manager.shutdownAll();
     await app.close();
     process.exit(0);

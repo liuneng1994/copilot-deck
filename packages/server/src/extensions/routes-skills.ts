@@ -24,7 +24,7 @@ type Cached<T> = { expiresAt: number; value: T };
 const repoListCache = new Map<string, Cached<Awaited<ReturnType<typeof listRepoSkills>>>>();
 let globalListCache: Cached<Awaited<ReturnType<typeof listGlobalSkills>>> | undefined;
 
-function invalidateSkillsCache(cwd?: string): void {
+export function invalidateSkillsCache(cwd?: string): void {
   if (cwd) repoListCache.delete(path.resolve(cwd));
   else repoListCache.clear();
   globalListCache = undefined;

@@ -18,6 +18,33 @@ type CacheValue = PluginInfo[] | MarketplaceInfo[] | MarketplacePlugin[];
 const CACHE_TTL_MS = 30_000;
 const UNKNOWN_JSON_OPTION_RE = /unknown option ['"]?--json['"]?/i;
 
+const cache = new Map<string, { at: number; value: CacheValue }>();
+
+const getCached = <T extends CacheValue>(key: string): T | undefined => {
+  const hit = cache.get(key);
+  if (!hit || Date.now() - hit.at > CACHE_TTL_MS) return undefined;
+  return hit.value as T;
+};
+
+const setCached = (key: string, value: CacheValue) => {
+  cache.set(key, { at: Date.now(), value });
+};
+
+const invalidate = (prefix: string) => {
+  for (const key of cache.keys()) {
+    if (key.startsWith(prefix)) cache.delete(key);
+  }
+};
+
+export function invalidatePluginCache(): void {
+  invalidate("plugins:");
+}
+
+export function invalidateMarketplaceCache(): void {
+  invalidate("marketplaces:");
+  invalidate("marketplace:");
+}
+
 function badRequest(reply: FastifyReply, error: string) {
   reply.code(400);
   return { error };
@@ -91,24 +118,7 @@ function marketplacePluginFromJson(marketplace: string) {
 
 export function registerPluginRoutes(app: FastifyInstance, deps: Deps): void {
   const { broadcast } = deps;
-  const cache = new Map<string, { at: number; value: CacheValue }>();
   const aborts = new Map<string, () => void>();
-
-  const getCached = <T extends CacheValue>(key: string): T | undefined => {
-    const hit = cache.get(key);
-    if (!hit || Date.now() - hit.at > CACHE_TTL_MS) return undefined;
-    return hit.value as T;
-  };
-
-  const setCached = (key: string, value: CacheValue) => {
-    cache.set(key, { at: Date.now(), value });
-  };
-
-  const invalidate = (prefix: string) => {
-    for (const key of cache.keys()) {
-      if (key.startsWith(prefix)) cache.delete(key);
-    }
-  };
 
   const runJsonOrText = async <T extends CacheValue>(
     args: string[],

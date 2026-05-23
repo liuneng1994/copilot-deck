@@ -76,7 +76,7 @@ async function listUserMcp(): Promise<McpServer[]> {
   return servers;
 }
 
-function invalidateUserCache(): void {
+export function invalidateMcpUserCache(): void {
   userCache = undefined;
 }
 
@@ -200,7 +200,7 @@ export function registerMcpRoutes(app: FastifyInstance, deps: Deps): void {
       }
 
       const result = await runCopilot(mcpAddArgs(server));
-      invalidateUserCache();
+      invalidateMcpUserCache();
       const added =
         parseMcpList(result.stdout, "user").find((item) => item.name === server.name) ?? server;
       return { server: { ...added, name: server.name, scope: "user" as const } };
@@ -245,7 +245,7 @@ export function registerMcpRoutes(app: FastifyInstance, deps: Deps): void {
           return { ok: true };
         }
         await runCopilot(["mcp", "remove", req.params.name]);
-        invalidateUserCache();
+        invalidateMcpUserCache();
         return { ok: true };
       } catch (err) {
         return error(reply, 500, err instanceof Error ? err.message : String(err));

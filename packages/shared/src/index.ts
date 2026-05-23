@@ -21,6 +21,7 @@ export interface PermissionToolCallSnapshot {
 
 export type McpTransport = "stdio" | "http" | "sse";
 export type ExtensionScope = "user" | "workspace" | "plugin";
+export type ExtensionListScope = ExtensionScope | "all" | "global";
 
 export interface McpServer {
   name: string;
@@ -126,7 +127,7 @@ export type ClientToServer =
   | {
       type: "extensions_list_request";
       kind: ExtensionsKind;
-      scope?: ExtensionScope | "all";
+      scope?: ExtensionListScope;
       cwd?: string;
     }
   | {
@@ -197,7 +198,7 @@ export type ServerToClient =
       // Response to ClientToServer extensions_list_request.
       type: "extensions_list";
       kind: ExtensionsKind;
-      scope?: ExtensionScope | "all";
+      scope?: ExtensionListScope;
       cwd?: string;
       items: PluginInfo[] | McpServer[] | SkillInfo[] | MarketplaceInfo[];
     }
