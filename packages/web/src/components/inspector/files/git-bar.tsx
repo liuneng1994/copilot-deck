@@ -105,20 +105,22 @@ export function GitBar({ cwd, status }: GitBarProps) {
             : `${agentEntries.length} agent-touched`}
         </span>
         {isRepo && (
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
             <button
               type="button"
-              className="rounded border border-border px-2 py-1 text-[11px] text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+              className="whitespace-nowrap rounded border border-border px-2 py-1 text-[11px] text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
               disabled={busy || agentPaths.length === 0}
               onClick={() => setRestoreOpen(true)}
+              title="Discard working-tree changes for agent-touched files"
             >
-              Restore agent changes…
+              Restore…
             </button>
             <button
               type="button"
-              className="rounded border border-border px-2 py-1 text-[11px] text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+              className="whitespace-nowrap rounded border border-border px-2 py-1 text-[11px] text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
               disabled={busy || dirtyCount === 0}
               onClick={() => void stashChanges()}
+              title="git stash all working-tree changes"
             >
               Stash…
             </button>
