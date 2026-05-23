@@ -170,16 +170,11 @@ function normalizeTouchedPath(cwd: string, rawPath: string): { abs: string; rel:
 }
 
 function aggregateTouched(cwd: string, manager: SessionManager): FileTouch[] {
-  const activeIds = new Set(
-    manager
-      .list()
-      .filter((session) => path.resolve(session.cwd) === path.resolve(cwd))
-      .map((session) => session.id),
-  );
+  const resolvedCwd = path.resolve(cwd);
   const map = new Map<string, FileTouch>();
 
   for (const session of manager.hydrate()) {
-    if (!activeIds.has(session.id)) continue;
+    if (path.resolve(session.cwd) !== resolvedCwd) continue;
     for (const call of session.toolCalls as ToolCallLike[]) {
       const seen = new Set<string>();
       const perPathStats = new Map<string, { added: number; removed: number }>();
