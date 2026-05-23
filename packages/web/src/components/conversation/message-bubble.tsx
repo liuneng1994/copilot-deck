@@ -1,12 +1,10 @@
 import { Bot, Copy, Pencil, RefreshCw, User } from "lucide-react";
-import { type ReactNode, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { type ReactNode, useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
+import { classify } from "../../lib/content-renderer/classify";
+import { renderContent } from "../../lib/content-renderer/render";
 import { sendWs } from "../../lib/ws-client";
 import { type Message, useUIStore } from "../../stores/ui-store";
-import { CodeBlock } from "./code-block";
-import { LinkifyPaths } from "./file-link";
 
 function relativeTime(ts: number) {
   const d = Date.now() - ts;
@@ -17,15 +15,26 @@ function relativeTime(ts: number) {
 }
 
 /** Walk markdown children, replacing plain-string nodes with linkified spans. */
-function linkifyChildren(children: ReactNode): ReactNode {
-  if (typeof children === "string") return <LinkifyPaths>{children}</LinkifyPaths>;
-  if (Array.isArray(children)) {
-    return children.map((c, i) => {
-      if (typeof c !== "string") return c;
-      return <LinkifyPaths key={`lp-${i}-${c.slice(0, 16)}`}>{c}</LinkifyPaths>;
-    });
+function _linkifyChildren(_children: ReactNode): ReactNode {
+  return _children;
+}
+
+function ClassifiedBody({
+  text,
+  sessionId,
+  msgId,
+  streaming,
+}: {
+  text: string;
+  sessionId: string;
+  msgId: string;
+  streaming?: boolean;
+}) {
+  const items = useMemo(() => classify(text), [text]);
+  if (items.length === 0) {
+    return streaming ? <span className="text-muted-foreground">…</span> : null;
   }
-  return children;
+  return <>{items.map((it) => renderContent({ item: it, sessionId, msgId }))}</>;
 }
 
 export function MessageBubble({
@@ -75,39 +84,12 @@ export function MessageBubble({
             <span>{relativeTime(message.ts)}</span>
           </div>
           <div className="prose prose-invert prose-sm max-w-none prose-pre:m-0 prose-pre:bg-transparent prose-pre:border-0 prose-pre:p-0 prose-code:before:content-none prose-code:after:content-none">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                code({ className, children }) {
-                  const codeStr = String(children ?? "").replace(/\n$/, "");
-                  const match = /language-([\w-]+)/.exec(className ?? "");
-                  const inline = !match && !codeStr.includes("\n");
-                  return <CodeBlock code={codeStr} lang={match?.[1]} inline={inline} />;
-                },
-                pre({ children }) {
-                  return <>{children}</>;
-                },
-                a({ href, children }) {
-                  const external = typeof href === "string" && /^https?:\/\//i.test(href);
-                  return (
-                    <a
-                      href={href}
-                      {...(external ? { target: "_blank", rel: "noreferrer noopener" } : {})}
-                    >
-                      {children}
-                    </a>
-                  );
-                },
-                p({ children }) {
-                  return <p>{linkifyChildren(children)}</p>;
-                },
-                li({ children }) {
-                  return <li>{linkifyChildren(children)}</li>;
-                },
-              }}
-            >
-              {message.text || (streaming ? "…" : "")}
-            </ReactMarkdown>
+            <ClassifiedBody
+              text={message.text}
+              sessionId={sessionId}
+              msgId={message.id}
+              streaming={streaming}
+            />
             {streaming && (
               <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse rounded-sm bg-success align-middle" />
             )}
