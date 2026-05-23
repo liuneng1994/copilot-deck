@@ -29,6 +29,8 @@ interface AcpUpdate {
   status?: ToolCallStatus;
   rawInput?: unknown;
   rawOutput?: unknown;
+  /** Files / lines this tool touched. Present on tool_call and tool_call_update. */
+  locations?: { path?: string; line?: number }[];
   diff?: {
     path?: string;
     oldText?: string;
@@ -36,6 +38,8 @@ interface AcpUpdate {
   };
   // session_info_update fields (best-effort, copilot may rename)
   contextUsage?: { used?: number; total?: number };
+  // current_mode_update
+  currentModeId?: string;
   [k: string]: unknown;
 }
 
@@ -154,7 +158,11 @@ export function useWsBridge() {
                 title: u.title ?? u.kind ?? "tool",
                 status: u.status ?? "pending",
                 rawInput: u.rawInput,
+                rawOutput: u.rawOutput,
                 content: blocksFromUpdate(u),
+                locations: u.locations
+                  ?.filter((l): l is { path: string; line?: number } => typeof l.path === "string")
+                  .map((l) => ({ path: l.path, line: l.line })),
               });
               break;
             }
@@ -167,6 +175,10 @@ export function useWsBridge() {
                 title: u.title,
                 kind: u.kind,
                 rawInput: u.rawInput,
+                rawOutput: u.rawOutput,
+                locations: u.locations
+                  ?.filter((l): l is { path: string; line?: number } => typeof l.path === "string")
+                  .map((l) => ({ path: l.path, line: l.line })),
               });
               for (const block of blocksFromUpdate(u)) {
                 store.appendToolCallContent(u.toolCallId, block);
@@ -174,8 +186,15 @@ export function useWsBridge() {
               break;
             }
             case "plan":
-            case "session_info_update":
-              // future: dedicated handling; for now silently absorbed.
+              break;
+            case "session_info_update": {
+              const cu = u.contextUsage;
+              if (cu) store.setSessionCtx(sid, cu.used, cu.total);
+              break;
+            }
+            case "agent_thought_chunk":
+              // Internal thinking stream — suppress; could surface in future via
+              // a dedicated "thinking" panel.
               break;
             default:
               store.appendSystemMessage(sid, `· ${u.sessionUpdate}`);
@@ -208,6 +227,19 @@ export function useWsBridge() {
         }
         case "log":
           break;
+        case "child_exit": {
+          for (const sid of msg.sessionIds) {
+            store.markSessionCrashed(sid, { code: msg.code, signal: msg.signal });
+            store.appendSystemMessage(
+              sid,
+              `⚠ copilot child exited (code=${msg.code ?? "?"} signal=${msg.signal ?? "?"}). Create a new session to continue.`,
+            );
+          }
+          if (msg.sessionIds.length === 0) {
+            store.setLastError(`copilot child for ${msg.cwd} exited`);
+          }
+          break;
+        }
       }
     });
     return () => {

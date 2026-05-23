@@ -43,7 +43,8 @@ export function Conversation({ session }: { session: SessionState }) {
   return (
     <div ref={ref} className="flex-1 min-h-0 overflow-auto">
       <div className="mx-auto flex max-w-3xl flex-col gap-4 px-6 py-6">
-        {items.length === 0 && <EmptyConversation cwd={session.cwd} />}
+        {session.crashed && <CrashBanner info={session.crashInfo} />}
+        {items.length === 0 && !session.crashed && <EmptyConversation cwd={session.cwd} />}
         {items.map((it) => {
           if (it.kind === "toolCall") {
             return <ToolCallCard key={`tc-${it.data.id}`} call={it.data} />;
@@ -58,6 +59,23 @@ export function Conversation({ session }: { session: SessionState }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function CrashBanner({ info }: { info?: { code: number | null; signal: string | null } }) {
+  return (
+    <div className="rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
+      <div className="font-medium">Copilot child process exited.</div>
+      <p className="mt-1 text-rose-200/80">
+        This session can no longer accept prompts. Create a new session for the same workspace to
+        continue.
+        {info && (
+          <span className="ml-2 font-mono text-[10px] opacity-70">
+            code={info.code ?? "?"} signal={info.signal ?? "?"}
+          </span>
+        )}
+      </p>
     </div>
   );
 }

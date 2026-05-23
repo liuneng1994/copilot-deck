@@ -11,6 +11,8 @@ import { Button } from "../ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { useUIStore } from "../../stores/ui-store";
 import { ToolCallCard } from "../conversation/tool-call-card";
+import { FilesTab } from "./files-tab";
+import { TerminalTab } from "./terminal-tab";
 
 function Empty({ label }: { label: string }) {
   return (
@@ -78,10 +80,18 @@ export function Inspector() {
             )}
           </TabsContent>
           <TabsContent value="files">
-            <Empty label="Files touched by the agent will appear here." />
+            {session ? (
+              <FilesTab session={session} toolCalls={toolCalls} />
+            ) : (
+              <Empty label="Select a session." />
+            )}
           </TabsContent>
           <TabsContent value="terminal">
-            <Empty label="Aggregated terminal output (M-Coding Phase C)." />
+            {session ? (
+              <TerminalTab session={session} toolCalls={toolCalls} />
+            ) : (
+              <Empty label="Select a session." />
+            )}
           </TabsContent>
           <TabsContent value="logs">
             <Empty label="JSON-RPC trace (M-Persist)." />

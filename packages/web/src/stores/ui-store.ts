@@ -31,7 +31,10 @@ export interface ToolCallState {
   title: string;
   status: ToolCallStatus;
   rawInput?: unknown;
+  rawOutput?: unknown;
   content: ToolCallContentBlock[];
+  /** ACP `locations` field — files the tool touched. */
+  locations?: { path: string; line?: number }[];
   startedAt: number;
   finishedAt?: number;
   /** Last-known plain-text input rendering for the card header. */
@@ -61,6 +64,12 @@ export interface SessionState {
   updatedAt: number;
   tokensIn?: number;
   tokensOut?: number;
+  /** Context window usage if session_info_update provided it. */
+  ctxUsed?: number;
+  ctxTotal?: number;
+  /** Set to true when the underlying child process exited unexpectedly. */
+  crashed?: boolean;
+  crashInfo?: { code: number | null; signal: string | null };
 }
 
 export interface PermissionRequest {
@@ -102,6 +111,12 @@ export interface UIState {
 
   upsertToolCall: (call: Partial<ToolCallState> & { id: string; sessionId: string }) => void;
   appendToolCallContent: (id: string, block: ToolCallContentBlock) => void;
+
+  setSessionCtx: (sessionId: string, used: number | undefined, total: number | undefined) => void;
+  markSessionCrashed: (
+    sessionId: string,
+    info: { code: number | null; signal: string | null },
+  ) => void;
 
   enqueuePermission: (req: PermissionRequest) => void;
   dismissPermission: (requestId: string) => void;
@@ -298,7 +313,9 @@ export const useUIStore = create<UIState>((set) => ({
         title: call.title ?? existing?.title ?? call.kind ?? existing?.kind ?? "tool",
         status: call.status ?? existing?.status ?? "pending",
         rawInput: call.rawInput ?? existing?.rawInput,
+        rawOutput: call.rawOutput ?? existing?.rawOutput,
         content: call.content ?? existing?.content ?? [],
+        locations: call.locations ?? existing?.locations,
         startedAt: existing?.startedAt ?? now,
         finishedAt:
           call.status === "completed" || call.status === "failed"
@@ -346,4 +363,34 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => ({
       permissionQueue: state.permissionQueue.filter((r) => r.requestId !== requestId),
     })),
+
+  setSessionCtx: (sessionId, used, total) =>
+    set((state) => {
+      const existing = state.sessions[sessionId];
+      if (!existing) return state;
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...existing, ctxUsed: used, ctxTotal: total },
+        },
+      };
+    }),
+
+  markSessionCrashed: (sessionId, info) =>
+    set((state) => {
+      const existing = state.sessions[sessionId];
+      if (!existing) return state;
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...existing,
+            status: "error",
+            crashed: true,
+            crashInfo: info,
+            updatedAt: Date.now(),
+          },
+        },
+      };
+    }),
 }));

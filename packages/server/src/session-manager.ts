@@ -21,6 +21,15 @@ export interface PermissionRequestEvent {
 
 export type PermissionRequestListener = (ev: PermissionRequestEvent) => void;
 
+export interface ChildExitEvent {
+  cwd: string;
+  sessionIds: string[];
+  code: number | null;
+  signal: NodeJS.Signals | null;
+}
+
+export type ChildExitListener = (ev: ChildExitEvent) => void;
+
 interface SessionEntry {
   id: string;
   cwd: string;
@@ -48,6 +57,7 @@ export class SessionManager {
   private sessions = new Map<string, SessionEntry>();
   private listeners = new Set<SessionUpdateListener>();
   private permissionListeners = new Set<PermissionRequestListener>();
+  private childExitListeners = new Set<ChildExitListener>();
   private pendingPermissions = new Map<string, PendingPermission>();
   /** (cwd, toolName) → outcome — sticky decisions until process restart. */
   private permissionMemory = new Map<string, "allowed" | "denied">();
@@ -60,6 +70,11 @@ export class SessionManager {
   onPermissionRequest(l: PermissionRequestListener) {
     this.permissionListeners.add(l);
     return () => this.permissionListeners.delete(l);
+  }
+
+  onChildExit(l: ChildExitListener) {
+    this.childExitListeners.add(l);
+    return () => this.childExitListeners.delete(l);
   }
 
   private emit(sessionId: string, update: acp.SessionNotification) {
@@ -98,14 +113,25 @@ export class SessionManager {
       onExit: (code, signal) => {
         console.warn(`[copilot] child exited code=${code} signal=${signal} cwd=${cwd}`);
         this.agentsByCwd.delete(cwd);
+        const droppedSessionIds: string[] = [];
         for (const [sid, entry] of this.sessions) {
-          if (entry.cwd === cwd) this.sessions.delete(sid);
+          if (entry.cwd === cwd) {
+            droppedSessionIds.push(sid);
+            this.sessions.delete(sid);
+          }
         }
         // Reject any pending permissions tied to this cwd.
         for (const [id, p] of this.pendingPermissions) {
           clearTimeout(p.timer);
           p.resolve({ outcome: { outcome: "cancelled" } });
           this.pendingPermissions.delete(id);
+        }
+        for (const l of this.childExitListeners) {
+          try {
+            l({ cwd, sessionIds: droppedSessionIds, code, signal });
+          } catch (e) {
+            console.error("childExit listener error", e);
+          }
         }
       },
     });

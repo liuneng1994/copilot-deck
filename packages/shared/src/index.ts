@@ -53,4 +53,13 @@ export type ServerToClient =
       sessionId: string;
       toolCall: PermissionToolCallSnapshot;
       options: PermissionOption[];
+    }
+  | {
+      // Copilot child process for a given cwd exited (crash / killed).
+      // Server emits to all attached UIs; affected sessionIds are tied to cwd.
+      type: "child_exit";
+      cwd: string;
+      sessionIds: string[];
+      code: number | null;
+      signal: string | null;
     };

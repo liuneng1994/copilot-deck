@@ -101,6 +101,82 @@ async function main() {
     },
   );
 
+  app.get<{ Querystring: { path?: string; cwd?: string; max?: string } }>(
+    "/api/file",
+    async (req, reply) => {
+      const target = req.query.path?.trim();
+      if (!target) {
+        reply.code(400);
+        return { error: "path required" };
+      }
+      const cwd = req.query.cwd && path.isAbsolute(req.query.cwd) ? req.query.cwd : undefined;
+      const abs = path.isAbsolute(target)
+        ? path.normalize(target)
+        : cwd
+          ? path.resolve(cwd, target)
+          : path.resolve(target);
+      const maxBytes = Math.min(Number(req.query.max ?? 256_000) || 256_000, 2_000_000);
+      try {
+        const stat = await fs.stat(abs);
+        if (!stat.isFile()) {
+          reply.code(400);
+          return { error: "not a file" };
+        }
+        if (stat.size > maxBytes) {
+          const fh = await fs.open(abs, "r");
+          try {
+            const buf = Buffer.alloc(maxBytes);
+            await fh.read(buf, 0, maxBytes, 0);
+            return {
+              path: abs,
+              size: stat.size,
+              truncated: true,
+              content: buf.toString("utf8"),
+            };
+          } finally {
+            await fh.close();
+          }
+        }
+        const content = await fs.readFile(abs, "utf8");
+        return { path: abs, size: stat.size, truncated: false, content };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        reply.code(404);
+        return { error: message };
+      }
+    },
+  );
+
+  app.get<{ Querystring: { cwd?: string } }>(
+    "/api/git-info",
+    async (req, reply) => {
+      const cwd = req.query.cwd?.trim();
+      if (!cwd || !path.isAbsolute(cwd)) {
+        reply.code(400);
+        return { error: "absolute cwd required" };
+      }
+      try {
+        const run = (args: string[]) =>
+          new Promise<string>((resolve) => {
+            const child = spawn("git", args, { cwd, stdio: ["ignore", "pipe", "ignore"] });
+            let out = "";
+            child.stdout.on("data", (c: Buffer) => (out += c.toString("utf8")));
+            child.on("close", () => resolve(out.trim()));
+            child.on("error", () => resolve(""));
+          });
+        const branch = await run(["rev-parse", "--abbrev-ref", "HEAD"]);
+        if (!branch) return { repo: false };
+        const dirtyOut = await run(["status", "--porcelain"]);
+        const dirty = dirtyOut.length > 0;
+        return { repo: true, branch, dirty };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        reply.code(500);
+        return { error: message };
+      }
+    },
+  );
+
   app.register(async (instance) => {
     instance.get("/ws", { websocket: true }, (socket) => {
       const send = (msg: ServerToClient) => {
@@ -125,9 +201,20 @@ async function main() {
         });
       });
 
+      const unsubChildExit = manager.onChildExit((ev) => {
+        send({
+          type: "child_exit",
+          cwd: ev.cwd,
+          sessionIds: ev.sessionIds,
+          code: ev.code,
+          signal: ev.signal,
+        });
+      });
+
       socket.on("close", () => {
         unsub();
         unsubPerm();
+        unsubChildExit();
       });
 
       socket.on("message", async (raw: Buffer) => {
