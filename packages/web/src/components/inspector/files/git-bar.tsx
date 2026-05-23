@@ -1,12 +1,155 @@
-import type { GitStatus } from "@agent-view/shared";
+import type { FileEntry, GitStatus } from "@agent-view/shared";
+import { useState } from "react";
+import { useUIStore } from "../../../stores/ui-store";
 
-// Owner: files-web-git-bar agent (L3). Do not implement here.
 interface GitBarProps {
   cwd: string;
   status?: GitStatus;
 }
 
-export function GitBar(props: GitBarProps) {
-  void props;
-  return <div className="px-3 py-2 text-[11px] text-muted-foreground">Loading git status…</div>;
+function showNotice(kind: "info" | "warn", text: string) {
+  useUIStore.getState().setNotice({ id: `git-${Date.now()}`, kind, text, ts: Date.now() });
+}
+
+function displayPath(entry: FileEntry) {
+  return entry.rel || entry.path;
+}
+
+export function GitBar({ cwd, status }: GitBarProps) {
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const touchedEntries = useUIStore((s) => s.filesOverview[cwd]?.touched);
+  const agentEntries = (touchedEntries ?? []).filter((entry) => entry.source === "agent");
+
+  if (!status) {
+    return (
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 text-[11px] text-muted-foreground">
+        <div className="h-5 w-16 animate-pulse rounded-full bg-muted" />
+        <div className="h-4 w-20 animate-pulse rounded bg-muted" />
+        <div className="ml-auto h-6 w-32 animate-pulse rounded bg-muted" />
+        <div className="h-6 w-16 animate-pulse rounded bg-muted" />
+      </div>
+    );
+  }
+
+  const dirtyCount = status.files.length;
+  const agentPaths = agentEntries.map((entry) => entry.path);
+
+  async function restoreAgentChanges() {
+    if (agentPaths.length === 0) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/git/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd, paths: agentPaths }),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      setRestoreOpen(false);
+      showNotice("info", `Restored ${agentPaths.length} agent-touched file(s).`);
+      await useUIStore.getState().loadFilesOverview(cwd);
+    } catch (error) {
+      showNotice(
+        "warn",
+        `Restore failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function stashChanges() {
+    const fallback = `Agent-view stash ${new Date().toISOString()}`;
+    const message = window.prompt("Stash message", fallback);
+    if (message === null) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/git/stash", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd, message: message.trim() || fallback }),
+      });
+      const text = await response.text();
+      if (!response.ok) throw new Error(text);
+      showNotice("info", text || "Stashed working tree changes.");
+      await useUIStore.getState().loadFilesOverview(cwd);
+    } catch (error) {
+      showNotice("warn", `Stash failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 text-[11px] text-muted-foreground">
+        <button
+          type="button"
+          className="rounded-full border border-border bg-muted/60 px-2 py-0.5 font-medium text-foreground hover:bg-muted"
+          onClick={() => undefined}
+          title="Current branch"
+        >
+          {status.branch ?? "detached"}
+        </button>
+        {status.ahead > 0 && <span className="font-medium text-foreground">↑{status.ahead}</span>}
+        {status.behind > 0 && <span className="font-medium text-foreground">↓{status.behind}</span>}
+        <span className="text-muted-foreground">
+          {dirtyCount} dirty · {agentEntries.length} agent
+        </span>
+        <div className="ml-auto flex items-center gap-1.5">
+          <button
+            type="button"
+            className="rounded border border-border px-2 py-1 text-[11px] text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={busy || agentPaths.length === 0}
+            onClick={() => setRestoreOpen(true)}
+          >
+            Restore agent changes…
+          </button>
+          <button
+            type="button"
+            className="rounded border border-border px-2 py-1 text-[11px] text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={busy || dirtyCount === 0}
+            onClick={() => void stashChanges()}
+          >
+            Stash…
+          </button>
+        </div>
+      </div>
+      {restoreOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-lg border border-border bg-background p-4 shadow-xl">
+            <h3 className="text-sm font-semibold text-foreground">Restore agent changes?</h3>
+            <p className="mt-2 text-xs text-muted-foreground">
+              This will discard working tree changes for these agent-touched paths:
+            </p>
+            <ul className="mt-3 max-h-48 overflow-auto rounded border border-border bg-muted/30 p-2 text-[11px] text-foreground">
+              {agentEntries.map((entry) => (
+                <li key={entry.path} className="truncate py-0.5" title={entry.path}>
+                  {displayPath(entry)}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted"
+                disabled={busy}
+                onClick={() => setRestoreOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+                disabled={busy}
+                onClick={() => void restoreAgentChanges()}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
