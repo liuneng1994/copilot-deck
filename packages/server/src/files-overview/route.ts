@@ -63,7 +63,14 @@ async function validateCwd(
 
 async function getGitStatus(cwd: string): Promise<GitStatus> {
   const result = await runGit(cwd, ["status", "--porcelain=v2", "--branch", "-z"]);
-  if (result.exitCode !== 0) throw new Error(result.stderr || "git status failed");
+  if (result.exitCode !== 0) {
+    // Gracefully degrade when the cwd is not a git repository: the Files tab
+    // should still render (showing only agent-touched files) instead of 500.
+    if (/not a git repository/i.test(result.stderr ?? "")) {
+      return { cwd, branch: null, ahead: 0, behind: 0, files: [] };
+    }
+    throw new Error(result.stderr || "git status failed");
+  }
   return parseGitStatus(result.stdout, cwd);
 }
 
