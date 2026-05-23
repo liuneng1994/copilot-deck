@@ -18,8 +18,10 @@ export function ShellInline({
   full?: boolean;
 }) {
   const setDraft = useUIStore((s) => s.setDraft);
+  const bumpComposerLoad = useUIStore((s) => s.bumpComposerLoad);
   const draft = useUIStore((s) => s.drafts[sessionId] ?? "");
   const [copied, setCopied] = useState<number | null>(null);
+  const [sent, setSent] = useState<number | null>(null);
 
   const copy = (cmd: string, i: number) => {
     navigator.clipboard?.writeText(cmd).then(() => {
@@ -27,9 +29,12 @@ export function ShellInline({
       setTimeout(() => setCopied((c) => (c === i ? null : c)), 1200);
     });
   };
-  const send = (cmd: string) => {
+  const send = (cmd: string, i: number) => {
     const next = draft ? `${draft.replace(/\s+$/, "")}\n${cmd}` : `Run:\n\n\`${cmd}\``;
     setDraft(sessionId, next);
+    bumpComposerLoad(sessionId);
+    setSent(i);
+    setTimeout(() => setSent((s) => (s === i ? null : s)), 1200);
   };
 
   return (
@@ -54,9 +59,13 @@ export function ShellInline({
             </button>
             <button
               type="button"
-              onClick={() => send(c.cmd)}
-              className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-border/40 hover:text-accent group-hover:opacity-100"
-              title="Send to composer (will not auto-execute)"
+              onClick={() => send(c.cmd, i)}
+              className={
+                sent === i
+                  ? "rounded p-1 text-accent opacity-100 transition-opacity"
+                  : "rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-border/40 hover:text-accent group-hover:opacity-100"
+              }
+              title={sent === i ? "Sent to composer ✓" : "Send to composer (will not auto-execute)"}
             >
               <Send className="h-3.5 w-3.5" />
             </button>
