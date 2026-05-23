@@ -8,9 +8,11 @@ import {
   Wrench,
 } from "lucide-react";
 import { useState } from "react";
+import { ansiToHtml } from "../../lib/ansi";
 import { cn } from "../../lib/cn";
 import type { ToolCallContentBlock, ToolCallState } from "../../stores/ui-store";
 import { DiffView } from "./diff-view";
+import { FileLink } from "./file-link";
 
 function statusVisual(s: ToolCallState["status"]) {
   switch (s) {
@@ -96,6 +98,18 @@ export function ToolCallCard({ call }: { call: ToolCallState }) {
               </pre>
             </details>
           )}
+          {Array.isArray(call.locations) && call.locations.length > 0 && (
+            <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span className="text-muted-foreground">Locations:</span>
+              {call.locations.map((loc, i) => (
+                <FileLink
+                  key={`${loc.path}:${loc.line ?? ""}:${i}`}
+                  path={loc.path}
+                  line={loc.line}
+                />
+              ))}
+            </div>
+          )}
           {call.content.length === 0 && call.status === "pending" && (
             <p className="text-[11px] text-muted-foreground">Awaiting agent…</p>
           )}
@@ -116,9 +130,19 @@ function ContentBlock({ block }: { block: ToolCallContentBlock }) {
       </div>
     );
   }
-  if (block.kind === "terminal" || block.kind === "text") {
+  if (block.kind === "terminal") {
+    const text = block.text ?? jsonOrText(block.raw);
     return (
-      <pre className="mb-2 max-h-72 overflow-auto rounded bg-background p-2 font-mono text-[11px] text-foreground">
+      <div
+        className="mb-2 max-h-72 overflow-auto rounded bg-background p-2 font-mono text-[11px] leading-snug text-foreground whitespace-pre-wrap break-words"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: ansi-to-html escapes XML
+        dangerouslySetInnerHTML={{ __html: ansiToHtml(text) }}
+      />
+    );
+  }
+  if (block.kind === "text") {
+    return (
+      <pre className="mb-2 max-h-72 overflow-auto rounded bg-background p-2 font-mono text-[11px] text-foreground whitespace-pre-wrap break-words">
         {block.text ?? jsonOrText(block.raw)}
       </pre>
     );

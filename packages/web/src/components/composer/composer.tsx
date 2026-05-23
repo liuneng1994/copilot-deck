@@ -1,5 +1,5 @@
 import { Paperclip, RotateCcw, Send, Square } from "lucide-react";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   BUILTIN_BY_NAME,
   BUILTIN_COMMANDS,
@@ -14,10 +14,25 @@ import { MentionPopover } from "./mention-popover";
 import { type SlashItem, SlashPopover } from "./slash-popover";
 
 export function Composer({ session }: { session: SessionState }) {
-  const [text, setText] = useState("");
+  const draft = useUIStore((s) => s.drafts[session.id] ?? "");
+  const setDraft = useUIStore((s) => s.setDraft);
+  const [text, setTextLocal] = useState(draft);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const setStatus = useUIStore((s) => s.setSessionStatus);
   const appendUser = useUIStore((s) => s.appendUserMessage);
+
+  // Restore draft when switching sessions; persist on edits.
+  useEffect(() => {
+    setTextLocal(useUIStore.getState().drafts[session.id] ?? "");
+  }, [session.id]);
+
+  const setText = (next: string | ((t: string) => string)) => {
+    setTextLocal((prev) => {
+      const v = typeof next === "function" ? next(prev) : next;
+      setDraft(session.id, v);
+      return v;
+    });
+  };
 
   const streaming = session.status === "streaming";
   const awaitingPerm = session.status === "awaiting_perm";
@@ -83,6 +98,7 @@ export function Composer({ session }: { session: SessionState }) {
     setStatus(session.id, "streaming");
     sendWs({ type: "prompt", sessionId: session.id, text: trimmed });
     setText("");
+    setDraft(session.id, "");
   };
 
   const cancel = () => {

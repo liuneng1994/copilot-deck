@@ -1,9 +1,11 @@
-import { Bot, Terminal, User } from "lucide-react";
+import { Bot, User } from "lucide-react";
+import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "../../lib/cn";
 import type { Message } from "../../stores/ui-store";
 import { CodeBlock } from "./code-block";
+import { LinkifyPaths } from "./file-link";
 
 function relativeTime(ts: number) {
   const d = Date.now() - ts;
@@ -11,6 +13,18 @@ function relativeTime(ts: number) {
   if (d < 3_600_000) return `${Math.floor(d / 60_000)}m ago`;
   if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h ago`;
   return new Date(ts).toLocaleString();
+}
+
+/** Walk markdown children, replacing plain-string nodes with linkified spans. */
+function linkifyChildren(children: ReactNode): ReactNode {
+  if (typeof children === "string") return <LinkifyPaths>{children}</LinkifyPaths>;
+  if (Array.isArray(children)) {
+    return children.map((c, i) => {
+      if (typeof c !== "string") return c;
+      return <LinkifyPaths key={`lp-${i}-${c.slice(0, 16)}`}>{c}</LinkifyPaths>;
+    });
+  }
+  return children;
 }
 
 export function MessageBubble({
@@ -69,6 +83,23 @@ export function MessageBubble({
               pre({ children }) {
                 return <>{children}</>;
               },
+              a({ href, children }) {
+                const external = typeof href === "string" && /^https?:\/\//i.test(href);
+                return (
+                  <a
+                    href={href}
+                    {...(external ? { target: "_blank", rel: "noreferrer noopener" } : {})}
+                  >
+                    {children}
+                  </a>
+                );
+              },
+              p({ children }) {
+                return <p>{linkifyChildren(children)}</p>;
+              },
+              li({ children }) {
+                return <li>{linkifyChildren(children)}</li>;
+              },
             }}
           >
             {message.text || (streaming ? "…" : "")}
@@ -78,15 +109,6 @@ export function MessageBubble({
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-export function ToolCallPlaceholder() {
-  return (
-    <div className="ml-10 inline-flex items-center gap-2 rounded-md border border-border bg-panel-elevated px-2.5 py-1.5 text-xs text-muted-foreground">
-      <Terminal className="h-3 w-3" />
-      tool call (M2)
     </div>
   );
 }

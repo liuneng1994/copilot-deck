@@ -1,5 +1,6 @@
-import { TerminalSquare } from "lucide-react";
-import { useMemo } from "react";
+import { Check, Copy, TerminalSquare } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ansiToHtml, stripAnsi } from "../../lib/ansi";
 import type { SessionState, ToolCallContentBlock, ToolCallState } from "../../stores/ui-store";
 
 interface Entry {
@@ -109,15 +110,25 @@ export function TerminalTab({ session, toolCalls }: Props) {
               <span className="text-[10px]">{e.status}</span>
             </div>
             {e.command && (
-              <div className="border-b border-border bg-panel-elevated/30 px-2 py-1 font-mono text-emerald-300">
-                <span className="text-muted-foreground">$ </span>
-                {e.command}
+              <div className="group flex items-center justify-between border-b border-border bg-panel-elevated/30 px-2 py-1 font-mono text-emerald-300">
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="text-muted-foreground">$ </span>
+                  {e.command}
+                </span>
+                <CopyButton text={e.command} title="Copy command" />
               </div>
             )}
             {body ? (
-              <pre className="max-h-[40vh] overflow-auto whitespace-pre-wrap break-words bg-transparent px-2 py-2 font-mono text-[11px] leading-snug text-foreground">
-                {body}
-              </pre>
+              <div className="relative group">
+                <div
+                  className="max-h-[40vh] overflow-auto whitespace-pre-wrap break-words bg-transparent px-2 py-2 font-mono text-[11px] leading-snug text-foreground"
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: ansi-to-html escapes XML
+                  dangerouslySetInnerHTML={{ __html: ansiToHtml(body) }}
+                />
+                <div className="absolute right-1 top-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <CopyButton text={stripAnsi(body)} title="Copy output (no ANSI)" />
+                </div>
+              </div>
             ) : (
               <div className="px-2 py-2 text-[10px] text-muted-foreground">
                 (no output captured)
@@ -127,5 +138,26 @@ export function TerminalTab({ session, toolCalls }: Props) {
         );
       })}
     </div>
+  );
+}
+
+function CopyButton({ text, title }: { text: string; title: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async (e) => {
+        e.stopPropagation();
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1200);
+        } catch {}
+      }}
+      className="ml-2 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+      title={title}
+    >
+      {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
+    </button>
   );
 }

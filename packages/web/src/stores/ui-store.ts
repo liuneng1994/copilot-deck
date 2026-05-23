@@ -120,6 +120,10 @@ export interface UIState {
   modelByCwd: Record<string, string>;
   /** Model picker overlay visibility. */
   modelPickerOpen: boolean;
+  /** Inspector Files-tab: which path the user opened (clicked or set externally). */
+  filePreviewPath: string | null;
+  /** Per-session unsent composer drafts. Persisted in localStorage. */
+  drafts: Record<string, string>;
 
   toggleSidebar: () => void;
   toggleInspector: () => void;
@@ -165,6 +169,8 @@ export interface UIState {
   ) => void;
   setModelForCwd: (cwd: string, model: string) => void;
   setModelPickerOpen: (open: boolean) => void;
+  setFilePreviewPath: (path: string | null) => void;
+  setDraft: (sessionId: string, text: string) => void;
   /** Wipe messages and tool calls for a session locally (does NOT touch the DB). */
   clearSessionMessages: (sessionId: string) => void;
 }
@@ -200,6 +206,24 @@ function summarizeInput(input: unknown): string | undefined {
   }
 }
 
+const DRAFTS_KEY = "agent-view:drafts:v1";
+function loadDrafts(): Record<string, string> {
+  if (typeof localStorage === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(DRAFTS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed as Record<string, string>;
+  } catch {}
+  return {};
+}
+function saveDrafts(drafts: Record<string, string>): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts));
+  } catch {}
+}
+
 export const useUIStore = create<UIState>((set) => ({
   sidebarCollapsed: false,
   inspectorCollapsed: false,
@@ -220,6 +244,8 @@ export const useUIStore = create<UIState>((set) => ({
   defaultModel: null,
   modelByCwd: {},
   modelPickerOpen: false,
+  filePreviewPath: null,
+  drafts: loadDrafts(),
 
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   toggleInspector: () => set((s) => ({ inspectorCollapsed: !s.inspectorCollapsed })),
@@ -537,6 +563,15 @@ export const useUIStore = create<UIState>((set) => ({
     set({ models, defaultModel, modelByCwd: { ...currentByCwd } }),
   setModelForCwd: (cwd, model) => set((s) => ({ modelByCwd: { ...s.modelByCwd, [cwd]: model } })),
   setModelPickerOpen: (open) => set({ modelPickerOpen: open }),
+  setFilePreviewPath: (path) => set({ filePreviewPath: path }),
+  setDraft: (sessionId, text) =>
+    set((s) => {
+      const next: Record<string, string> = { ...s.drafts };
+      if (text) next[sessionId] = text;
+      else delete next[sessionId];
+      saveDrafts(next);
+      return { drafts: next };
+    }),
   clearSessionMessages: (sessionId) =>
     set((state) => {
       const s = state.sessions[sessionId];

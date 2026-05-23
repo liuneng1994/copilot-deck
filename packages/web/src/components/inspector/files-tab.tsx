@@ -1,7 +1,7 @@
 import { ExternalLink, Eye, FileText, Pencil } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { highlightToHtml } from "../../lib/shiki";
-import type { SessionState, ToolCallState } from "../../stores/ui-store";
+import { type SessionState, type ToolCallState, useUIStore } from "../../stores/ui-store";
 
 type Touch = "read" | "write" | "exec" | "other";
 
@@ -202,9 +202,37 @@ export function FilesTab({ session, toolCalls }: Props) {
     [session.toolCallIds, toolCalls],
   );
   const files = useMemo(() => aggregateFiles(calls), [calls]);
+  const externalPath = useUIStore((s) => s.filePreviewPath);
+  const setExternal = useUIStore((s) => s.setFilePreviewPath);
   const [selected, setSelected] = useState<string | null>(null);
 
-  if (files.length === 0) {
+  // External requests (clickable paths in messages / tool-call locations) override the
+  // in-list selection. Sync once and clear the external pointer so subsequent in-tab
+  // clicks behave normally.
+  useEffect(() => {
+    if (externalPath) {
+      setSelected(externalPath);
+      setExternal(null);
+    }
+  }, [externalPath, setExternal]);
+
+  // Show external-only files (clicked from messages) at the top of the list even when
+  // no tool call touched them yet.
+  const allFiles = useMemo(() => {
+    if (!selected || files.some((f) => f.path === selected)) return files;
+    return [
+      {
+        path: selected,
+        touch: "other" as Touch,
+        lastCallId: "",
+        lastTs: Date.now(),
+        callCount: 0,
+      },
+      ...files,
+    ];
+  }, [files, selected]);
+
+  if (allFiles.length === 0) {
     return (
       <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
         Files touched by the agent will appear here.
@@ -215,7 +243,7 @@ export function FilesTab({ session, toolCalls }: Props) {
   return (
     <div className="space-y-2 px-1 py-1">
       <ul className="space-y-0.5">
-        {files.map((f) => (
+        {allFiles.map((f) => (
           <li
             key={f.path}
             className={`group relative flex items-stretch rounded ${selected === f.path ? "bg-muted/70" : "hover:bg-muted/50"}`}
@@ -243,7 +271,9 @@ export function FilesTab({ session, toolCalls }: Props) {
                   <span className="font-medium">{basename(f.path)}</span>
                 </span>
                 <span className="text-[10px] text-muted-foreground">
-                  {f.touch} · {f.callCount} call{f.callCount > 1 ? "s" : ""}
+                  {f.callCount > 0
+                    ? `${f.touch} · ${f.callCount} call${f.callCount > 1 ? "s" : ""}`
+                    : "opened from message"}
                 </span>
               </span>
             </button>
