@@ -88,7 +88,9 @@ export function McpServersPanel() {
   const sessions = useUIStore((s) => s.sessions);
   const cwdOptions = useMemo(() => {
     const sessionList = Object.values(sessions);
-    const liveCwds = sessionList.filter((session) => !session.detached).map((session) => session.cwd);
+    const liveCwds = sessionList
+      .filter((session) => !session.detached)
+      .map((session) => session.cwd);
     const cwds = liveCwds.length > 0 ? liveCwds : sessionList.map((session) => session.cwd);
     return Array.from(new Set(cwds)).sort();
   }, [sessions]);
