@@ -248,6 +248,9 @@ export function useWsBridge() {
           if (msg.sessionId) {
             store.setSessionStatus(msg.sessionId, "error");
             store.appendSystemMessage(msg.sessionId, `error: ${msg.message}`);
+            // If a reattach was in flight for this session, clear the spinner
+            // so the user can retry.
+            store.setReattaching(msg.sessionId, false);
           } else {
             store.setLastError(msg.message);
           }
@@ -348,6 +351,7 @@ export function useWsBridge() {
         }
         case "session_reattached": {
           store.markSessionDetached(msg.sessionId, false);
+          store.setReattaching(msg.sessionId, false);
           store.setSessionStatus(msg.sessionId, "idle");
           store.dismissReloadSuggestion(msg.sessionId);
           break;
@@ -367,6 +371,7 @@ export function useWsBridge() {
               detached: false,
             });
             state.setSessionStatus(msg.newSessionId, "idle");
+            state.setReattaching(msg.newSessionId, false);
           }
           state.removeSession(msg.oldSessionId);
           if (state.activeSessionId === msg.oldSessionId) {

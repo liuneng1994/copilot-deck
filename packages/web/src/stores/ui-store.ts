@@ -98,6 +98,8 @@ export interface SessionState {
   crashInfo?: { code: number | null; signal: string | null };
   /** Persisted-only session whose child has exited; read-only history view. */
   detached?: boolean;
+  /** True while a `reattach_session` is in-flight (button click ↔ server reply). */
+  reattaching?: boolean;
   /** Render-hint injection mode (defaults to "prompt"). */
   renderHintMode?: "agents_md" | "prompt" | "off";
 }
@@ -206,6 +208,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   removeSession: (id: string) => void;
   hydrate: (sessions: HydratedSession[]) => void;
   markSessionDetached: (sessionId: string, detached: boolean) => void;
+  setReattaching: (sessionId: string, reattaching: boolean) => void;
   appendUserMessage: (sessionId: string, text: string) => string;
   appendAgentChunk: (sessionId: string, chunk: string) => void;
   appendSystemMessage: (sessionId: string, text: string) => void;
@@ -849,9 +852,21 @@ export const useUIStore = create<UIState>((set, get, api) => ({
             ...existing,
             detached,
             // Reattaching also clears the crashed flag / banner.
-            ...(detached ? {} : { crashed: false, crashInfo: undefined }),
+            ...(detached ? {} : { crashed: false, crashInfo: undefined, reattaching: false }),
             updatedAt: Date.now(),
           },
+        },
+      };
+    }),
+
+  setReattaching: (sessionId, reattaching) =>
+    set((state) => {
+      const existing = state.sessions[sessionId];
+      if (!existing) return state;
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...existing, reattaching, updatedAt: Date.now() },
         },
       };
     }),

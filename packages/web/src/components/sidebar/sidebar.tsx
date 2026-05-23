@@ -383,14 +383,21 @@ function SidebarSessionItem({
           {s.detached && (
             <button
               type="button"
+              disabled={!!s.reattaching}
               onClick={(e) => {
                 e.stopPropagation();
+                if (s.reattaching) return;
+                useUIStore.getState().setReattaching(s.id, true);
                 sendWs({ type: "reattach_session", sessionId: s.id });
+                window.setTimeout(() => {
+                  const cur = useUIStore.getState().sessions[s.id];
+                  if (cur?.reattaching) useUIStore.getState().setReattaching(s.id, false);
+                }, 15_000);
               }}
-              className="absolute right-12 top-1/2 hidden -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-warn/20 hover:text-warn group-hover/item:block"
-              title="Reattach session"
+              className="absolute right-12 top-1/2 hidden -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-warn/20 hover:text-warn group-hover/item:block disabled:opacity-60"
+              title={s.reattaching ? "Reattaching…" : "Reattach session"}
             >
-              <RotateCcw className="h-3 w-3" />
+              <RotateCcw className={cn("h-3 w-3", s.reattaching && "animate-spin")} />
             </button>
           )}
         </>

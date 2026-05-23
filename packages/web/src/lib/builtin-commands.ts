@@ -171,7 +171,17 @@ export const BUILTIN_COMMANDS: BuiltinCommand[] = [
         notice("Session is already attached.", "info");
         return true;
       }
-      sendWs({ type: "reattach_session", sessionId: ctx.sessionId });
+      if (sess.reattaching) {
+        notice("Reattach already in progress…", "info");
+        return true;
+      }
+      const sid = ctx.sessionId;
+      useUIStore.getState().setReattaching(sid, true);
+      sendWs({ type: "reattach_session", sessionId: sid });
+      window.setTimeout(() => {
+        const cur = useUIStore.getState().sessions[sid];
+        if (cur?.reattaching) useUIStore.getState().setReattaching(sid, false);
+      }, 15_000);
       notice("Reattaching…");
       return true;
     },

@@ -6,6 +6,7 @@ import {
   type BuiltinCommand,
   parseSlash,
 } from "../../lib/builtin-commands";
+import { cn } from "../../lib/cn";
 import { sendWs } from "../../lib/ws-client";
 import { useCheckpointStore } from "../../stores/checkpoint-store";
 import { type SessionState, useUIStore } from "../../stores/ui-store";
@@ -251,11 +252,21 @@ export function Composer({ session }: { session: SessionState }) {
             <Button
               size="sm"
               variant="outline"
-              className="h-7 gap-1 border-warn/40 text-warn hover:bg-warn/15 hover:text-warn"
-              onClick={() => sendWs({ type: "reattach_session", sessionId: session.id })}
+              className="h-7 gap-1 border-warn/40 text-warn hover:bg-warn/15 hover:text-warn disabled:opacity-60"
+              disabled={!!session.reattaching}
+              onClick={() => {
+                useUIStore.getState().setReattaching(session.id, true);
+                sendWs({ type: "reattach_session", sessionId: session.id });
+                // Safety net: clear the spinner if the server never replies
+                // (e.g. dropped WS), so the user can retry.
+                window.setTimeout(() => {
+                  const s = useUIStore.getState().sessions[session.id];
+                  if (s?.reattaching) useUIStore.getState().setReattaching(session.id, false);
+                }, 15_000);
+              }}
             >
-              <RotateCcw size={12} />
-              Reattach
+              <RotateCcw size={12} className={cn(session.reattaching && "animate-spin")} />
+              {session.reattaching ? "Reattaching…" : "Reattach"}
             </Button>
           </div>
         )}
