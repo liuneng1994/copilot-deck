@@ -149,6 +149,7 @@ export interface FileEntry {
   added?: number;
   removed?: number;
   callCount?: number;
+  missing?: boolean; // file no longer exists on disk (e.g. after stash/checkout)
 }
 
 export interface GrepHit {

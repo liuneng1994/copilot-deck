@@ -1,3 +1,4 @@
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { FileEntry, GitStatus } from "@agent-view/shared";
 import type { FastifyInstance, FastifyReply } from "fastify";
@@ -268,6 +269,12 @@ export async function buildOverview(
     const rel = path.relative(cwd, touch.path);
     const gitFile = gitByRel.get(rel);
     touchedRels.add(rel);
+    let missing = false;
+    try {
+      await fs.stat(touch.path);
+    } catch {
+      missing = true;
+    }
     entries.push({
       path: touch.path,
       rel,
@@ -279,6 +286,7 @@ export async function buildOverview(
       added: touch.added,
       removed: touch.removed,
       callCount: touch.callCount,
+      missing,
     });
   }
 

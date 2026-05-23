@@ -67,12 +67,14 @@ export function FileRow({ entry, depth, selected, session, onClick }: FileRowPro
   const { dir, base } = splitPath(entry);
   const gitStatus = `${entry.gitX ?? " "}${entry.gitY ?? " "}`;
   const changed = (entry.added ?? 0) + (entry.removed ?? 0) > 0;
+  const missing = entry.missing === true;
 
   return (
     <div
       className={cn(
         "group flex h-[26px] w-full items-center gap-2 px-3 text-left text-[11px] outline-none",
         selected ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-muted/60",
+        missing && "opacity-60",
       )}
       style={{ paddingLeft: `${12 + depth * 12}px` }}
     >
@@ -95,8 +97,23 @@ export function FileRow({ entry, depth, selected, session, onClick }: FileRowPro
         </span>
         <span className="min-w-0 flex-1 truncate">
           <span className="text-muted-foreground">{dir}</span>
-          <span className="font-medium text-foreground">{base}</span>
+          <span
+            className={cn(
+              "font-medium text-foreground",
+              missing && "text-muted-foreground line-through decoration-muted-foreground/60",
+            )}
+          >
+            {base}
+          </span>
         </span>
+        {missing && (
+          <span
+            className="shrink-0 rounded bg-rose-500/10 px-1.5 py-0.5 text-[10px] text-rose-300"
+            title="File no longer exists on disk (stashed, checked out, or deleted)"
+          >
+            missing
+          </span>
+        )}
         {entry.isGenerated && (
           <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
             generated
