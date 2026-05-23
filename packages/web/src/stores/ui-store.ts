@@ -170,6 +170,8 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   findOpen: boolean;
   /** Cross-session full-text search overlay. */
   searchOpen: boolean;
+  /** Set of session ids selected for fan-out / broadcast. */
+  fanoutSelection: string[];
   /** Banner-style transient notice shown above the conversation. */
   notice: { id: string; kind: "info" | "warn"; text: string; ts: number } | null;
   /** Curated model list (loaded on connect via list_models). */
@@ -238,6 +240,8 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   setHelpOpen: (open: boolean) => void;
   setFindOpen: (open: boolean) => void;
   setSearchOpen: (open: boolean) => void;
+  toggleFanoutSelection: (sessionId: string) => void;
+  clearFanoutSelection: () => void;
   setNotice: (n: UIState["notice"]) => void;
   setModels: (
     models: ModelInfo[],
@@ -397,6 +401,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   helpOpen: false,
   findOpen: false,
   searchOpen: false,
+  fanoutSelection: [],
   notice: null,
   models: [],
   defaultModel: null,
@@ -923,6 +928,13 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   setHelpOpen: (open) => set({ helpOpen: open }),
   setFindOpen: (open) => set({ findOpen: open }),
   setSearchOpen: (open) => set({ searchOpen: open }),
+  toggleFanoutSelection: (sessionId) =>
+    set((s) => ({
+      fanoutSelection: s.fanoutSelection.includes(sessionId)
+        ? s.fanoutSelection.filter((id) => id !== sessionId)
+        : [...s.fanoutSelection, sessionId],
+    })),
+  clearFanoutSelection: () => set({ fanoutSelection: [] }),
   setNotice: (n) => set({ notice: n }),
   setModels: (models, defaultModel, currentByCwd, currentBySession) =>
     set({

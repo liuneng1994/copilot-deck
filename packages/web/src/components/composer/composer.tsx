@@ -23,6 +23,10 @@ export function Composer({ session }: { session: SessionState }) {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const setStatus = useUIStore((s) => s.setSessionStatus);
   const appendUser = useUIStore((s) => s.appendUserMessage);
+  // Fan-out selection (broadcast).
+  const fanoutSelection = useUIStore((s) => s.fanoutSelection);
+  const clearFanout = useUIStore((s) => s.clearFanoutSelection);
+  const sessionsMap = useUIStore((s) => s.sessions);
   // History recall: -1 = composing fresh; 0..N-1 = recalled from the end.
   const historyIdxRef = useRef<number>(-1);
 
@@ -139,15 +143,34 @@ export function Composer({ session }: { session: SessionState }) {
         return;
       }
     }
-    appendUser(session.id, trimmed);
-    setStatus(session.id, "streaming");
-    sendWs({ type: "prompt", sessionId: session.id, text: trimmed });
-    // Server may have just created a git checkpoint — refetch shortly.
-    setTimeout(() => useCheckpointStore.getState().invalidate(session.id), 400);
+    // Fan-out: if ≥2 sessions selected, broadcast to all of them. Slash
+    // commands are excluded above; permission-blocked / detached / reloading
+    // sessions are skipped (they'll just no-op).
+    const broadcastTargets =
+      fanoutSelection.length >= 2 ? fanoutSelection.filter((id) => sessionsMap[id]) : [session.id];
+    for (const sid of broadcastTargets) {
+      const target = sessionsMap[sid];
+      if (!target) continue;
+      if (target.detached || target.status === "reloading" || target.status === "streaming") {
+        continue;
+      }
+      appendUser(sid, trimmed);
+      setStatus(sid, "streaming");
+      sendWs({ type: "prompt", sessionId: sid, text: trimmed });
+      setTimeout(() => useCheckpointStore.getState().invalidate(sid), 400);
+    }
     pushHistory(session.id, trimmed);
     historyIdxRef.current = -1;
     setText("");
     setDraft(session.id, "");
+    if (broadcastTargets.length > 1) {
+      useUIStore.getState().setNotice({
+        id: `fanout-${Date.now()}`,
+        kind: "info",
+        text: `Broadcast to ${broadcastTargets.length} sessions.`,
+        ts: Date.now(),
+      });
+    }
   };
 
   const cancel = () => {
@@ -207,6 +230,18 @@ export function Composer({ session }: { session: SessionState }) {
   return (
     <div className="relative border-t border-border bg-panel/60 px-4 py-3">
       <div className="mx-auto flex max-w-3xl flex-col gap-2">
+        {fanoutSelection.length >= 2 && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-foreground">
+            <span>
+              Broadcast mode: this prompt will be sent to{" "}
+              <strong className="font-semibold">{fanoutSelection.length} sessions</strong> (skipping
+              streaming / detached ones).
+            </span>
+            <Button size="sm" variant="outline" className="h-7 gap-1" onClick={() => clearFanout()}>
+              Clear
+            </Button>
+          </div>
+        )}
         {detached && (
           <div className="flex items-center justify-between gap-3 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
             <span>

@@ -228,6 +228,9 @@ function SidebarSessionItem({
   hotkey?: number;
 }) {
   const dot = statusToDot(s.status);
+  const fanoutSelected = useUIStore((st) => st.fanoutSelection.includes(s.id));
+  const anyFanoutSelected = useUIStore((st) => st.fanoutSelection.length > 0);
+  const toggleFanout = useUIStore((st) => st.toggleFanoutSelection);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(s.title);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -257,7 +260,34 @@ function SidebarSessionItem({
   };
 
   return (
-    <li className="group/item relative" onKeyDown={onKeyDown}>
+    <li
+      className={cn("group/item relative", fanoutSelected && "bg-accent/5")}
+      onKeyDown={onKeyDown}
+    >
+      {!editing && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleFanout(s.id);
+          }}
+          aria-pressed={fanoutSelected}
+          title={
+            fanoutSelected
+              ? "Remove from broadcast selection"
+              : "Add to broadcast (multi-select to send the same prompt to many sessions)"
+          }
+          className={cn(
+            "absolute left-0.5 top-1/2 z-10 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-sm border text-[10px]",
+            fanoutSelected
+              ? "border-accent bg-accent/40 text-accent-foreground opacity-100"
+              : "border-border opacity-0 hover:bg-muted group-hover/item:opacity-60",
+            anyFanoutSelected && !fanoutSelected && "opacity-40",
+          )}
+        >
+          {fanoutSelected ? "✓" : ""}
+        </button>
+      )}
       {editing ? (
         <div className="flex w-full items-center gap-2 rounded-md bg-panel-elevated px-2 py-1">
           <StatusDot status={dot.status} pulse={dot.pulse} />
