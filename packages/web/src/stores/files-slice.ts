@@ -166,6 +166,7 @@ export const createFilesSlice: StateCreator<FilesSlice & any, [], [], FilesSlice
         [cwd]: { ...prev, gitStatus: status, generation: prev.generation + 1 },
       },
     });
+    void get().loadFilesOverview(cwd);
   },
   appendGrepChunk(opId, hits) {
     const current = get().grepOps[opId] ?? { hits: [], done: false };

@@ -1,6 +1,7 @@
 import type { OutlineNode } from "@agent-view/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type SupportedLang, highlightToHtml } from "../../../lib/shiki";
+import { useUIStore } from "../../../stores/ui-store";
 
 const CHUNK_BYTES = 64 * 1024;
 const HEX_HEADER_BYTES = 256;
@@ -272,6 +273,7 @@ function OutlineList({ nodes, depth = 0 }: { nodes: OutlineNode[]; depth?: numbe
 }
 
 export function FilePreview({ path, cwd }: FilePreviewProps) {
+  const generation = useUIStore((s) => s.filesOverview[cwd]?.generation ?? 0);
   const [state, setState] = useState<PreviewState | null>(null);
   const [outline, setOutline] = useState<OutlineNode[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -279,6 +281,7 @@ export function FilePreview({ path, cwd }: FilePreviewProps) {
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `generation` is a refresh signal from git/file-watcher
   useEffect(() => {
     const controller = new AbortController();
     abortRef.current?.abort();
@@ -331,7 +334,7 @@ export function FilePreview({ path, cwd }: FilePreviewProps) {
     void loadOutline();
 
     return () => controller.abort();
-  }, [path, cwd]);
+  }, [path, cwd, generation]);
 
   const loadMore = async () => {
     if (!state || state.isBinary || state.isImage || loadingMore) return;

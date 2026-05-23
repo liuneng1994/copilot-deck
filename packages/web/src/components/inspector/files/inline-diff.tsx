@@ -190,6 +190,7 @@ function isEditableTarget(target: EventTarget | null) {
 
 export function InlineDiff({ path, session }: InlineDiffProps) {
   const toolCalls = useUIStore((s) => s.toolCalls);
+  const generation = useUIStore((s) => s.filesOverview[session.cwd]?.generation ?? 0);
   const [source, setSource] = useState<DiffSource>("net");
   const [headDiff, setHeadDiff] = useState<string | null>(null);
   const [headError, setHeadError] = useState<string | null>(null);
@@ -202,6 +203,7 @@ export function InlineDiff({ path, session }: InlineDiffProps) {
     [path, session, toolCalls],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `generation` is a refresh signal from git/file-watcher
   useEffect(() => {
     if (source !== "head") return;
     const controller = new AbortController();
@@ -219,7 +221,7 @@ export function InlineDiff({ path, session }: InlineDiffProps) {
           setHeadError(error instanceof Error ? error.message : "Unable to load diff");
       });
     return () => controller.abort();
-  }, [source, session.cwd, path]);
+  }, [source, session.cwd, path, generation]);
 
   const rows = useMemo(() => {
     if (source === "head") return headDiff == null ? null : parseUnifiedDiff(headDiff);
