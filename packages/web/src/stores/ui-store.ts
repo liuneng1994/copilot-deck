@@ -112,6 +112,7 @@ export interface UIState {
   inspectorTab: "plan" | "tools" | "files" | "terminal" | "config";
   /** Help/keyboard reference overlay. */
   helpOpen: boolean;
+  findOpen: boolean;
   /** Banner-style transient notice shown above the conversation. */
   notice: { id: string; kind: "info" | "warn"; text: string; ts: number } | null;
   /** Curated model list (loaded on connect via list_models). */
@@ -167,6 +168,7 @@ export interface UIState {
   setTraceDrawerOpen: (open: boolean) => void;
   setInspectorTab: (tab: UIState["inspectorTab"]) => void;
   setHelpOpen: (open: boolean) => void;
+  setFindOpen: (open: boolean) => void;
   setNotice: (n: UIState["notice"]) => void;
   setModels: (
     models: ModelInfo[],
@@ -272,6 +274,7 @@ export const useUIStore = create<UIState>((set) => ({
   traceDrawerOpen: false,
   inspectorTab: "tools",
   helpOpen: false,
+  findOpen: false,
   notice: null,
   models: [],
   defaultModel: null,
@@ -621,6 +624,7 @@ export const useUIStore = create<UIState>((set) => ({
   setTraceDrawerOpen: (open) => set({ traceDrawerOpen: open }),
   setInspectorTab: (tab) => set({ inspectorTab: tab }),
   setHelpOpen: (open) => set({ helpOpen: open }),
+  setFindOpen: (open) => set({ findOpen: open }),
   setNotice: (n) => set({ notice: n }),
   setModels: (models, defaultModel, currentByCwd) =>
     set({ models, defaultModel, modelByCwd: { ...currentByCwd } }),

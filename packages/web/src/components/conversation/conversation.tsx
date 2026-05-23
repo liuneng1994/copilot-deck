@@ -65,7 +65,7 @@ export function Conversation({ session }: { session: SessionState }) {
 
   return (
     <div className="relative flex-1 min-h-0">
-      <div ref={ref} className="h-full overflow-auto">
+      <div ref={ref} data-conversation-root className="h-full overflow-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-4 px-6 py-6">
           {session.crashed && <CrashBanner info={session.crashInfo} />}
           {items.length === 0 && !session.crashed && <EmptyConversation cwd={session.cwd} />}

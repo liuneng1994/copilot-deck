@@ -83,4 +83,17 @@
     width: 6px;
     height: 6px;
   }
+
+  /* Find-in-conversation highlights */
+  .agent-view-find-hit {
+    background-color: rgb(250 204 21 / 0.35);
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+  .agent-view-find-hit.agent-view-find-active {
+    background-color: rgb(250 204 21 / 0.8);
+    color: #1a1a1a;
+    outline: 1px solid rgb(250 204 21);
+  }
 }

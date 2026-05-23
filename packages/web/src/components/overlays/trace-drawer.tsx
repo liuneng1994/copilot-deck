@@ -16,6 +16,16 @@ export function TraceDrawer() {
   const activeSessionId = useUIStore((s) => s.activeSessionId);
   const clearTrace = useUIStore((s) => s.clearTrace);
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+  const [kind, setKind] = useState<string>("");
+  const [query, setQuery] = useState<string>("");
+
+  // Distinct kinds present in the current trace buffer, used for the filter
+  // dropdown. Re-computed on each trace update.
+  const kinds = useMemo(() => {
+    const set = new Set<string>();
+    for (const ev of trace) set.add(ev.kind);
+    return [...set].sort();
+  }, [trace]);
 
   // Auto-scroll to the bottom of the trace list as new events arrive.
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -39,6 +49,7 @@ export function TraceDrawer() {
   }, [open]);
 
   const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
     return trace.filter((ev) => {
       if (filters.direction && ev.direction !== filters.direction) return false;
       if (
@@ -48,9 +59,17 @@ export function TraceDrawer() {
         ev.sessionId !== activeSessionId
       )
         return false;
+      if (kind && ev.kind !== kind) return false;
+      if (q) {
+        // Substring match against the kind + serialized payload. Keeps the
+        // implementation dependency-free at the cost of stringifying once
+        // per event; the trace buffer is bounded so this is acceptable.
+        const haystack = `${ev.kind}\n${safeStringify(ev.payload)}`.toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
       return true;
     });
-  }, [trace, filters, activeSessionId]);
+  }, [trace, filters, activeSessionId, kind, query]);
 
   if (!open) return null;
 
@@ -79,9 +98,21 @@ export function TraceDrawer() {
               setFilters({ direction: (e.target.value || undefined) as "in" | "out" | undefined })
             }
           >
-            <option value="">all</option>
+            <option value="">all dir</option>
             <option value="in">incoming</option>
             <option value="out">outgoing</option>
+          </select>
+          <select
+            className="max-w-[120px] rounded border border-border bg-bg px-1 py-0.5 text-xs"
+            value={kind}
+            onChange={(e) => setKind(e.target.value)}
+          >
+            <option value="">all kinds</option>
+            {kinds.map((k) => (
+              <option key={k} value={k}>
+                {k}
+              </option>
+            ))}
           </select>
           <button
             type="button"
@@ -99,6 +130,15 @@ export function TraceDrawer() {
           </button>
         </div>
       </header>
+      <div className="border-b border-border px-3 py-1.5">
+        <input
+          type="text"
+          placeholder="Search kind or payload…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="w-full rounded border border-border bg-bg px-2 py-1 font-mono text-[11px] outline-none placeholder:text-muted-foreground"
+        />
+      </div>
       <div ref={listRef} className="flex-1 overflow-y-auto font-mono text-[11px]">
         {filtered.length === 0 ? (
           <div className="p-3 text-muted-foreground">No events yet.</div>
@@ -135,4 +175,12 @@ export function TraceDrawer() {
       </div>
     </aside>
   );
+}
+
+function safeStringify(v: unknown): string {
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
 }

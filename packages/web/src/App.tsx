@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Composer } from "./components/composer/composer";
 import { Conversation, NoSessionPlaceholder } from "./components/conversation/conversation";
+import { FindBar } from "./components/conversation/find-bar";
 import { SessionHeader } from "./components/conversation/session-header";
 import { Inspector, InspectorRail } from "./components/inspector/inspector";
 import { ConfirmDialogHost } from "./components/overlays/confirm-dialog";
@@ -38,6 +39,11 @@ export function App() {
       } else if (e.key === "b") {
         e.preventDefault();
         toggleInspector();
+      } else if (e.key === "f" || e.key === "F") {
+        // Cmd/Ctrl+F → toggle find-in-conversation overlay.
+        e.preventDefault();
+        const st = useUIStore.getState();
+        st.setFindOpen(!st.findOpen);
       } else if (/^[1-9]$/.test(e.key)) {
         // Cmd/Ctrl + 1..9 → switch to nth session in sidebar order.
         const state = useUIStore.getState();
@@ -67,7 +73,10 @@ export function App() {
           {session ? (
             <>
               <SessionHeader session={session} />
-              <Conversation session={session} />
+              <div className="relative flex min-h-0 flex-1 flex-col">
+                <FindBar />
+                <Conversation session={session} />
+              </div>
               <Composer session={session} />
             </>
           ) : (
