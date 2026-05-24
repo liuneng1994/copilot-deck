@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
 import { formatCost, formatDuration, formatTokens } from "../../lib/perf-aggregate";
 import { orderedSessions } from "../../lib/session-order";
+import { useTick } from "../../lib/use-tick";
 import type { SessionState } from "../../stores/ui-store";
 import { useUIStore } from "../../stores/ui-store";
 import { iconForKind } from "../conversation/tool-icons";
@@ -165,6 +166,9 @@ export function MissionControl() {
     }
     return c;
   }, [ordered]);
+
+  // Re-render every second while any session is running so "age" ticks.
+  useTick(counts.running > 0);
 
   const open = (id: string) => {
     setActive(id);

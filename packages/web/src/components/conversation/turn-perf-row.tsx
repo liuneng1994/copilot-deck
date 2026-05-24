@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, Clock3, Coins, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
 import { aggregateTurns, formatCost, formatDuration, formatTokens } from "../../lib/perf-aggregate";
+import { useTick } from "../../lib/use-tick";
 import type { SessionState } from "../../stores/ui-store";
 import { useUIStore } from "../../stores/ui-store";
 
@@ -19,6 +20,9 @@ export function TurnPerfRow({
     const all = aggregateTurns(session, toolCalls);
     return all.find((t) => t.userMsgId === turnUserMsgId) ?? null;
   }, [session, toolCalls, turnUserMsgId]);
+
+  // Live tick for in-progress turns so the duration counter updates.
+  useTick(!!turn?.inProgress);
 
   if (!turn) return null;
 

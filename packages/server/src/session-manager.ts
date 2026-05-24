@@ -100,6 +100,9 @@ export class SessionManager {
   private sessionModelListeners = new Set<SessionModelChangeListener>();
   /** Default model read from ~/.copilot/settings.json (or env). */
   private readonly defaultModel: string;
+  /** True after shutdownAll() begins — suppresses child_exit broadcasts caused
+   * by us tearing down our own children during a graceful server shutdown. */
+  private shuttingDown = false;
 
   constructor(readonly store: Store) {
     this.defaultModel = readDefaultCopilotModel();
@@ -562,6 +565,11 @@ export class SessionManager {
       extraArgs: ["--model", model],
       onStderr: (c) => process.stderr.write(`[copilot stderr] ${c}`),
       onExit: (code, signal) => {
+        if (this.shuttingDown) {
+          // Server is tearing down its own children — not a crash.
+          this.agents.delete(key);
+          return;
+        }
         console.warn(
           `[copilot] child exited code=${code} signal=${signal} cwd=${cwd} model=${model}`,
         );
@@ -1209,6 +1217,7 @@ export class SessionManager {
   }
 
   async shutdownAll() {
+    this.shuttingDown = true;
     await Promise.all([...this.agents.values()].map((a) => a.shutdown()));
     this.agents.clear();
     this.sessions.clear();
