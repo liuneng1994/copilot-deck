@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { useState } from "react";
 import { cn } from "../../lib/cn";
 import { useUIStore } from "../../stores/ui-store";
+import { type ThemePref, useUserPrefs } from "../../stores/user-prefs-store";
 import { McpServersPanel } from "../settings/extensions/mcp-panel";
 import { PluginsPanel } from "../settings/extensions/plugins-panel";
 import { SkillsPanel } from "../settings/extensions/skills-panel";
@@ -71,6 +72,8 @@ export function SettingsDrawer() {
               <ExtensionsTabs />
             ) : tab === "Storage" ? (
               <StoragePanel />
+            ) : tab === "Appearance" ? (
+              <AppearancePanel />
             ) : tab === "Notifications" ? (
               <NotificationsPanel />
             ) : (
@@ -89,6 +92,50 @@ function ComingSoonPanel({ title }: { title: SettingsTab }) {
       <h2 className="text-base font-semibold">{title}</h2>
       <div className="rounded-lg border border-border bg-panel p-6 text-sm text-muted-foreground">
         Coming soon.
+      </div>
+    </div>
+  );
+}
+
+const THEME_OPTIONS: Array<{ value: ThemePref; label: string; description: string }> = [
+  { value: "system", label: "System", description: "Follow your OS preference" },
+  { value: "light", label: "Light", description: "Use the light palette" },
+  { value: "dark", label: "Dark", description: "Use the dark palette" },
+];
+
+function AppearancePanel() {
+  const theme = useUserPrefs((s) => s.theme);
+  const setTheme = useUserPrefs((s) => s.setTheme);
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-base font-semibold">Appearance</h2>
+        <p className="mt-1 text-xs text-muted-foreground">Choose how Copilot Deck is themed.</p>
+      </div>
+      <div className="rounded-lg border border-border bg-panel p-4">
+        <div className="text-sm font-medium">Theme</div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          {THEME_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setTheme(option.value)}
+              aria-pressed={theme === option.value}
+              className={cn(
+                "rounded-md border px-3 py-2 text-left transition-colors",
+                theme === option.value
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <span className="block text-xs font-semibold">{option.label}</span>
+              <span className="mt-1 block text-[11px] leading-snug opacity-80">
+                {option.description}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

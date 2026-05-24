@@ -3,40 +3,87 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    /* Dark-first palette (HSL triplets to feed Tailwind) */
-    --background: 218 16% 5%; /* #0b0d10 */
-    --foreground: 215 16% 91%; /* #e6e9ee */
+  :root,
+  .light {
+    --color-bg: #ffffff;
+    --color-surface: #f6f7f9;
+    --color-surface-2: #ffffff;
+    --color-fg: #111827;
+    --color-fg-muted: #4b5563;
+    --color-fg-subtle: #6b7280;
+    --color-border: #d9dee7;
+    --color-border-strong: #b8c0cc;
+    --color-overlay: 15 23 42;
+    --color-overlay-fg: #ffffff;
+    --color-accent: #2563eb;
+    --color-accent-fg: #ffffff;
+    --color-danger: #dc2626;
+    --color-warning: #b45309;
+    --color-success: #15803d;
 
-    --panel: 216 17% 9%; /* #11151a */
-    --panel-elevated: 216 17% 12%; /* #171c23 */
+    --background: 0 0% 100%;
+    --foreground: 221 39% 11%;
+    --panel: 220 16% 97%;
+    --panel-elevated: 0 0% 100%;
+    --muted: 220 14% 93%;
+    --muted-foreground: 220 9% 39%;
+    --border: 220 18% 88%;
+    --input: 220 18% 84%;
+    --ring: 221 83% 53%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 93%;
+    --secondary-foreground: 221 39% 11%;
+    --accent: 221 83% 53%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 29%;
+    --success-foreground: 0 0% 100%;
+    --warning: 32 95% 44%;
+    --warning-foreground: 0 0% 100%;
+    --radius: 0.5rem;
+    color-scheme: light;
+  }
 
-    --muted: 216 15% 14%; /* #1c222a */
-    --muted-foreground: 215 12% 65%; /* #9aa3af */
+  .dark {
+    --color-bg: #0b0d10;
+    --color-surface: #11151a;
+    --color-surface-2: #171c23;
+    --color-fg: #e6e9ee;
+    --color-fg-muted: #9aa3af;
+    --color-fg-subtle: #6f7a89;
+    --color-border: #1f2630;
+    --color-border-strong: #303947;
+    --color-overlay: 0 0 0;
+    --color-overlay-fg: #ffffff;
+    --color-accent: #8ab4f8;
+    --color-accent-fg: #0f1318;
+    --color-danger: #f38ba8;
+    --color-warning: #f9e2af;
+    --color-success: #a6e3a1;
 
-    --border: 215 17% 16%; /* #1f2630 */
+    --background: 218 16% 5%;
+    --foreground: 215 16% 91%;
+    --panel: 216 17% 9%;
+    --panel-elevated: 216 17% 12%;
+    --muted: 216 15% 14%;
+    --muted-foreground: 215 12% 65%;
+    --border: 215 17% 16%;
     --input: 215 17% 16%;
     --ring: 217 91% 70%;
-
-    --primary: 217 91% 70%; /* accent blue #8ab4f8 */
+    --primary: 217 91% 70%;
     --primary-foreground: 218 16% 8%;
-
     --secondary: 216 15% 18%;
     --secondary-foreground: 215 16% 91%;
-
     --accent: 217 91% 70%;
     --accent-foreground: 218 16% 8%;
-
-    --destructive: 343 81% 75%; /* #f38ba8 */
+    --destructive: 343 81% 75%;
     --destructive-foreground: 218 16% 8%;
-
-    --success: 124 50% 78%; /* #a6e3a1 */
+    --success: 124 50% 78%;
     --success-foreground: 218 16% 8%;
-
-    --warning: 41 88% 80%; /* #f9e2af */
+    --warning: 41 88% 80%;
     --warning-foreground: 218 16% 8%;
-
-    --radius: 0.5rem;
     color-scheme: dark;
   }
 

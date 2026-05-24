@@ -46,7 +46,7 @@ export function HelpOverlay() {
   const order = ["view", "session", "system", "help"];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4">
       <button
         type="button"
         aria-label="Close help overlay"
@@ -118,11 +118,11 @@ export function HelpOverlay() {
             </h3>
             <p className="text-muted-foreground">
               Commands marked{" "}
-              <span className="rounded bg-amber-500/10 px-1 py-0.5 text-[9px] uppercase tracking-wider text-amber-300">
+              <span className="rounded bg-amber-500/10 px-1 py-0.5 text-[9px] uppercase tracking-wider text-amber-700 dark:text-amber-300">
                 agent
               </span>{" "}
               are forwarded to the underlying Copilot CLI. Commands marked{" "}
-              <span className="rounded bg-sky-500/10 px-1 py-0.5 text-[9px] uppercase tracking-wider text-sky-300">
+              <span className="rounded bg-sky-500/10 px-1 py-0.5 text-[9px] uppercase tracking-wider text-sky-700 dark:text-sky-300">
                 ui
               </span>{" "}
               run inside this web UI and never leave the browser.

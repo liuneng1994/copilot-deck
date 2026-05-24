@@ -459,7 +459,7 @@ export function Composer({ session }: { session: SessionState }) {
                     <button
                       type="button"
                       onClick={() => removePending(p.id)}
-                      className="absolute right-0.5 top-0.5 hidden h-4 w-4 items-center justify-center rounded-full bg-black/70 text-white hover:bg-black/90 group-hover:flex"
+                      className="absolute right-0.5 top-0.5 hidden h-4 w-4 items-center justify-center rounded-full bg-overlay/70 text-overlay-fg hover:bg-overlay/90 group-hover:flex"
                       aria-label={`Remove ${p.name}`}
                     >
                       <X className="h-2.5 w-2.5" />

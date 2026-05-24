@@ -106,9 +106,9 @@ export function Conversation({ session }: { session: SessionState }) {
 
 function CrashBanner({ info }: { info?: { code: number | null; signal: string | null } }) {
   return (
-    <div className="rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
+    <div className="rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-900 dark:text-rose-100">
       <div className="font-medium">Copilot child process exited.</div>
-      <p className="mt-1 text-rose-200/80">
+      <p className="mt-1 text-rose-800/80 dark:text-rose-200/80">
         This session can no longer accept prompts. Create a new session for the same workspace to
         continue.
         {info && (

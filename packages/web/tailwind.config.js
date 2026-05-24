@@ -9,7 +9,31 @@ export default {
     },
     extend: {
       colors: {
+        bg: "var(--color-bg)",
+        surface: "var(--color-surface)",
+        "surface-2": "var(--color-surface-2)",
+        fg: "var(--color-fg)",
+        "fg-muted": "var(--color-fg-muted)",
+        "fg-subtle": "var(--color-fg-subtle)",
         border: "hsl(var(--border))",
+        "border-strong": "var(--color-border-strong)",
+        overlay: "rgb(var(--color-overlay) / <alpha-value>)",
+        "overlay-fg": "var(--color-overlay-fg)",
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          fg: "var(--color-accent-fg)",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        danger: "var(--color-danger)",
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        warn: "hsl(var(--warning))",
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
@@ -26,21 +50,9 @@ export default {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
         },
-        accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
-        },
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
-        },
-        success: {
-          DEFAULT: "hsl(var(--success))",
-          foreground: "hsl(var(--success-foreground))",
-        },
-        warning: {
-          DEFAULT: "hsl(var(--warning))",
-          foreground: "hsl(var(--warning-foreground))",
         },
         panel: "hsl(var(--panel))",
         "panel-elevated": "hsl(var(--panel-elevated))",

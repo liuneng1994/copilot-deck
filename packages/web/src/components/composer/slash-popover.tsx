@@ -117,7 +117,9 @@ export function SlashPopover({
                 <span
                   className={cn(
                     "shrink-0 rounded px-1 py-0.5 text-[9px] uppercase tracking-wider",
-                    isBuiltin ? "bg-sky-500/10 text-sky-300" : "bg-amber-500/10 text-amber-300",
+                    isBuiltin
+                      ? "bg-sky-500/10 text-sky-700 dark:text-sky-300"
+                      : "bg-amber-500/10 text-amber-700 dark:text-amber-300",
                   )}
                 >
                   {isBuiltin ? (c.category ?? "ui") : "agent"}

@@ -4,7 +4,7 @@ import type { PlanEntry, SessionState } from "../../stores/ui-store";
 const PRIORITY_BADGE: Record<NonNullable<PlanEntry["priority"]>, string> = {
   low: "border-border bg-muted text-muted-foreground",
   medium: "border-warn/40 bg-warn/10 text-warn",
-  high: "border-rose-500/40 bg-rose-500/10 text-rose-300",
+  high: "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300",
 };
 
 /** Render the most recent ACP plan emitted for the session. */

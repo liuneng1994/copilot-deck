@@ -128,7 +128,7 @@ export function GitBar({ cwd, status }: GitBarProps) {
         )}
       </div>
       {restoreOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4">
           <div className="w-full max-w-md rounded-lg border border-border bg-background p-4 shadow-xl">
             <h3 className="text-sm font-semibold text-foreground">Restore agent changes?</h3>
             <p className="mt-2 text-xs text-muted-foreground">

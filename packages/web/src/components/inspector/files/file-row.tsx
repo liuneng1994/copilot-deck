@@ -15,18 +15,22 @@ const sourceDotClass: Record<string, string> = {
   agent: "bg-sky-400",
   dirty: "bg-amber-400",
   untracked: "bg-violet-400",
-  clean: "bg-zinc-500",
+  clean: "bg-fg-subtle",
 };
 
 function gitBadgeClass(entry: FileEntry) {
   const status = `${entry.gitX ?? " "}${entry.gitY ?? " "}`;
-  if (status.includes("?")) return "border-violet-500/40 bg-violet-500/10 text-violet-300";
-  if (status.includes("A")) return "border-emerald-500/40 bg-emerald-500/10 text-emerald-300";
-  if (status.includes("M")) return "border-amber-500/40 bg-amber-500/10 text-amber-300";
-  if (status.includes("D")) return "border-rose-500/40 bg-rose-500/10 text-rose-300";
-  if (status.includes("R")) return "border-sky-500/40 bg-sky-500/10 text-sky-300";
+  if (status.includes("?"))
+    return "border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300";
+  if (status.includes("A"))
+    return "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+  if (status.includes("M"))
+    return "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+  if (status.includes("D"))
+    return "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300";
+  if (status.includes("R")) return "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300";
   if (status.includes("U") || status.includes("!"))
-    return "border-rose-500/40 bg-rose-500/10 text-rose-300";
+    return "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300";
   return "border-border bg-muted/30 text-muted-foreground";
 }
 
@@ -108,7 +112,7 @@ export function FileRow({ entry, depth, selected, session, onClick }: FileRowPro
         </span>
         {missing && (
           <span
-            className="shrink-0 rounded bg-rose-500/10 px-1.5 py-0.5 text-[10px] text-rose-300"
+            className="shrink-0 rounded bg-rose-500/10 px-1.5 py-0.5 text-[10px] text-rose-700 dark:text-rose-300"
             title="File no longer exists on disk (stashed, checked out, or deleted)"
           >
             missing
@@ -121,8 +125,8 @@ export function FileRow({ entry, depth, selected, session, onClick }: FileRowPro
         )}
         {changed && (
           <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-            <span className="text-emerald-300">+{entry.added ?? 0}</span>{" "}
-            <span className="text-rose-300">−{entry.removed ?? 0}</span>
+            <span className="text-emerald-700 dark:text-emerald-300">+{entry.added ?? 0}</span>{" "}
+            <span className="text-rose-700 dark:text-rose-300">−{entry.removed ?? 0}</span>
           </span>
         )}
       </button>

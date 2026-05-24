@@ -139,7 +139,7 @@ export function SearchOverlay() {
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard close handled via window Escape listener
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[10vh]"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-overlay/40 p-4 pt-[10vh]"
       onClick={() => setOpen(false)}
     >
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop-click stop only */}

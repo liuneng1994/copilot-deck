@@ -330,7 +330,7 @@ function McpServerCard({
           {server.scope}
         </Badge>
         {readOnly && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-amber-300">
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-300">
             <Lock className="h-3 w-3" /> read-only
           </span>
         )}
@@ -384,9 +384,9 @@ function Badge({
       className={cn(
         "rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wider",
         tone === "sky"
-          ? "border-sky-500/30 bg-sky-500/10 text-sky-300"
+          ? "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300"
           : tone === "amber"
-            ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+            ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
             : "border-border bg-muted text-muted-foreground",
       )}
     >

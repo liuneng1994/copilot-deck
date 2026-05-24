@@ -1,12 +1,15 @@
 import { Bot, Command, History, Moon, Settings } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { useUIStore } from "../../stores/ui-store";
+import { useUserPrefs } from "../../stores/user-prefs-store";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 export function TopBar() {
   const topView = useUIStore((s) => s.topView);
   const setTopView = useUIStore((s) => s.setTopView);
+  const theme = useUserPrefs((s) => s.theme);
+  const setTheme = useUserPrefs((s) => s.setTheme);
   return (
     <header className="flex h-10 items-center justify-between border-b border-border bg-panel px-3">
       <div className="flex items-center gap-3">
@@ -59,11 +62,16 @@ export function TopBar() {
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Theme"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
               <Moon className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Theme (dark only for now)</TooltipContent>
+          <TooltipContent>Theme</TooltipContent>
         </Tooltip>
       </div>
     </header>

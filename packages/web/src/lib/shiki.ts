@@ -47,7 +47,7 @@ function normalizeLang(raw: string): string {
 function getHighlighter(): Promise<Highlighter> {
   if (!highlighterPromise) {
     highlighterPromise = createHighlighter({
-      themes: ["github-dark"],
+      themes: ["github-dark", "github-light"],
       langs: ["ts", "tsx", "js", "jsx", "json", "bash", "md", "py", "diff"],
     });
     for (const l of ["ts", "tsx", "js", "jsx", "json", "bash", "md", "py", "diff"]) {
@@ -72,11 +72,15 @@ async function ensureLang(hi: Highlighter, lang: string): Promise<string> {
   }
 }
 
-export async function highlightToHtml(code: string, lang: SupportedLang): Promise<string> {
+export async function highlightToHtml(
+  code: string,
+  lang: SupportedLang,
+  theme: "light" | "dark" = "dark",
+): Promise<string> {
   const hi = await getHighlighter();
   const useLang = await ensureLang(hi, String(lang));
   return hi.codeToHtml(code, {
     lang: useLang,
-    theme: "github-dark",
+    theme: theme === "light" ? "github-light" : "github-dark",
   });
 }

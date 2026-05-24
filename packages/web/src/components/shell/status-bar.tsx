@@ -96,7 +96,7 @@ export function StatusBar() {
           type="button"
           className={
             pendingPerms > 0
-              ? "flex items-center gap-1 text-amber-400 hover:text-amber-300"
+              ? "flex items-center gap-1 text-amber-400 hover:text-amber-700 dark:text-amber-300"
               : "flex items-center gap-1 hover:text-foreground"
           }
           title={

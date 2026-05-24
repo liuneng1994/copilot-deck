@@ -2,8 +2,14 @@ import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "../../lib/cn";
 import { type SupportedLang, highlightToHtml } from "../../lib/shiki";
+import { useUserPrefs } from "../../stores/user-prefs-store";
 
 const COLLAPSE_THRESHOLD = 40;
+
+function resolveTheme(theme: "light" | "dark" | "system") {
+  if (theme !== "system") return theme;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
 
 export function CodeBlock({
   code,
@@ -15,6 +21,8 @@ export function CodeBlock({
   inline?: boolean;
 }) {
   const normalizedLang = (lang ?? "text").toLowerCase().replace(/^language-/, "");
+  const theme = useUserPrefs((s) => s.theme);
+  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">(() => resolveTheme(theme));
   const [html, setHtml] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const lineCount = code.split("\n").length;
@@ -22,9 +30,19 @@ export function CodeBlock({
   const [expanded, setExpanded] = useState(!isLong);
 
   useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () =>
+      setResolvedTheme(theme === "system" ? (media.matches ? "dark" : "light") : theme);
+    apply();
+    if (theme !== "system") return;
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [theme]);
+
+  useEffect(() => {
     if (inline) return;
     let cancelled = false;
-    highlightToHtml(code, normalizedLang as SupportedLang)
+    highlightToHtml(code, normalizedLang as SupportedLang, resolvedTheme)
       .then((h) => {
         if (!cancelled) setHtml(h);
       })
@@ -34,7 +52,7 @@ export function CodeBlock({
     return () => {
       cancelled = true;
     };
-  }, [code, normalizedLang, inline]);
+  }, [code, normalizedLang, inline, resolvedTheme]);
 
   if (inline) {
     return (

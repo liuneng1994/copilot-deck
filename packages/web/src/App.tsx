@@ -54,6 +54,20 @@ export function App() {
   const session = useUIStore((s) => (activeId ? s.sessions[activeId] : null));
   const topView = useUIStore((s) => s.topView);
   const fontSize = useUserPrefs((s) => s.fontSize);
+  const theme = useUserPrefs((s) => s.theme);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+      const resolved = theme === "system" ? (media.matches ? "dark" : "light") : theme;
+      document.documentElement.classList.remove("light", "dark");
+      document.documentElement.classList.add(resolved);
+    };
+    apply();
+    if (theme !== "system") return;
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [theme]);
 
   useEffect(() => {
     document.documentElement.style.fontSize = `${fontSize}px`;

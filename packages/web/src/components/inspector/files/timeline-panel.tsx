@@ -279,11 +279,15 @@ function formatChurn(event: TouchEvent) {
 function touchVisual(type: TouchType) {
   switch (type) {
     case "write":
-      return { label: "WRITE", Icon: Pencil, className: "text-amber-300" };
+      return { label: "WRITE", Icon: Pencil, className: "text-amber-700 dark:text-amber-300" };
     case "exec":
-      return { label: "EXEC", Icon: TerminalSquare, className: "text-violet-300" };
+      return {
+        label: "EXEC",
+        Icon: TerminalSquare,
+        className: "text-violet-700 dark:text-violet-300",
+      };
     default:
-      return { label: "READ", Icon: Eye, className: "text-sky-300" };
+      return { label: "READ", Icon: Eye, className: "text-sky-700 dark:text-sky-300" };
   }
 }
 

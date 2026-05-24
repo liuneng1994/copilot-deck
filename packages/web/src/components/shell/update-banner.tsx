@@ -26,19 +26,21 @@ export function UpdateBanner() {
   };
 
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs">
-      <div className="flex min-w-0 items-center gap-2 text-amber-200">
+    <div className="flex items-center justify-between gap-3 border-b border-amber-500/30 bg-amber-100 px-3 py-1.5 text-xs dark:bg-amber-500/10">
+      <div className="flex min-w-0 items-center gap-2 text-amber-900 dark:text-amber-200">
         <Sparkles className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">
           Copilot Deck <span className="font-semibold">v{update.latest}</span> is available
-          <span className="ml-1 text-amber-200/70">(you have v{update.installed})</span>
+          <span className="ml-1 text-amber-800/80 dark:text-amber-200/70">
+            (you have v{update.installed})
+          </span>
         </span>
       </div>
       <div className="flex shrink-0 items-center gap-1">
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 gap-1 text-[11px] text-amber-100 hover:bg-amber-500/20"
+          className="h-6 gap-1 text-[11px] text-amber-950 hover:bg-amber-200 dark:text-amber-100 dark:hover:bg-amber-500/20"
           onClick={onCopy}
         >
           {copied ? <Check className="h-3 w-3" /> : null}
@@ -48,7 +50,7 @@ export function UpdateBanner() {
           href={update.url}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-6 items-center gap-1 rounded px-2 text-[11px] font-medium text-amber-100 hover:bg-amber-500/20"
+          className="inline-flex h-6 items-center gap-1 rounded px-2 text-[11px] font-medium text-amber-950 hover:bg-amber-200 dark:text-amber-100 dark:hover:bg-amber-500/20"
         >
           Release notes
           <ExternalLink className="h-3 w-3" />
@@ -56,7 +58,7 @@ export function UpdateBanner() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 text-[11px] text-amber-100/80 hover:bg-amber-500/20"
+          className="h-6 text-[11px] text-amber-900/80 hover:bg-amber-200 dark:text-amber-100/80 dark:hover:bg-amber-500/20"
           onClick={() => snooze(7)}
         >
           Snooze 7d
@@ -64,7 +66,7 @@ export function UpdateBanner() {
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6 text-amber-100/80 hover:bg-amber-500/20"
+          className="h-6 w-6 text-amber-900/80 hover:bg-amber-200 dark:text-amber-100/80 dark:hover:bg-amber-500/20"
           aria-label="Dismiss"
           onClick={() => dismiss(null)}
         >

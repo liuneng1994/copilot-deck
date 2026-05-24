@@ -95,7 +95,7 @@ export function ModelPickerOverlay() {
         : "No active session — pick a cwd in the sidebar first";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-20">
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-overlay/50 p-4 pt-20">
       <button
         type="button"
         aria-label="Close model picker"
@@ -199,7 +199,7 @@ export function ModelPickerOverlay() {
                         <span className="ml-auto font-mono text-[10px] text-muted-foreground">
                           {m.id}
                           {isDefault && (
-                            <span className="ml-1 rounded bg-sky-500/10 px-1 py-0.5 text-[9px] uppercase tracking-wider text-sky-300">
+                            <span className="ml-1 rounded bg-sky-500/10 px-1 py-0.5 text-[9px] uppercase tracking-wider text-sky-700 dark:text-sky-300">
                               default
                             </span>
                           )}

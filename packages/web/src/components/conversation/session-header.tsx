@@ -192,7 +192,7 @@ function ReloadSuggestionBanner({ session }: { session: SessionState }) {
   if (!suggestion) return null;
 
   return (
-    <div className="flex items-center justify-between border-b border-amber-500/30 bg-amber-500/10 px-4 py-1.5 text-xs text-amber-200">
+    <div className="flex items-center justify-between border-b border-amber-500/30 bg-amber-100 px-4 py-1.5 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
       <div className="flex min-w-0 items-center gap-2">
         {reloading ? (
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
@@ -210,7 +210,7 @@ function ReloadSuggestionBanner({ session }: { session: SessionState }) {
           type="button"
           onClick={() => reload(session.id)}
           disabled={reloading}
-          className="rounded px-2 py-0.5 font-medium text-amber-100 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded px-2 py-0.5 font-medium text-amber-950 dark:text-amber-100 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
         >
           Reload now
         </button>
@@ -218,7 +218,7 @@ function ReloadSuggestionBanner({ session }: { session: SessionState }) {
           type="button"
           onClick={() => dismiss(session.id)}
           disabled={reloading}
-          className="rounded px-2 py-0.5 text-amber-100/80 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded px-2 py-0.5 text-amber-900/80 dark:text-amber-100/80 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
         >
           Dismiss
         </button>

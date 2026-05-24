@@ -1,21 +1,19 @@
 import { ExternalLink } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useArtifactStore } from "../../../stores/artifact-store";
+import { useUserPrefs } from "../../../stores/user-prefs-store";
 import { cn } from "../../cn";
 
 let mermaidPromise: Promise<typeof import("mermaid").default> | null = null;
+function resolveTheme(theme: "light" | "dark" | "system") {
+  if (theme !== "system") return theme;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
 function loadMermaid() {
   if (!mermaidPromise) {
     mermaidPromise = import("mermaid").then((mod) => {
-      const m = mod.default;
-      m.initialize({
-        startOnLoad: false,
-        theme: "dark",
-        securityLevel: "strict",
-        htmlLabels: false,
-        flowchart: { htmlLabels: false },
-      });
-      return m;
+      return mod.default;
     });
   }
   return mermaidPromise;
@@ -42,14 +40,33 @@ export function MermaidInline({
   const ref = useRef<HTMLDivElement | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [showSrc, setShowSrc] = useState(false);
+  const theme = useUserPrefs((s) => s.theme);
+  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">(() => resolveTheme(theme));
   const focus = useArtifactStore((s) => s.focus);
   const renderId = `mermaid-${id.replace(/[^a-z0-9]/gi, "")}`;
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () =>
+      setResolvedTheme(theme === "system" ? (media.matches ? "dark" : "light") : theme);
+    apply();
+    if (theme !== "system") return;
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [theme]);
 
   useEffect(() => {
     let cancelled = false;
     loadMermaid()
       .then(async (m) => {
         try {
+          m.initialize({
+            startOnLoad: false,
+            theme: resolvedTheme === "dark" ? "dark" : "default",
+            securityLevel: "strict",
+            htmlLabels: false,
+            flowchart: { htmlLabels: false },
+          });
           const { svg } = await m.render(`${renderId}-${Date.now()}`, src);
           if (cancelled) return;
           if (ref.current) ref.current.innerHTML = svg;
@@ -64,7 +81,7 @@ export function MermaidInline({
     return () => {
       cancelled = true;
     };
-  }, [src, renderId]);
+  }, [src, renderId, resolvedTheme]);
 
   return (
     <div className="my-2 overflow-hidden rounded-md border border-border bg-panel">
@@ -96,7 +113,9 @@ export function MermaidInline({
             {src}
           </pre>
         ) : err ? (
-          <div className="text-xs text-rose-300">mermaid render failed: {err}</div>
+          <div className="text-xs text-rose-700 dark:text-rose-300">
+            mermaid render failed: {err}
+          </div>
         ) : (
           <div ref={ref} className="flex justify-center [&_svg]:max-w-full" />
         )}

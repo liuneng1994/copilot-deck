@@ -36,7 +36,7 @@ export function MathBlock({ tex }: { tex: string }) {
     };
   }, [tex]);
   if (err) {
-    return <pre className="my-2 text-xs text-rose-300">math: {err}</pre>;
+    return <pre className="my-2 text-xs text-rose-700 dark:text-rose-300">math: {err}</pre>;
   }
   if (!html) {
     return <pre className="my-2 font-mono text-xs text-muted-foreground">$$ {tex} $$</pre>;

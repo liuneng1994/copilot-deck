@@ -173,7 +173,7 @@ export function GrepPanel({ cwd }: GrepPanelProps) {
         ) : (
           <div className="space-y-2">
             {currentOp?.truncated && (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-900 dark:text-amber-200">
                 Results were truncated. Narrow the pattern or globs for more matches.
               </div>
             )}
@@ -197,7 +197,7 @@ export function GrepPanel({ cwd }: GrepPanelProps) {
                       </span>
                       <span className="min-w-0 whitespace-pre-wrap break-words">
                         {hit.before}
-                        <mark className="rounded bg-amber-500/30 px-0.5 text-amber-100">
+                        <mark className="rounded bg-amber-500/30 px-0.5 text-amber-950 dark:text-amber-100">
                           {hit.match}
                         </mark>
                         {hit.after}

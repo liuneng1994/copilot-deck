@@ -89,7 +89,7 @@ export function MessageBubble({
             <span>·</span>
             <span>{relativeTime(message.ts)}</span>
           </div>
-          <div className="prose prose-invert prose-sm max-w-none prose-pre:m-0 prose-pre:bg-transparent prose-pre:border-0 prose-pre:p-0 prose-code:before:content-none prose-code:after:content-none">
+          <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:m-0 prose-pre:bg-transparent prose-pre:border-0 prose-pre:p-0 prose-code:before:content-none prose-code:after:content-none">
             {message.attachments && message.attachments.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2 not-prose">
                 {message.attachments.map((att) => (
@@ -121,7 +121,7 @@ export function MessageBubble({
               </div>
             )}
             {!streaming && message.stopReason === "error" && (
-              <div className="mt-2 inline-flex items-center gap-1 rounded border border-rose-500/40 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rose-300">
+              <div className="mt-2 inline-flex items-center gap-1 rounded border border-rose-500/40 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rose-700 dark:text-rose-300">
                 error
               </div>
             )}

@@ -246,7 +246,7 @@ function Tab({
       <button
         type="button"
         onClick={onClose}
-        className="rounded p-0.5 text-muted-foreground opacity-0 hover:bg-rose-500/10 hover:text-rose-300 group-hover/tab:opacity-100"
+        className="rounded p-0.5 text-muted-foreground opacity-0 hover:bg-rose-500/10 hover:text-rose-700 dark:hover:text-rose-300 group-hover/tab:opacity-100"
         title="Close"
       >
         <X className="h-3 w-3" />

@@ -110,7 +110,7 @@ export function TerminalTab({ session, toolCalls }: Props) {
               <span className="text-[10px]">{e.status}</span>
             </div>
             {e.command && (
-              <div className="group flex items-center justify-between border-b border-border bg-panel-elevated/30 px-2 py-1 font-mono text-emerald-300">
+              <div className="group flex items-center justify-between border-b border-border bg-panel-elevated/30 px-2 py-1 font-mono text-emerald-700 dark:text-emerald-300">
                 <span className="min-w-0 flex-1 truncate">
                   <span className="text-muted-foreground">$ </span>
                   {e.command}
