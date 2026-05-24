@@ -49,8 +49,20 @@ export const wsHandlers: HandlerMap = {
     await manager.cancel(msg.sessionId);
   },
 
-  async set_mode(msg, { manager }) {
-    await manager.setMode(msg.sessionId, msg.modeId);
+  async set_mode(msg, { manager, send, log }) {
+    try {
+      await manager.setMode(msg.sessionId, msg.modeId);
+    } catch (e) {
+      const err = e as { code?: number; data?: { details?: string }; message?: string };
+      const details = err?.data?.details ?? err?.message ?? "Unknown error";
+      let friendly = `Mode switch failed: ${details}`;
+      if (typeof details === "string" && details.toLowerCase().includes("permission service")) {
+        friendly =
+          "Mode switch failed: Copilot CLI cannot enable this mode for sessions imported from history (its internal permission service only initializes for freshly created sessions). Create a new session in the same folder to use this mode.";
+      }
+      log.warn({ err }, "set_mode failed");
+      send({ type: "error", sessionId: msg.sessionId, message: friendly, severity: "warning" });
+    }
   },
 
   delete_session(msg, { manager }) {

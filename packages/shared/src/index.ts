@@ -310,7 +310,7 @@ export type ServerToClient =
       update: unknown;
     }
   | { type: "prompt_done"; sessionId: string; stopReason: string }
-  | { type: "error"; sessionId?: string; message: string }
+  | { type: "error"; sessionId?: string; message: string; severity?: "warning" | "error" }
   | { type: "log"; level: "info" | "warn" | "error"; message: string }
   | {
       type: "permission_request";

@@ -294,10 +294,9 @@ export function useWsBridge() {
         }
         case "error": {
           if (msg.sessionId) {
-            store.setSessionStatus(msg.sessionId, "error");
-            store.appendSystemMessage(msg.sessionId, `error: ${msg.message}`);
-            // If a reattach was in flight for this session, clear the spinner
-            // so the user can retry.
+            const warning = msg.severity === "warning";
+            if (!warning) store.setSessionStatus(msg.sessionId, "error");
+            store.appendSystemMessage(msg.sessionId, `${warning ? "⚠" : "error:"} ${msg.message}`);
             store.setReattaching(msg.sessionId, false);
           } else {
             store.setLastError(msg.message);
