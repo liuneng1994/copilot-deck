@@ -35,6 +35,7 @@ import {
   SIDEBAR_MIN,
   useUIStore,
 } from "./stores/ui-store";
+import { useUserPrefs } from "./stores/user-prefs-store";
 
 export function App() {
   useWsBridge();
@@ -51,6 +52,11 @@ export function App() {
   const activeId = useUIStore((s) => s.activeSessionId);
   const session = useUIStore((s) => (activeId ? s.sessions[activeId] : null));
   const topView = useUIStore((s) => s.topView);
+  const fontSize = useUserPrefs((s) => s.fontSize);
+
+  useEffect(() => {
+    document.documentElement.style.fontSize = `${fontSize}px`;
+  }, [fontSize]);
 
   // Load checkpoints for the active session on switch.
   useEffect(() => {
