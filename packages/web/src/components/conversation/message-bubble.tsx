@@ -1,5 +1,5 @@
 import { Bot, Copy, GitBranch, History, Pencil, RefreshCw, User } from "lucide-react";
-import { Fragment, type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
 import { classify } from "../../lib/content-renderer/classify";
 import { renderContent, useHoistArtifacts } from "../../lib/content-renderer/render";
@@ -7,7 +7,6 @@ import { sendWs } from "../../lib/ws-client";
 import { useCheckpointStore } from "../../stores/checkpoint-store";
 import { type Message, useUIStore } from "../../stores/ui-store";
 import { confirmDialog } from "../overlays/confirm-dialog";
-import { ReasoningBlock, looksLikeReasoning } from "./reasoning-block";
 
 function relativeTime(ts: number) {
   const d = Date.now() - ts;
@@ -27,100 +26,18 @@ function ClassifiedBody({
   sessionId,
   msgId,
   streaming,
-  highlight,
-  isAgent,
 }: {
   text: string;
   sessionId: string;
   msgId: string;
   streaming?: boolean;
-  highlight: boolean;
-  isAgent: boolean;
 }) {
-  // Group input text into paragraph chunks, then classify each chunk
-  // independently so we can wrap reasoning-looking paragraphs with a
-  // ReasoningBlock without disturbing code fences / tables (those never
-  // contain a blank line between fence open/close, so splitting on
-  // `\n\n` is safe with respect to them).
-  const chunks = useMemo(() => splitIntoChunks(text), [text]);
-  const classifiedChunks = useMemo(
-    () => chunks.map((c, i) => ({ ...c, items: classify(c.text), idx: i })),
-    [chunks],
-  );
-  const allItems = useMemo(
-    () => classifiedChunks.flatMap((c) => c.items),
-    [classifiedChunks],
-  );
-  useHoistArtifacts(allItems, sessionId, msgId);
-
-  if (allItems.length === 0) {
+  const items = useMemo(() => classify(text), [text]);
+  useHoistArtifacts(items, sessionId, msgId);
+  if (items.length === 0) {
     return streaming ? <span className="text-muted-foreground">…</span> : null;
   }
-
-  const lastIdx = classifiedChunks.length - 1;
-  return (
-    <>
-      {classifiedChunks.map((chunk) => {
-        const rendered = chunk.items.map((it) => renderContent({ item: it, sessionId, msgId }));
-        const shouldHighlight =
-          highlight &&
-          isAgent &&
-          chunk.kind === "prose" &&
-          (chunk.idx === 0 || chunk.idx === lastIdx || looksLikeReasoning(chunk.text));
-        if (!shouldHighlight) {
-          return <Fragment key={`p-${chunk.idx}`}>{rendered}</Fragment>;
-        }
-        return (
-          <ReasoningBlock
-            key={`p-${chunk.idx}`}
-            variant={chunk.idx === lastIdx && chunk.idx > 0 ? "summary" : "default"}
-          >
-            {rendered}
-          </ReasoningBlock>
-        );
-      })}
-    </>
-  );
-}
-
-interface Chunk {
-  text: string;
-  /** "prose" chunks are candidates for reasoning highlight. Code/table/etc
-   * chunks (anything containing a non-text classified item) are not. */
-  kind: "prose" | "rich";
-}
-
-/**
- * Split message text into paragraph chunks while keeping fenced code blocks
- * intact (we never split inside ``` … ```). Returns chunks marked as
- * "prose" (pure text, candidate for reasoning highlight) or "rich" (contains
- * code / tables / etc — render as-is).
- */
-function splitIntoChunks(text: string): Chunk[] {
-  if (!text) return [];
-  const out: Chunk[] = [];
-  // First, isolate fenced code blocks so paragraph splitting can't slice them.
-  const fence = /(^|\n)([ \t]{0,3})(`{3,}|~{3,})[ \t]*([^\n]*)\n([\s\S]*?)\n[ \t]{0,3}\3[ \t]*(?=\n|$)/g;
-  let cursor = 0;
-  for (;;) {
-    const m = fence.exec(text);
-    if (!m) break;
-    const start = m.index + (m[1] ? 1 : 0);
-    if (start > cursor) splitProse(text.slice(cursor, start), out);
-    out.push({ text: text.slice(start, fence.lastIndex), kind: "rich" });
-    cursor = fence.lastIndex;
-  }
-  if (cursor < text.length) splitProse(text.slice(cursor), out);
-  return out.filter((c) => c.text.trim().length > 0);
-}
-
-function splitProse(text: string, out: Chunk[]): void {
-  const paragraphs = text.split(/\n{2,}/);
-  for (const p of paragraphs) {
-    const t = p.replace(/^\n+|\n+$/g, "");
-    if (!t) continue;
-    out.push({ text: t, kind: "prose" });
-  }
+  return <>{items.map((it) => renderContent({ item: it, sessionId, msgId }))}</>;
 }
 
 export function MessageBubble({
@@ -143,7 +60,6 @@ export function MessageBubble({
   }
 
   const isUser = message.role === "user";
-  const reasoningHighlight = useUIStore((s) => s.reasoningHighlight);
   return (
     <div
       data-msg-id={message.id}
@@ -195,8 +111,6 @@ export function MessageBubble({
               sessionId={sessionId}
               msgId={message.id}
               streaming={streaming}
-              highlight={reasoningHighlight}
-              isAgent={!isUser}
             />
             {streaming && (
               <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse rounded-sm bg-success align-middle" />
