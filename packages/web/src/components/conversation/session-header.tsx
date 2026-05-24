@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  Brain,
   Copy,
   Cpu,
   Download,
@@ -12,6 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
+import { cn } from "../../lib/cn";
 import { sendWs } from "../../lib/ws-client";
 import { type SessionState, useUIStore } from "../../stores/ui-store";
 import { confirmDialog } from "../overlays/confirm-dialog";
@@ -54,6 +56,8 @@ export function SessionHeader({ session }: { session: SessionState }) {
   const modelBySession = useUIStore((s) => s.modelBySession);
   const setPickerOpen = useUIStore((s) => s.setModelPickerOpen);
   const removeSession = useUIStore((s) => s.removeSession);
+  const reasoningHighlight = useUIStore((s) => s.reasoningHighlight);
+  const setReasoningHighlight = useUIStore((s) => s.setReasoningHighlight);
   const sessionOverrideId = modelBySession[session.id];
   const currentModelId = sessionOverrideId ?? modelByCwd[session.cwd] ?? defaultModel ?? "";
   const currentModel = models.find((m) => m.id === currentModelId);
@@ -163,6 +167,19 @@ export function SessionHeader({ session }: { session: SessionState }) {
                 icon={<Download className="h-3.5 w-3.5" />}
                 label="Export JSON"
                 onClick={onExportJson}
+              />
+              <div className="my-1 h-px bg-border" />
+              <MenuItem
+                icon={
+                  <Brain
+                    className={cn(
+                      "h-3.5 w-3.5",
+                      reasoningHighlight ? "text-primary" : "text-muted-foreground",
+                    )}
+                  />
+                }
+                label={`Highlight reasoning: ${reasoningHighlight ? "on" : "off"}`}
+                onClick={() => setReasoningHighlight(!reasoningHighlight)}
               />
               <div className="my-1 h-px bg-border" />
               <MenuItem

@@ -225,6 +225,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   filePreviewMaximized: boolean;
   /** Preferred diff view mode in the inspector files pane. Persisted in localStorage. */
   diffViewMode: DiffViewMode;
+  reasoningHighlight: boolean;
   /** Per-session unsent composer drafts. Persisted in localStorage. */
   drafts: Record<string, string>;
   /** Per-session sent-prompt history for ↑/↓ recall. Persisted in localStorage. */
@@ -309,6 +310,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   setFilePreviewPath: (path: string | null) => void;
   setFilePreviewMaximized: (value: boolean) => void;
   setDiffViewMode: (mode: DiffViewMode) => void;
+  setReasoningHighlight: (on: boolean) => void;
   setDraft: (sessionId: string, text: string) => void;
   /** Update the sidebar/inspector width (px) with min/max clamp; persists to localStorage. */
   setSidebarWidth: (px: number) => void;
@@ -463,6 +465,23 @@ function saveDiffViewMode(mode: DiffViewMode): void {
   } catch {}
 }
 
+const REASONING_HIGHLIGHT_KEY = "agent-view:reasoning-highlight:v1";
+function loadReasoningHighlight(): boolean {
+  if (typeof localStorage === "undefined") return true;
+  try {
+    const raw = localStorage.getItem(REASONING_HIGHLIGHT_KEY);
+    return raw == null ? true : raw === "1";
+  } catch {
+    return true;
+  }
+}
+function saveReasoningHighlight(on: boolean): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(REASONING_HIGHLIGHT_KEY, on ? "1" : "0");
+  } catch {}
+}
+
 const UPDATE_SNOOZE_KEY = "copilot-deck:update-snoozed-until";
 function loadUpdateSnooze(): number {
   if (typeof localStorage === "undefined") return 0;
@@ -520,6 +539,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   filePreviewPath: null,
   filePreviewMaximized: false,
   diffViewMode: loadDiffViewMode(),
+  reasoningHighlight: loadReasoningHighlight(),
   drafts: loadDrafts(),
   promptHistory: loadPromptHistory(),
   composerLoadEpoch: {},
@@ -1165,6 +1185,10 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   setDiffViewMode: (mode) => {
     saveDiffViewMode(mode);
     set({ diffViewMode: mode });
+  },
+  setReasoningHighlight: (on) => {
+    saveReasoningHighlight(on);
+    set({ reasoningHighlight: on });
   },
   setDraft: (sessionId, text) =>
     set((s) => {

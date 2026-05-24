@@ -3,14 +3,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type SessionState, type ToolCallState, useUIStore } from "../../stores/ui-store";
 import { MessageBubble } from "./message-bubble";
 import { ToolCallCard } from "./tool-call-card";
+import { ToolGroupCard } from "./tool-group-card";
 import { TurnDiffSummary } from "./turn-diff-summary";
 
 type TimelineItem =
   | { kind: "message"; ts: number; data: SessionState["messages"][number] }
   | { kind: "toolCall"; ts: number; data: ToolCallState }
+  | { kind: "toolGroup"; ts: number; calls: ToolCallState[]; groupKey: string }
   | { kind: "turnSummary"; ts: number; turnId: string; toolCallIds: string[] };
 
 const NEAR_BOTTOM_PX = 80;
+
+/** Minimum adjacent tool calls (without intervening agent text) needed
+ * to coalesce them into a folded group. Permission-required / failed
+ * calls are excluded from grouping so the user always sees them. */
+const TOOL_GROUP_THRESHOLD = 2;
+
+function isGroupable(c: ToolCallState): boolean {
+  if (c.status === "failed") return false;
+  return true;
+}
 
 export function Conversation({ session }: { session: SessionState }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -69,7 +81,37 @@ export function Conversation({ session }: { session: SessionState }) {
       out.push(it);
     }
     flushTurn(base.length);
-    return out;
+
+    // Coalesce runs of >= TOOL_GROUP_THRESHOLD adjacent groupable tool calls
+    // (no agent message in between) into a single folded ToolGroup item.
+    const grouped: TimelineItem[] = [];
+    let buf: ToolCallState[] = [];
+    const flushBuf = () => {
+      if (buf.length === 0) return;
+      if (buf.length >= TOOL_GROUP_THRESHOLD) {
+        grouped.push({
+          kind: "toolGroup",
+          ts: buf[0].ts,
+          calls: buf,
+          groupKey: `${buf[0].id}-${buf.length}`,
+        });
+      } else {
+        for (const c of buf) {
+          grouped.push({ kind: "toolCall", ts: c.ts, data: c });
+        }
+      }
+      buf = [];
+    };
+    for (const it of out) {
+      if (it.kind === "toolCall" && isGroupable(it.data)) {
+        buf.push(it.data);
+        continue;
+      }
+      flushBuf();
+      grouped.push(it);
+    }
+    flushBuf();
+    return grouped;
   }, [session.messages, session.toolCallIds, allToolCalls]);
 
   const scrollToBottom = useCallback(() => {
@@ -147,6 +189,13 @@ export function Conversation({ session }: { session: SessionState }) {
               return (
                 <div key={`tc-${it.data.id}`} className="ml-10">
                   <ToolCallCard call={it.data} />
+                </div>
+              );
+            }
+            if (it.kind === "toolGroup") {
+              return (
+                <div key={`tg-${it.groupKey}`} className="ml-10">
+                  <ToolGroupCard calls={it.calls} />
                 </div>
               );
             }
