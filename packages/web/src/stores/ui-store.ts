@@ -406,12 +406,22 @@ function joinAgentChunk(prev: string, next: string): string {
   const lastChar = prev.slice(-1);
   const firstChar = next.charAt(0);
   if (/\s/.test(lastChar) || /\s/.test(firstChar)) return prev + next;
-  // Sentence-end punctuation jammed against non-whitespace → break.
-  if (/[.!?:;。！？：；]/.test(lastChar)) return `${prev}\n\n${next}`;
-  // Word-word jam (lowercase/letter/中文/closing bracket then capital/中文/opening) → space.
+  const lastIsCJK = /[\u3400-\u9fff\uff00-\uffef]/.test(lastChar);
+  const firstIsCJK = /[\u3400-\u9fff\uff00-\uffef]/.test(firstChar);
+  // CJK ↔ CJK joins never need a separator (and inserting one is visibly
+  // wrong, e.g. "无 ANSI 时 启 发 式 上 色").
+  if (lastIsCJK && firstIsCJK) return prev + next;
+  // Sentence-end punctuation jammed against non-whitespace → paragraph break.
+  // Skip Chinese full-stop family when followed by CJK (those typically don't
+  // need a forced break in running text and look weird if forced).
+  if (/[.!?:;]/.test(lastChar)) return `${prev}\n\n${next}`;
+  if (/[。！？：；]/.test(lastChar) && !firstIsCJK) return `${prev}\n\n${next}`;
+  // ASCII word/word jam → single space. Never between CJK chars.
   if (
-    /[a-z0-9\u4e00-\u9fff)\]"'’」』）]/.test(lastChar) &&
-    /[A-Z\u4e00-\u9fff([{"'“「『（]/.test(firstChar)
+    !lastIsCJK &&
+    !firstIsCJK &&
+    /[a-z0-9)\]"'’]/.test(lastChar) &&
+    /[A-Z([{"'“]/.test(firstChar)
   ) {
     return `${prev} ${next}`;
   }
