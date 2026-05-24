@@ -5,6 +5,8 @@ import { spawn } from "node:child_process";
 import { promises as fs, createReadStream } from "node:fs";
 import path from "node:path";
 import { CURATED_MODELS } from "@agent-view/shared";
+import type { PruneRequest } from "@agent-view/shared";
+import type Database from "better-sqlite3";
 import type { FastifyInstance } from "fastify";
 import { CopilotHistoryStore } from "./copilot-history.js";
 import { listFiles } from "./file-index.js";
@@ -15,11 +17,15 @@ import {
 } from "./git-checkpoint.js";
 import { PathSafetyError, assertWithinCwd } from "./path-safety.js";
 import type { SessionManager } from "./session-manager.js";
+import { getStorageStats, pruneOld, vacuum } from "./storage-admin.js";
 
 interface Deps {
   manager: SessionManager;
   installedVersion?: string;
   updateChecker?: import("./update-check.js").UpdateChecker;
+  db: Database.Database;
+  dbPath: string;
+  getActiveSessionIds: () => Set<string>;
 }
 
 const DEFAULT_FILE_RANGE_BYTES = 65_536;
@@ -33,6 +39,20 @@ function parseNonNegativeInt(value: string | undefined, fallback: number, max?: 
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
   const whole = Math.floor(parsed);
   return max == null ? whole : Math.min(whole, max);
+}
+
+function parseBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value === "true" || value === "1";
+  return fallback;
+}
+
+function normalizePruneRequest(input: Partial<PruneRequest>): PruneRequest {
+  return {
+    olderThanDays: Number(input.olderThanDays),
+    pruneSessions: parseBoolean(input.pruneSessions),
+    dryRun: parseBoolean(input.dryRun),
+  };
 }
 
 function firstNonWhitespace(buffer: Buffer): number | undefined {
@@ -125,6 +145,39 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
     if (!checker) return { enabled: false };
     return { enabled: true, ...(await checker.refresh()) };
   });
+
+  app.get("/api/storage/stats", async () => getStorageStats(deps.db, deps.dbPath));
+
+  app.get<{
+    Querystring: { olderThanDays?: string; pruneSessions?: string; dryRun?: string };
+  }>("/api/storage/prune", async (req, reply) => {
+    const body = normalizePruneRequest({
+      olderThanDays: Number(req.query.olderThanDays),
+      pruneSessions: parseBoolean(req.query.pruneSessions),
+      dryRun: true,
+    });
+    if (!Number.isFinite(body.olderThanDays) || body.olderThanDays < 1) {
+      return reply.code(400).send({ error: "olderThanDays must be at least 1" });
+    }
+    return pruneOld(deps.db, deps.dbPath, body, deps.getActiveSessionIds());
+  });
+
+  app.post<{ Body: PruneRequest }>("/api/storage/prune", async (req, reply) => {
+    const body = normalizePruneRequest(req.body ?? {});
+    if (!Number.isFinite(body.olderThanDays) || body.olderThanDays < 1) {
+      return reply.code(400).send({ error: "olderThanDays must be at least 1" });
+    }
+    try {
+      return await pruneOld(deps.db, deps.dbPath, body, deps.getActiveSessionIds());
+    } catch (err) {
+      if (err instanceof RangeError) {
+        return reply.code(400).send({ error: err.message });
+      }
+      throw err;
+    }
+  });
+
+  app.post("/api/storage/vacuum", async () => vacuum(deps.db, deps.dbPath));
 
   // ─── Copilot CLI history (read-only adapter over ~/.copilot/session-store.db) ───
   app.get<{ Querystring: { cwd?: string; q?: string; limit?: string } }>(

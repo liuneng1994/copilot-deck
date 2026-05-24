@@ -119,7 +119,14 @@ async function main() {
   });
   const stopFilesWatcher = startFilesWatcher({ manager, broadcast });
 
-  registerRoutes(app, { manager, installedVersion, updateChecker });
+  registerRoutes(app, {
+    manager,
+    installedVersion,
+    updateChecker,
+    db: store.db,
+    dbPath: dataDir.dbPath,
+    getActiveSessionIds: () => new Set(manager.list().map((session) => session.id)),
+  });
   registerMcpRoutes(app, { manager });
   registerPluginRoutes(app, { broadcast });
   registerSkillsRoutes(app, { manager, broadcast });

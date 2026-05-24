@@ -94,6 +94,27 @@ export interface SkillInfo {
   hash?: string;
 }
 
+export interface StorageStats {
+  dbPath: string;
+  dbSizeBytes: number;
+  sessionCount: number;
+  traceEventCount: number;
+  oldestActivityAt: number | null;
+}
+
+export interface PruneRequest {
+  olderThanDays: number;
+  pruneSessions: boolean;
+  dryRun?: boolean;
+}
+
+export interface PruneResult {
+  deletedSessions: number;
+  deletedTraceEvents: number;
+  deletedAttachments?: number;
+  freedBytes: number;
+}
+
 export type ExtensionsKind = "plugins" | "mcp" | "skills" | "marketplaces";
 
 export interface SessionReloadSuggestionAffectedBy {

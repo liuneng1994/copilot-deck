@@ -5,11 +5,12 @@ import { useUIStore } from "../../stores/ui-store";
 import { McpServersPanel } from "../settings/extensions/mcp-panel";
 import { PluginsPanel } from "../settings/extensions/plugins-panel";
 import { SkillsPanel } from "../settings/extensions/skills-panel";
+import { StoragePanel } from "../settings/storage-panel";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 
-const SETTINGS_TABS = ["General", "Extensions", "Appearance", "About"] as const;
+const SETTINGS_TABS = ["General", "Extensions", "Storage", "Appearance", "About"] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 export function SettingsDrawer() {
@@ -58,7 +59,13 @@ export function SettingsDrawer() {
           </nav>
 
           <section className="min-h-0 flex-1 overflow-y-auto p-4">
-            {tab === "Extensions" ? <ExtensionsTabs /> : <ComingSoonPanel title={tab} />}
+            {tab === "Extensions" ? (
+              <ExtensionsTabs />
+            ) : tab === "Storage" ? (
+              <StoragePanel />
+            ) : (
+              <ComingSoonPanel title={tab} />
+            )}
           </section>
         </div>
       </DialogContent>
