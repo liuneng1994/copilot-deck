@@ -436,23 +436,38 @@ export class Store {
         "SELECT id, session_id, role, text, ts, attachments FROM messages WHERE session_id = ? ORDER BY ts ASC",
       )
       .all(sessionId) as Record<string, unknown>[];
-    return rows.map((r) => {
-      const out: PersistedMessage = {
-        id: r.id as string,
-        sessionId: r.session_id as string,
-        role: r.role as string,
-        text: r.text as string,
-        ts: r.ts as number,
-      };
-      if (typeof r.attachments === "string" && r.attachments.length > 0) {
-        try {
-          out.attachments = JSON.parse(r.attachments) as PersistedAttachment[];
-        } catch {
-          // ignore malformed attachments JSON
-        }
-      }
-      return out;
-    });
+    return rows.map(rowToMessage);
+  }
+
+  countMessages(sessionId: string): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS n FROM messages WHERE session_id = ?")
+      .get(sessionId) as { n: number };
+    return row.n;
+  }
+
+  /**
+   * Page messages newest-first then return ascending. If `beforeTs` is set,
+   * only messages with `ts < beforeTs` are considered. Used by both initial
+   * hydration (newest `limit`) and the load-older flow.
+   */
+  listMessagesPaged(
+    sessionId: string,
+    opts: { beforeTs?: number; limit: number },
+  ): PersistedMessage[] {
+    const { beforeTs, limit } = opts;
+    const stmt =
+      beforeTs === undefined
+        ? this.db.prepare(
+            "SELECT id, session_id, role, text, ts, attachments FROM messages WHERE session_id = ? ORDER BY ts DESC LIMIT ?",
+          )
+        : this.db.prepare(
+            "SELECT id, session_id, role, text, ts, attachments FROM messages WHERE session_id = ? AND ts < ? ORDER BY ts DESC LIMIT ?",
+          );
+    const rows = (
+      beforeTs === undefined ? stmt.all(sessionId, limit) : stmt.all(sessionId, beforeTs, limit)
+    ) as Record<string, unknown>[];
+    return rows.map(rowToMessage).reverse();
   }
 
   // ───── tool calls ─────
@@ -495,6 +510,29 @@ export class Store {
          FROM tool_calls WHERE session_id = ? ORDER BY ts ASC`,
       )
       .all(sessionId) as Record<string, unknown>[];
+    return rows.map(rowToToolCall);
+  }
+
+  listToolCallsSince(sessionId: string, fromTs: number): PersistedToolCall[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, session_id, kind, title, status, raw_input, raw_output, content, locations, started_at, finished_at, ts
+         FROM tool_calls WHERE session_id = ? AND ts >= ? ORDER BY ts ASC`,
+      )
+      .all(sessionId, fromTs) as Record<string, unknown>[];
+    return rows.map(rowToToolCall);
+  }
+
+  listToolCallsInRange(
+    sessionId: string,
+    opts: { fromTs: number; toTs: number },
+  ): PersistedToolCall[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, session_id, kind, title, status, raw_input, raw_output, content, locations, started_at, finished_at, ts
+         FROM tool_calls WHERE session_id = ? AND ts >= ? AND ts < ? ORDER BY ts ASC`,
+      )
+      .all(sessionId, opts.fromTs, opts.toTs) as Record<string, unknown>[];
     return rows.map(rowToToolCall);
   }
 
@@ -791,6 +829,24 @@ function rowToSession(r: Record<string, unknown>): PersistedSession {
     renderHintMode: (r.render_hint_mode ?? "prompt") as "agents_md" | "prompt" | "off",
     firstPromptSent: (r.first_prompt_sent as number) === 1,
   };
+}
+
+function rowToMessage(r: Record<string, unknown>): PersistedMessage {
+  const out: PersistedMessage = {
+    id: r.id as string,
+    sessionId: r.session_id as string,
+    role: r.role as string,
+    text: r.text as string,
+    ts: r.ts as number,
+  };
+  if (typeof r.attachments === "string" && r.attachments.length > 0) {
+    try {
+      out.attachments = JSON.parse(r.attachments) as PersistedAttachment[];
+    } catch {
+      // ignore malformed attachments JSON
+    }
+  }
+  return out;
 }
 
 function rowToToolCall(r: Record<string, unknown>): PersistedToolCall {

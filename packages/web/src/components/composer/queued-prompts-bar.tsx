@@ -1,6 +1,8 @@
 import { Clock, X } from "lucide-react";
 import { type SessionState, useUIStore } from "../../stores/ui-store";
 
+const EMPTY_QUEUE: never[] = [];
+
 /**
  * Strip / shorten queued-prompt text for chip display. We keep this
  * deliberately tight so a long queue stays one line on typical widths.
@@ -11,7 +13,7 @@ function preview(text: string): string {
 }
 
 export function QueuedPromptsBar({ session }: { session: SessionState }) {
-  const queue = useUIStore((s) => s.queuedPrompts[session.id] ?? []);
+  const queue = useUIStore((s) => s.queuedPrompts[session.id] ?? EMPTY_QUEUE);
   const remove = useUIStore((s) => s.removeQueuedPrompt);
   const clear = useUIStore((s) => s.clearQueuedPrompts);
 

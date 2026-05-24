@@ -270,6 +270,7 @@ export type ClientToServer =
   | { type: "set_session_model"; sessionId: string; model: string }
   | { type: "reload_session"; sessionId: string }
   | { type: "reattach_session"; sessionId: string }
+  | { type: "load_older_messages"; sessionId: string; beforeTs: number; limit: number }
   | { type: "bg_task_start"; cwd: string; command: string; label?: string }
   | { type: "bg_task_stop"; taskId: string }
   | { type: "bg_task_remove"; taskId: string }
@@ -336,6 +337,17 @@ export type ServerToClient =
       // Initial hydration on (re)connect with the persisted state.
       type: "hydrate";
       sessions: HydratedSession[];
+    }
+  | {
+      // Response to ClientToServer load_older_messages.
+      type: "older_messages";
+      sessionId: string;
+      messages: HydratedSession["messages"];
+      toolCalls: HydratedSession["toolCalls"];
+      /** New oldest `ts` after the prepend; null when session has no messages. */
+      earliestLoadedTs: number | null;
+      /** True if more older messages remain on disk. */
+      hasMore: boolean;
     }
   | {
       // New trace event captured (live).
@@ -502,6 +514,10 @@ export interface HydratedSession {
     ts: number;
     attachments?: MessageAttachmentSnapshot[];
   }[];
+  /** Total persisted message count (may exceed `messages.length` when lazy-loaded). */
+  totalMessages: number;
+  /** Oldest `ts` actually present in `messages`; null when `messages` is empty. */
+  earliestLoadedTs: number | null;
   toolCalls: {
     id: string;
     kind: string;

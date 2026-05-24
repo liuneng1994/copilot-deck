@@ -166,6 +166,30 @@ export const wsHandlers: HandlerMap = {
     await manager.reloadSession(msg.sessionId, "user");
   },
 
+  async load_older_messages(msg, { manager, send }) {
+    try {
+      const result = manager.loadOlderMessages(msg.sessionId, {
+        beforeTs: msg.beforeTs,
+        limit: msg.limit,
+      });
+      send({
+        type: "older_messages",
+        sessionId: msg.sessionId,
+        messages: result.messages,
+        toolCalls: result.toolCalls,
+        earliestLoadedTs: result.earliestLoadedTs,
+        hasMore: result.hasMore,
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      send({
+        type: "error",
+        sessionId: msg.sessionId,
+        message: `Load older failed: ${message}`,
+      });
+    }
+  },
+
   async reattach_session(msg, { manager, send }) {
     try {
       const result = await manager.reattachSession(msg.sessionId);

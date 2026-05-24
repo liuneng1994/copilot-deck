@@ -267,30 +267,96 @@ export class SessionManager {
 
   /** Get a hydration snapshot for a fresh WS client. */
   hydrate(): HydratedSession[] {
-    return this.store.listSessions().map((s) => ({
-      id: s.id,
-      cwd: s.cwd,
-      title: s.title,
-      status: s.status,
-      modeId: s.modeId,
-      modeName: s.modeName,
-      modeOptions: s.modeOptions,
-      availableCommands: s.availableCommands,
-      plan: s.plan,
-      model: s.model,
-      renderHintMode: s.renderHintMode,
-      createdAt: s.createdAt,
-      updatedAt: s.updatedAt,
-      detached: s.detached,
-      reviewed: this.store.loadReviewed(s.id),
-      messages: this.store.listMessages(s.id).map((m) => ({
+    return this.store.listSessions().map((s) => {
+      const totalMessages = this.store.countMessages(s.id);
+      const recent = this.store.listMessagesPaged(s.id, { limit: HYDRATE_MESSAGE_LIMIT });
+      const earliestLoadedTs = recent.length > 0 ? recent[0].ts : null;
+      const toolCalls =
+        earliestLoadedTs === null
+          ? []
+          : this.store.listToolCallsSince(s.id, earliestLoadedTs);
+      return {
+        id: s.id,
+        cwd: s.cwd,
+        title: s.title,
+        status: s.status,
+        modeId: s.modeId,
+        modeName: s.modeName,
+        modeOptions: s.modeOptions,
+        availableCommands: s.availableCommands,
+        plan: s.plan,
+        model: s.model,
+        renderHintMode: s.renderHintMode,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+        detached: s.detached,
+        reviewed: this.store.loadReviewed(s.id),
+        messages: recent.map((m) => ({
+          id: m.id,
+          role: m.role,
+          text: m.text,
+          ts: m.ts,
+          attachments: m.attachments,
+        })),
+        totalMessages,
+        earliestLoadedTs,
+        toolCalls: toolCalls.map((c) => ({
+          id: c.id,
+          kind: c.kind,
+          title: c.title,
+          status: c.status,
+          rawInput: c.rawInput,
+          rawOutput: c.rawOutput,
+          content: c.content,
+          locations: c.locations,
+          startedAt: c.startedAt,
+          finishedAt: c.finishedAt,
+          ts: c.ts,
+        })),
+      };
+    });
+  }
+
+  loadOlderMessages(
+    sessionId: string,
+    opts: { beforeTs: number; limit: number },
+  ): {
+    messages: HydratedSession["messages"];
+    toolCalls: HydratedSession["toolCalls"];
+    earliestLoadedTs: number | null;
+    hasMore: boolean;
+  } {
+    const limit = Math.max(1, Math.min(opts.limit, 1000));
+    const older = this.store.listMessagesPaged(sessionId, {
+      beforeTs: opts.beforeTs,
+      limit,
+    });
+    const earliestLoadedTs = older.length > 0 ? older[0].ts : opts.beforeTs;
+    // Tool calls in [older[0].ts, opts.beforeTs)
+    const toolCalls =
+      older.length > 0
+        ? this.store.listToolCallsInRange(sessionId, {
+            fromTs: older[0].ts,
+            toTs: opts.beforeTs,
+          })
+        : [];
+    // hasMore = any messages exist strictly before our new earliestLoadedTs
+    const remaining =
+      older.length > 0
+        ? this.store.listMessagesPaged(sessionId, {
+            beforeTs: older[0].ts,
+            limit: 1,
+          }).length
+        : 0;
+    return {
+      messages: older.map((m) => ({
         id: m.id,
         role: m.role,
         text: m.text,
         ts: m.ts,
         attachments: m.attachments,
       })),
-      toolCalls: this.store.listToolCalls(s.id).map((c) => ({
+      toolCalls: toolCalls.map((c) => ({
         id: c.id,
         kind: c.kind,
         title: c.title,
@@ -303,7 +369,9 @@ export class SessionManager {
         finishedAt: c.finishedAt,
         ts: c.ts,
       })),
-    }));
+      earliestLoadedTs,
+      hasMore: remaining > 0,
+    };
   }
 
   markReviewed(sessionId: string, path: string, diffHash: string): void {
@@ -1163,6 +1231,10 @@ export class SessionManager {
  */
 const FORK_AGENT_TRUNCATE_CHARS = 600;
 const FORK_PREFIX_HARD_CAP = 12_000;
+
+/** Default number of most-recent messages sent on hydrate. The client can
+ * pull older history via `load_older_messages`. */
+const HYDRATE_MESSAGE_LIMIT = 300;
 
 export function buildForkContextPrefix(
   messages: Array<{ role: string; text: string | null }>,

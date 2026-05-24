@@ -120,6 +120,12 @@ export interface SessionState {
   plan?: PlanEntry[];
   messages: Message[];
   toolCallIds: string[];
+  /** Authoritative total count from server (>= messages.length). */
+  totalMessages?: number;
+  /** Oldest ts present in `messages`; null/undefined when empty or unknown. */
+  earliestLoadedTs?: number | null;
+  /** True while a load_older_messages request is in-flight. */
+  historyLoading?: boolean;
   createdAt: number;
   updatedAt: number;
   tokensIn?: number;
@@ -311,6 +317,16 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   suggestSessionReload: (sessionId: string, suggestion: Omit<ReloadSuggestion, "ts">) => void;
   dismissReloadSuggestion: (sessionId: string) => void;
   reloadSession: (sessionId: string) => void;
+  loadOlderMessages: (sessionId: string) => void;
+  applyOlderMessages: (
+    sessionId: string,
+    payload: {
+      messages: HydratedSession["messages"];
+      toolCalls: HydratedSession["toolCalls"];
+      earliestLoadedTs: number | null;
+      hasMore: boolean;
+    },
+  ) => void;
 
   appendTrace: (ev: TraceEventDTO) => void;
   setTrace: (events: TraceEventDTO[]) => void;
@@ -365,6 +381,7 @@ const nowId = () => Math.random().toString(36).slice(2, 10);
  * long-lived agentic sessions. The full history is still persisted server-side
  * and can be re-hydrated on demand. */
 const MAX_MESSAGES_PER_SESSION = 2000;
+const MAX_TOOL_CALLS_PER_SESSION = 500;
 /** Per-message text cap (~1 MB). Beyond this we keep the tail so streaming
  * agent replies remain readable. */
 const MAX_MESSAGE_TEXT = 1_000_000;
@@ -846,6 +863,8 @@ export const useUIStore = create<UIState>((set, get, api) => ({
           [sessionId]: {
             ...s,
             messages: nextMessages,
+            totalMessages: (s.totalMessages ?? s.messages.length) + 1,
+            earliestLoadedTs: s.earliestLoadedTs ?? nextMessages[0]?.ts ?? null,
             updatedAt: Date.now(),
             title: s.messages.length === 0 ? text.slice(0, 60) : s.title,
           },
@@ -861,10 +880,9 @@ export const useUIStore = create<UIState>((set, get, api) => ({
       if (!s) return state;
       const last = s.messages[s.messages.length - 1];
       let messages: Message[];
+      let totalDelta = 0;
       if (last && last.role === "agent") {
         const merged = last.text + chunk;
-        // Cap a single agent message at ~1 MB to keep DOM diffs and JSON
-        // payloads (export, hydrate-back) sane.
         const text = merged.length > MAX_MESSAGE_TEXT ? merged.slice(-MAX_MESSAGE_TEXT) : merged;
         messages = [...s.messages.slice(0, -1), { ...last, text, ts: Date.now() }];
       } else {
@@ -872,9 +890,19 @@ export const useUIStore = create<UIState>((set, get, api) => ({
           ...s.messages,
           { id: nowId(), role: "agent", text: chunk, ts: Date.now() },
         ]);
+        totalDelta = 1;
       }
       return {
-        sessions: { ...state.sessions, [sessionId]: { ...s, messages, updatedAt: Date.now() } },
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...s,
+            messages,
+            totalMessages: (s.totalMessages ?? s.messages.length) + totalDelta,
+            earliestLoadedTs: s.earliestLoadedTs ?? messages[0]?.ts ?? null,
+            updatedAt: Date.now(),
+          },
+        },
       };
     }),
 
@@ -882,15 +910,18 @@ export const useUIStore = create<UIState>((set, get, api) => ({
     set((state) => {
       const s = state.sessions[sessionId];
       if (!s) return state;
+      const messages = capMessages([
+        ...s.messages,
+        { id: nowId(), role: "system", text, ts: Date.now() },
+      ]);
       return {
         sessions: {
           ...state.sessions,
           [sessionId]: {
             ...s,
-            messages: capMessages([
-              ...s.messages,
-              { id: nowId(), role: "system", text, ts: Date.now() },
-            ]),
+            messages,
+            totalMessages: (s.totalMessages ?? s.messages.length) + 1,
+            earliestLoadedTs: s.earliestLoadedTs ?? messages[0]?.ts ?? null,
             updatedAt: Date.now(),
           },
         },
@@ -1038,16 +1069,28 @@ export const useUIStore = create<UIState>((set, get, api) => ({
       };
 
       const sessions = { ...state.sessions };
+      const toolCalls = { ...state.toolCalls, [call.id]: merged };
       const session = sessions[call.sessionId];
       if (session && !session.toolCallIds.includes(call.id)) {
+        let nextIds = [...session.toolCallIds, call.id];
+        // FIFO cap per session — drop oldest beyond MAX_TOOL_CALLS_PER_SESSION
+        // and evict their entries from the global toolCalls map so memory is
+        // actually reclaimed.
+        if (nextIds.length > MAX_TOOL_CALLS_PER_SESSION) {
+          const drop = nextIds.length - MAX_TOOL_CALLS_PER_SESSION;
+          for (let i = 0; i < drop; i++) {
+            delete toolCalls[nextIds[i]];
+          }
+          nextIds = nextIds.slice(drop);
+        }
         sessions[call.sessionId] = {
           ...session,
-          toolCallIds: [...session.toolCallIds, call.id],
+          toolCallIds: nextIds,
           updatedAt: now,
         };
       }
       return {
-        toolCalls: { ...state.toolCalls, [call.id]: merged },
+        toolCalls,
         sessions,
       };
     }),
@@ -1103,6 +1146,79 @@ export const useUIStore = create<UIState>((set, get, api) => ({
       sendWs({ type: "reload_session", sessionId });
     });
   },
+
+  loadOlderMessages: (sessionId) => {
+    const session = useUIStore.getState().sessions[sessionId];
+    if (!session) return;
+    if (session.historyLoading) return;
+    const total = session.totalMessages ?? session.messages.length;
+    if (session.messages.length >= total) return;
+    const beforeTs = session.earliestLoadedTs ?? session.messages[0]?.ts ?? Date.now();
+    set((state) => ({
+      sessions: {
+        ...state.sessions,
+        [sessionId]: { ...session, historyLoading: true },
+      },
+    }));
+    sendWs({ type: "load_older_messages", sessionId, beforeTs, limit: 200 });
+  },
+
+  applyOlderMessages: (sessionId, payload) =>
+    set((state) => {
+      const session = state.sessions[sessionId];
+      if (!session) return state;
+      const existingIds = new Set(session.messages.map((m) => m.id));
+      const prepended: Message[] = payload.messages
+        .filter((m) => !existingIds.has(m.id))
+        .map((m) => ({
+          id: m.id,
+          role: m.role as MessageRole,
+          text: m.text,
+          ts: m.ts,
+          attachments: m.attachments,
+        }));
+      const messages = [...prepended, ...session.messages];
+
+      const toolCalls = { ...state.toolCalls };
+      const existingToolIds = new Set(session.toolCallIds);
+      const newToolIds: string[] = [];
+      for (const c of payload.toolCalls) {
+        if (existingToolIds.has(c.id)) continue;
+        newToolIds.push(c.id);
+        toolCalls[c.id] = {
+          id: c.id,
+          sessionId,
+          ts: c.ts,
+          kind: c.kind,
+          title: c.title || c.kind,
+          status: (c.status as ToolCallStatus) ?? "completed",
+          rawInput: c.rawInput,
+          rawOutput: c.rawOutput,
+          content: normalizeContentBlocks(c.content),
+          locations: c.locations ?? undefined,
+          startedAt: c.startedAt,
+          finishedAt: c.finishedAt ?? undefined,
+          inputSummary: summarizeInput(c.rawInput),
+        };
+      }
+      const toolCallIds = [...newToolIds, ...session.toolCallIds];
+
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...session,
+            messages,
+            toolCallIds,
+            earliestLoadedTs:
+              payload.earliestLoadedTs ?? messages[0]?.ts ?? session.earliestLoadedTs ?? null,
+            historyLoading: false,
+            // totalMessages stays unchanged — server-authoritative
+          },
+        },
+        toolCalls,
+      };
+    }),
 
   setSessionCtx: (sessionId, used, total) =>
     set((state) => {
@@ -1224,6 +1340,8 @@ export const useUIStore = create<UIState>((set, get, api) => ({
           plan: h.plan ?? undefined,
           messages,
           toolCallIds,
+          totalMessages: h.totalMessages ?? messages.length,
+          earliestLoadedTs: h.earliestLoadedTs ?? (messages[0]?.ts ?? null),
           createdAt: h.createdAt,
           updatedAt: h.updatedAt,
           detached: h.detached,

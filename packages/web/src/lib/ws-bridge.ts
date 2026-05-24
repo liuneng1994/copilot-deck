@@ -348,6 +348,15 @@ export function useWsBridge() {
           }
           break;
         }
+        case "older_messages": {
+          store.applyOlderMessages(msg.sessionId, {
+            messages: msg.messages,
+            toolCalls: msg.toolCalls,
+            earliestLoadedTs: msg.earliestLoadedTs,
+            hasMore: msg.hasMore,
+          });
+          break;
+        }
         case "trace_event": {
           store.appendTrace(msg.event);
           break;
