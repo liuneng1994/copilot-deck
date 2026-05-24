@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.23.0",
   "scripts": {
-    "dev": "pnpm -r --parallel --filter=!copilot-deck run dev",
+    "dev": "node scripts/dev.mjs",
     "build": "pnpm -r --filter=!copilot-deck run build && pnpm --filter copilot-deck run build",
     "typecheck": "pnpm -r run typecheck",
     "lint": "biome check .",
