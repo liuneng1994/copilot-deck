@@ -14,6 +14,7 @@ import type {
 } from "@agent-view/shared";
 import { create } from "zustand";
 import { normalizeContentBlocks } from "../lib/normalize-content";
+import { sendWs } from "../lib/ws-client";
 import { type FilesSlice, createFilesSlice } from "./files-slice";
 
 export type { FilesSlice };
@@ -21,6 +22,28 @@ export type { FilesSlice };
 export type SessionStatus = "idle" | "streaming" | "awaiting_perm" | "reloading" | "error";
 export type MessageRole = "user" | "agent" | "system";
 export type DiffViewMode = "unified" | "split";
+
+/** Wire shape of an image attachment sent via the `prompt` WS message. */
+export interface WireAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  /** base64 payload without the `data:...;base64,` prefix. */
+  data: string;
+}
+
+/** A prompt the user composed while the agent was busy. Held client-side
+ * and dispatched automatically when the session returns to idle. */
+export interface QueuedPrompt {
+  id: string;
+  text: string;
+  /** Local preview-friendly attachments (with dataUrl). */
+  localAttachments?: MessageAttachment[];
+  /** Wire-formatted attachments ready for re-dispatch. */
+  wireAttachments?: WireAttachment[];
+  ts: number;
+}
 
 export interface MessageAttachment {
   id: string;
@@ -173,6 +196,9 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   toolCalls: Record<string, ToolCallState>;
   permissionQueue: PermissionRequest[];
   reloadSuggestions: Record<string, ReloadSuggestion>;
+  /** Per-session FIFO of prompts the user composed while the agent was
+   * busy; auto-drained when status returns to idle. In-memory only. */
+  queuedPrompts: Record<string, QueuedPrompt[]>;
 
   /** Whether the initial hydration message has been processed. */
   hydrated: boolean;
@@ -258,6 +284,12 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   appendAgentChunk: (sessionId: string, chunk: string) => void;
   appendSystemMessage: (sessionId: string, text: string) => void;
   setSessionStatus: (sessionId: string, status: SessionStatus) => void;
+  /** Queue a prompt to dispatch when the session next returns to idle. */
+  enqueuePrompt: (sessionId: string, prompt: Omit<QueuedPrompt, "id" | "ts">) => void;
+  /** Remove a single queued prompt by id. */
+  removeQueuedPrompt: (sessionId: string, id: string) => void;
+  /** Clear the entire queue for a session. */
+  clearQueuedPrompts: (sessionId: string) => void;
   /** Tag the last agent message (if any) with the given stop reason. */
   markLastAgentStopped: (sessionId: string, reason: NonNullable<Message["stopReason"]>) => void;
   setAvailableCommands: (sessionId: string, cmds: { name: string; description?: string }[]) => void;
@@ -500,6 +532,40 @@ function saveUpdateSnooze(until: number): void {
   } catch {}
 }
 
+/**
+ * Pop the head of the per-session prompt queue and dispatch it as if the
+ * user had just hit Send. Called from `setSessionStatus` on the
+ * streaming→idle transition. Defined at module scope (rather than as a
+ * store method) so it can re-enter the store cleanly via
+ * `useUIStore.getState()` without tripping the reducer return contract.
+ */
+function drainNextQueuedPrompt(sessionId: string): void {
+  const state = useUIStore.getState();
+  const queue = state.queuedPrompts[sessionId] ?? [];
+  const head = queue[0];
+  if (!head) return;
+  const sess = state.sessions[sessionId];
+  if (!sess || sess.detached || sess.crashed) return;
+  if (sess.status === "streaming" || sess.status === "awaiting_perm") return;
+  // Remove from queue, append as user message, flip to streaming, send.
+  useUIStore.setState((s) => ({
+    queuedPrompts: {
+      ...s.queuedPrompts,
+      [sessionId]: (s.queuedPrompts[sessionId] ?? []).filter((q) => q.id !== head.id),
+    },
+  }));
+  state.appendUserMessage(sessionId, head.text, head.localAttachments);
+  state.setSessionStatus(sessionId, "streaming");
+  state.pushPromptHistory(sessionId, head.text);
+  sendWs({
+    type: "prompt",
+    sessionId,
+    text: head.text,
+    attachments:
+      head.wireAttachments && head.wireAttachments.length > 0 ? head.wireAttachments : undefined,
+  });
+}
+
 export const useUIStore = create<UIState>((set, get, api) => ({
   ...createFilesSlice(set, get, api),
   sidebarCollapsed: false,
@@ -511,6 +577,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   sessions: {},
   toolCalls: {},
   permissionQueue: [],
+  queuedPrompts: {},
   reloadSuggestions: {},
   plugins: null,
   marketplaces: null,
@@ -835,9 +902,48 @@ export const useUIStore = create<UIState>((set, get, api) => ({
     set((state) => {
       const s = state.sessions[sessionId];
       if (!s) return state;
-      return {
+      const prev = s.status;
+      const next = {
         sessions: { ...state.sessions, [sessionId]: { ...s, status, updatedAt: Date.now() } },
       };
+      // When a session leaves the streaming/awaiting_perm state for an
+      // actionable one (idle/error), drain the next queued prompt — if any —
+      // on the next microtask so this reducer can return cleanly first.
+      const drainable = status === "idle" || status === "error";
+      const wasBusy = prev === "streaming" || prev === "awaiting_perm";
+      if (drainable && wasBusy) {
+        const queue = state.queuedPrompts[sessionId] ?? [];
+        if (queue.length > 0 && !s.detached && !s.crashed) {
+          queueMicrotask(() => drainNextQueuedPrompt(sessionId));
+        }
+      }
+      return next;
+    }),
+
+  enqueuePrompt: (sessionId, prompt) =>
+    set((state) => {
+      const cur = state.queuedPrompts[sessionId] ?? [];
+      const item: QueuedPrompt = {
+        ...prompt,
+        id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        ts: Date.now(),
+      };
+      return { queuedPrompts: { ...state.queuedPrompts, [sessionId]: [...cur, item] } };
+    }),
+
+  removeQueuedPrompt: (sessionId, id) =>
+    set((state) => {
+      const cur = state.queuedPrompts[sessionId] ?? [];
+      const next = cur.filter((q) => q.id !== id);
+      if (next.length === cur.length) return state;
+      return { queuedPrompts: { ...state.queuedPrompts, [sessionId]: next } };
+    }),
+
+  clearQueuedPrompts: (sessionId) =>
+    set((state) => {
+      if (!state.queuedPrompts[sessionId]) return state;
+      const { [sessionId]: _, ...rest } = state.queuedPrompts;
+      return { queuedPrompts: rest };
     }),
 
   markLastAgentStopped: (sessionId, reason) =>

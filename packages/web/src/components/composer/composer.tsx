@@ -13,6 +13,7 @@ import { type MessageAttachment, type SessionState, useUIStore } from "../../sto
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/input";
 import { MentionPopover } from "./mention-popover";
+import { QueuedPromptsBar } from "./queued-prompts-bar";
 import { type SlashItem, SlashPopover } from "./slash-popover";
 
 const MAX_PER_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -221,7 +222,7 @@ export function Composer({ session }: { session: SessionState }) {
   const send = () => {
     const trimmed = text.trim();
     const hasAttachments = pending.length > 0;
-    if ((!trimmed && !hasAttachments) || streaming || reloading) return;
+    if ((!trimmed && !hasAttachments) || reloading || detached) return;
     // Intercept built-in slash commands before they go to the agent.
     const parsed = trimmed ? parseSlash(trimmed) : null;
     if (parsed) {
@@ -251,6 +252,25 @@ export function Composer({ session }: { session: SessionState }) {
       size: p.size,
       dataUrl: p.dataUrl,
     }));
+
+    // If the active session is currently busy, enqueue instead of sending.
+    // Slash-built-ins above are excluded — they always run immediately.
+    // Fan-out is disabled while busy (it only matters for the active session).
+    const activeBusy = streaming || awaitingPerm;
+    if (activeBusy && fanoutSelection.length < 2) {
+      useUIStore.getState().enqueuePrompt(session.id, {
+        text: trimmed,
+        localAttachments: localAttachments.length > 0 ? localAttachments : undefined,
+        wireAttachments: wireAttachments.length > 0 ? wireAttachments : undefined,
+      });
+      if (trimmed) pushHistory(session.id, trimmed);
+      historyIdxRef.current = -1;
+      setText("");
+      setDraft(session.id, "");
+      setPending([]);
+      return;
+    }
+
     // Fan-out: if ≥2 sessions selected, broadcast to all of them. Slash
     // commands are excluded above; permission-blocked / detached / reloading
     // sessions are skipped (they'll just no-op).
@@ -259,7 +279,14 @@ export function Composer({ session }: { session: SessionState }) {
     for (const sid of broadcastTargets) {
       const target = sessionsMap[sid];
       if (!target) continue;
-      if (target.detached || target.status === "reloading" || target.status === "streaming") {
+      if (target.detached || target.status === "reloading") continue;
+      // Busy fan-out target: enqueue rather than skip silently.
+      if (target.status === "streaming" || target.status === "awaiting_perm") {
+        useUIStore.getState().enqueuePrompt(sid, {
+          text: trimmed,
+          localAttachments: localAttachments.length > 0 ? localAttachments : undefined,
+          wireAttachments: wireAttachments.length > 0 ? wireAttachments : undefined,
+        });
         continue;
       }
       appendUser(sid, trimmed, localAttachments.length > 0 ? localAttachments : undefined);
@@ -342,7 +369,8 @@ export function Composer({ session }: { session: SessionState }) {
   };
 
   return (
-    <div className="relative border-t border-border bg-panel/60 px-4 py-3">
+    <div className="relative border-t border-border bg-panel/60 px-4 pt-2 pb-3">
+      <QueuedPromptsBar session={session} />
       <div className="mx-auto flex max-w-3xl flex-col gap-2">
         {fanoutSelection.length >= 2 && (
           <div className="flex items-center justify-between gap-3 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-foreground">
@@ -494,15 +522,13 @@ export function Composer({ session }: { session: SessionState }) {
               placeholder={
                 detached
                   ? "Session detached — create a new session to continue"
-                  : streaming
-                    ? "Agent is responding… press Esc to stop"
-                    : awaitingPerm
-                      ? "Waiting for permission decision…"
-                      : reloading
-                        ? "Reloading session…"
-                        : "Type a prompt, /command, or @file. ⌘↵ to send"
+                  : reloading
+                    ? "Reloading session…"
+                    : streaming || awaitingPerm
+                      ? "Agent is responding — your next prompt will queue. ⌘↵ to enqueue"
+                      : "Type a prompt, /command, or @file. ⌘↵ to send"
               }
-              disabled={streaming || awaitingPerm || reloading || detached}
+              disabled={reloading || detached}
               rows={1}
               className="min-h-[44px] resize-none border-0 bg-transparent px-4 py-3 text-sm shadow-none focus-visible:ring-0"
               onKeyDown={(e) => {
@@ -548,7 +574,7 @@ export function Composer({ session }: { session: SessionState }) {
                   className="h-7 w-7"
                   title="Attach images"
                   aria-label="Attach images"
-                  disabled={streaming || awaitingPerm || reloading || detached}
+                  disabled={reloading || detached}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <Paperclip className="h-3.5 w-3.5" />
@@ -565,13 +591,37 @@ export function Composer({ session }: { session: SessionState }) {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-muted-foreground">
-                  {streaming ? "Esc to stop" : reloading ? "reloading…" : "⌘↵ send"}
+                  {streaming || awaitingPerm
+                    ? "⌘↵ queue · Esc stop"
+                    : reloading
+                      ? "reloading…"
+                      : "⌘↵ send"}
                 </span>
-                {streaming ? (
-                  <Button size="sm" variant="destructive" onClick={cancel} className="h-7 gap-1.5">
-                    <Square className="h-3 w-3" />
-                    Stop
-                  </Button>
+                {streaming || awaitingPerm ? (
+                  <>
+                    {streaming && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={cancel}
+                        className="h-7 gap-1.5"
+                      >
+                        <Square className="h-3 w-3" />
+                        Stop
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={send}
+                      disabled={(!text.trim() && pending.length === 0) || reloading || detached}
+                      className="h-7 gap-1.5"
+                      title="Add to queue — will send when agent is done"
+                    >
+                      <Send className="h-3 w-3" />
+                      Queue
+                    </Button>
+                  </>
                 ) : (
                   <>
                     <RetryButton onClick={retryLast} sessionId={session.id} />
@@ -579,10 +629,7 @@ export function Composer({ session }: { session: SessionState }) {
                       size="sm"
                       onClick={send}
                       disabled={
-                        (!text.trim() && pending.length === 0) ||
-                        awaitingPerm ||
-                        reloading ||
-                        detached
+                        (!text.trim() && pending.length === 0) || reloading || detached
                       }
                       className="h-7 gap-1.5"
                     >
