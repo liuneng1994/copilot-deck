@@ -164,7 +164,13 @@ export const wsHandlers: HandlerMap = {
           newSessionId: result.sessionId,
         });
       } else {
-        send({ type: "session_reattached", sessionId: msg.sessionId });
+        send({
+          type: "session_reattached",
+          sessionId: msg.sessionId,
+          modeId: result.modeId ?? null,
+          modeName: result.modeName ?? null,
+          modeOptions: result.modeOptions ?? null,
+        });
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);

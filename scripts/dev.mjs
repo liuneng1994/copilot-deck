@@ -11,8 +11,8 @@
 // install injects, which would otherwise collide with a running prod daemon.
 
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -42,13 +42,7 @@ console.log(`[dev] api  http://localhost:${DEV_API_PORT}`);
 console.log(`[dev] web  http://localhost:${DEV_WEB_PORT}`);
 console.log(`[dev] data ${DEV_DATA_DIR}`);
 
-const args = [
-  "-r",
-  "--parallel",
-  "--filter=!copilot-deck",
-  "run",
-  "dev",
-];
+const args = ["-r", "--parallel", "--filter=!copilot-deck", "run", "dev"];
 
 const child = spawn("pnpm", args, { cwd: repoRoot, env, stdio: "inherit" });
 child.on("exit", (code, signal) => {

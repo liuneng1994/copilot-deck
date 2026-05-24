@@ -809,10 +809,22 @@ export class SessionManager {
    * inside the CLI. Throws if the session is unknown, already attached, or the
    * agent doesn't advertise `loadSession`.
    */
-  async reattachSession(sessionId: string): Promise<{ sessionId: string; replacedFrom?: string }> {
+  async reattachSession(sessionId: string): Promise<{
+    sessionId: string;
+    replacedFrom?: string;
+    modeId?: string | null;
+    modeName?: string | null;
+    modeOptions?: { id: string; name: string; description?: string }[] | null;
+  }> {
     if (this.sessions.has(sessionId)) {
       // Already attached.
-      return { sessionId };
+      const cur = this.store.getSession(sessionId);
+      return {
+        sessionId,
+        modeId: cur?.modeId ?? null,
+        modeName: cur?.modeName ?? null,
+        modeOptions: cur?.modeOptions ?? null,
+      };
     }
     const persisted = this.store.getSession(sessionId);
     if (!persisted) throw new Error(`unknown session ${sessionId}`);
@@ -837,8 +849,9 @@ export class SessionManager {
       ts: Date.now(),
     });
     this.replayingSessions.add(sessionId);
+    let loadRes: acp.LoadSessionResponse | undefined;
     try {
-      await agent.connection.loadSession({ cwd, sessionId, mcpServers: [] });
+      loadRes = await agent.connection.loadSession({ cwd, sessionId, mcpServers: [] });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (/not found/i.test(msg)) {
@@ -869,13 +882,34 @@ export class SessionManager {
     this.detachedSessions.delete(sessionId);
     this.streams.delete(sessionId);
     this.store.markSessionDetached(sessionId, false);
+    const advertisedModes = loadRes?.modes;
+    const nextModeId = advertisedModes?.currentModeId ?? persisted.modeId ?? null;
+    const nextModeOptions = advertisedModes?.availableModes
+      ? advertisedModes.availableModes.map((m) => ({
+          id: m.id,
+          name: m.name,
+          description: m.description ?? undefined,
+        }))
+      : (persisted.modeOptions ?? null);
+    const nextModeName =
+      advertisedModes?.availableModes?.find((m) => m.id === nextModeId)?.name ??
+      persisted.modeName ??
+      null;
     this.store.upsertSession({
       ...persisted,
       detached: false,
       status: "idle",
+      modeId: nextModeId,
+      modeName: nextModeName,
+      modeOptions: nextModeOptions,
       updatedAt: Date.now(),
     });
-    return { sessionId };
+    return {
+      sessionId,
+      modeId: nextModeId,
+      modeName: nextModeName,
+      modeOptions: nextModeOptions,
+    };
   }
 
   async prompt(

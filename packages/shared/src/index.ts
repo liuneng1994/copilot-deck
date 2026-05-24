@@ -388,6 +388,12 @@ export type ServerToClient =
       // loadSession. Client should clear the detached flag locally.
       type: "session_reattached";
       sessionId: string;
+      // Modes advertised by the agent on reattach. Imported-from-history
+      // sessions start with no modes locally; this lets the client pick
+      // them up without a full hydrate.
+      modeId?: string | null;
+      modeName?: string | null;
+      modeOptions?: { id: string; name: string; description?: string }[] | null;
     }
   | {
       // The reattached session was empty (Copilot had no saved history),

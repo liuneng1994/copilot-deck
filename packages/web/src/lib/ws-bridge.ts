@@ -402,6 +402,20 @@ export function useWsBridge() {
           store.setReattaching(msg.sessionId, false);
           store.setSessionStatus(msg.sessionId, "idle");
           store.dismissReloadSuggestion(msg.sessionId);
+          if (msg.modeOptions || msg.modeId || msg.modeName) {
+            store.upsertSession({
+              id: msg.sessionId,
+              modeId: msg.modeId ?? undefined,
+              modeName: msg.modeName ?? undefined,
+              modeOptions: msg.modeOptions
+                ? msg.modeOptions.map((m) => ({
+                    name: m.name,
+                    value: m.id,
+                    description: m.description,
+                  }))
+                : undefined,
+            });
+          }
           break;
         }
         case "session_replaced": {
