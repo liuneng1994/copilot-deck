@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { cn } from "../../lib/cn";
+import { useFocusTrap } from "../../lib/focus-trap";
 import { useUIStore } from "../../stores/ui-store";
 import { type ThemePref, useUserPrefs } from "../../stores/user-prefs-store";
 import { McpServersPanel } from "../settings/extensions/mcp-panel";
@@ -26,15 +27,24 @@ export function SettingsDrawer() {
   const open = useUIStore((s) => s.settingsOpen);
   const setOpen = useUIStore((s) => s.setSettingsOpen);
   const [tab, setTab] = useState<SettingsTab>("Extensions");
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, open);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
+        ref={dialogRef}
         hideClose
+        // biome-ignore lint/a11y/useSemanticElements: Radix content is the modal dialog container.
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
         className="right-0 left-auto top-0 h-dvh w-full max-w-[720px] translate-x-0 translate-y-0 gap-0 rounded-none border-y-0 border-r-0 bg-panel-elevated p-0 shadow-2xl data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:w-[min(720px,calc(100vw-2rem))]"
       >
         <DialogHeader className="flex-row items-center justify-between space-y-0 border-b border-border px-4 py-3">
-          <DialogTitle className="text-sm">Settings</DialogTitle>
+          <DialogTitle id="settings-title" className="text-sm">
+            Settings
+          </DialogTitle>
           <Button
             type="button"
             variant="ghost"

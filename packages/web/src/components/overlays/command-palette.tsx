@@ -1,8 +1,9 @@
 import { Command } from "cmdk";
 import { FileText, FolderOpen, Settings, Sparkles, Zap } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { BUILTIN_COMMANDS } from "../../lib/builtin-commands";
 import { cn } from "../../lib/cn";
+import { useFocusTrap } from "../../lib/focus-trap";
 import { orderedSessions } from "../../lib/session-order";
 import { useUIStore } from "../../stores/ui-store";
 
@@ -16,6 +17,9 @@ export function CommandPalette() {
   );
   const filesOverview = useUIStore((s) => s.filesOverview);
   const inspectorCollapsed = useUIStore((s) => s.inspectorCollapsed);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useFocusTrap(dialogRef, open, { initialFocus: inputRef });
 
   useEffect(() => {
     if (!open) return;
@@ -100,114 +104,119 @@ export function CommandPalette() {
       className="fixed inset-0 z-50 flex items-start justify-center bg-background/55 px-4 pt-[12vh] backdrop-blur-sm"
       onMouseDown={close}
     >
-      <Command
-        shouldFilter
-        label="Command palette"
-        className="w-full max-w-2xl overflow-hidden rounded-xl border border-border bg-panel-elevated text-foreground shadow-2xl"
+      <dialog
+        ref={dialogRef}
+        open
+        aria-modal="true"
+        aria-label="Command palette"
+        className="relative m-0 w-full max-w-2xl overflow-hidden rounded-xl border border-border bg-panel-elevated p-0 text-foreground shadow-2xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <Command.Input
-          autoFocus
-          placeholder="Search sessions, commands, files, actions…"
-          className="h-12 w-full border-b border-border bg-transparent px-4 text-sm outline-none placeholder:text-muted-foreground"
-        />
-        <Command.List className="max-h-[60vh] overflow-y-auto p-2">
-          <Command.Empty className="px-3 py-8 text-center text-sm text-muted-foreground">
-            No results found.
-          </Command.Empty>
+        <Command shouldFilter label="Command palette">
+          <Command.Input
+            ref={inputRef}
+            autoFocus
+            placeholder="Search sessions, commands, files, actions…"
+            className="h-12 w-full border-b border-border bg-transparent px-4 text-sm outline-none placeholder:text-muted-foreground"
+          />
+          <Command.List className="max-h-[60vh] overflow-y-auto p-2">
+            <Command.Empty className="px-3 py-8 text-center text-sm text-muted-foreground">
+              No results found.
+            </Command.Empty>
 
-          <Command.Group heading="Sessions" className={groupClassName}>
-            {ordered.length > 0 ? (
-              ordered.map((session) => (
-                <PaletteItem
-                  key={session.id}
-                  value={`session ${session.title} ${session.cwd}`}
-                  onSelect={() => selectSession(session.id)}
-                >
-                  <FolderOpen className="h-4 w-4 text-primary" />
-                  <span className="min-w-0 flex-1 truncate">{session.title}</span>
-                  <span className="truncate text-xs text-muted-foreground">{session.cwd}</span>
-                </PaletteItem>
-              ))
-            ) : (
-              <DisabledItem value="no sessions yet">(no sessions yet)</DisabledItem>
-            )}
-          </Command.Group>
+            <Command.Group heading="Sessions" className={groupClassName}>
+              {ordered.length > 0 ? (
+                ordered.map((session) => (
+                  <PaletteItem
+                    key={session.id}
+                    value={`session ${session.title} ${session.cwd}`}
+                    onSelect={() => selectSession(session.id)}
+                  >
+                    <FolderOpen className="h-4 w-4 text-primary" />
+                    <span className="min-w-0 flex-1 truncate">{session.title}</span>
+                    <span className="truncate text-xs text-muted-foreground">{session.cwd}</span>
+                  </PaletteItem>
+                ))
+              ) : (
+                <DisabledItem value="no sessions yet">(no sessions yet)</DisabledItem>
+              )}
+            </Command.Group>
 
-          <Command.Group heading="Slash commands" className={groupClassName}>
-            {activeSessionId ? (
-              slashCommands.map((command) => (
-                <PaletteItem
-                  key={`${command.source}:${command.name}`}
-                  value={`slash ${command.name} ${command.description ?? ""}`}
-                  onSelect={() => prefillSlash(command.name)}
-                >
-                  {command.source === "builtin" ? (
-                    <Zap className="h-4 w-4 text-sky-400" />
-                  ) : (
-                    <Sparkles className="h-4 w-4 text-amber-400" />
-                  )}
-                  <span className="font-mono text-foreground">/{command.name}</span>
-                  {command.description && (
-                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                      {command.description}
-                    </span>
-                  )}
-                </PaletteItem>
-              ))
-            ) : (
-              <DisabledItem value="no active session">(no active session)</DisabledItem>
-            )}
-          </Command.Group>
+            <Command.Group heading="Slash commands" className={groupClassName}>
+              {activeSessionId ? (
+                slashCommands.map((command) => (
+                  <PaletteItem
+                    key={`${command.source}:${command.name}`}
+                    value={`slash ${command.name} ${command.description ?? ""}`}
+                    onSelect={() => prefillSlash(command.name)}
+                  >
+                    {command.source === "builtin" ? (
+                      <Zap className="h-4 w-4 text-sky-400" />
+                    ) : (
+                      <Sparkles className="h-4 w-4 text-amber-400" />
+                    )}
+                    <span className="font-mono text-foreground">/{command.name}</span>
+                    {command.description && (
+                      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                        {command.description}
+                      </span>
+                    )}
+                  </PaletteItem>
+                ))
+              ) : (
+                <DisabledItem value="no active session">(no active session)</DisabledItem>
+              )}
+            </Command.Group>
 
-          <Command.Group heading="Recent files" className={groupClassName}>
-            {recentFiles.length > 0 ? (
-              recentFiles.map((file) => (
-                <PaletteItem
-                  key={file.path}
-                  value={`file ${file.rel} ${file.path}`}
-                  onSelect={() => openFile(file.path)}
-                >
-                  <FileText className="h-4 w-4 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs">{file.rel}</span>
-                  {typeof file.added === "number" || typeof file.removed === "number" ? (
-                    <span className="text-xs text-muted-foreground">
-                      +{file.added ?? 0} -{file.removed ?? 0}
-                    </span>
-                  ) : null}
-                </PaletteItem>
-              ))
-            ) : (
-              <DisabledItem value="no recent files yet">(no recent files yet)</DisabledItem>
-            )}
-          </Command.Group>
+            <Command.Group heading="Recent files" className={groupClassName}>
+              {recentFiles.length > 0 ? (
+                recentFiles.map((file) => (
+                  <PaletteItem
+                    key={file.path}
+                    value={`file ${file.rel} ${file.path}`}
+                    onSelect={() => openFile(file.path)}
+                  >
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs">{file.rel}</span>
+                    {typeof file.added === "number" || typeof file.removed === "number" ? (
+                      <span className="text-xs text-muted-foreground">
+                        +{file.added ?? 0} -{file.removed ?? 0}
+                      </span>
+                    ) : null}
+                  </PaletteItem>
+                ))
+              ) : (
+                <DisabledItem value="no recent files yet">(no recent files yet)</DisabledItem>
+              )}
+            </Command.Group>
 
-          <Command.Group heading="Actions" className={groupClassName}>
-            <PaletteItem
-              value="action open settings"
-              onSelect={() =>
-                run(() => {
-                  useUIStore.getState().setSettingsOpen(true);
-                })
-              }
-            >
-              <Settings className="h-4 w-4 text-muted-foreground" />
-              <span>Open Settings</span>
-            </PaletteItem>
-            <PaletteItem
-              value="action toggle inspector"
-              onSelect={() =>
-                run(() => {
-                  useUIStore.getState().toggleInspector();
-                })
-              }
-            >
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <span>{inspectorCollapsed ? "Open Inspector" : "Close Inspector"}</span>
-            </PaletteItem>
-          </Command.Group>
-        </Command.List>
-      </Command>
+            <Command.Group heading="Actions" className={groupClassName}>
+              <PaletteItem
+                value="action open settings"
+                onSelect={() =>
+                  run(() => {
+                    useUIStore.getState().setSettingsOpen(true);
+                  })
+                }
+              >
+                <Settings className="h-4 w-4 text-muted-foreground" />
+                <span>Open Settings</span>
+              </PaletteItem>
+              <PaletteItem
+                value="action toggle inspector"
+                onSelect={() =>
+                  run(() => {
+                    useUIStore.getState().toggleInspector();
+                  })
+                }
+              >
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                <span>{inspectorCollapsed ? "Open Inspector" : "Close Inspector"}</span>
+              </PaletteItem>
+            </Command.Group>
+          </Command.List>
+        </Command>
+      </dialog>
     </div>
   );
 }

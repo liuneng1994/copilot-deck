@@ -490,6 +490,7 @@ export function Composer({ session }: { session: SessionState }) {
                   void addFiles(files);
                 }
               }}
+              aria-label="Message composer"
               placeholder={
                 detached
                   ? "Session detached — create a new session to continue"
@@ -546,6 +547,7 @@ export function Composer({ session }: { session: SessionState }) {
                   size="icon"
                   className="h-7 w-7"
                   title="Attach images"
+                  aria-label="Attach images"
                   disabled={streaming || awaitingPerm || reloading || detached}
                   onClick={() => fileInputRef.current?.click()}
                 >

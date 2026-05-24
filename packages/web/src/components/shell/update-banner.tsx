@@ -26,7 +26,10 @@ export function UpdateBanner() {
   };
 
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-amber-500/30 bg-amber-100 px-3 py-1.5 text-xs dark:bg-amber-500/10">
+    <output
+      aria-live="polite"
+      className="flex items-center justify-between gap-3 border-b border-amber-500/30 bg-amber-100 px-3 py-1.5 text-xs dark:bg-amber-500/10"
+    >
       <div className="flex min-w-0 items-center gap-2 text-amber-900 dark:text-amber-200">
         <Sparkles className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">
@@ -73,6 +76,6 @@ export function UpdateBanner() {
           <X className="h-3 w-3" />
         </Button>
       </div>
-    </div>
+    </output>
   );
 }

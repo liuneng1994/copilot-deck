@@ -1,7 +1,8 @@
 import type { ModelGroup } from "@agent-view/shared";
 import { Check, Cpu, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
+import { useFocusTrap } from "../../lib/focus-trap";
 import { sendWs } from "../../lib/ws-client";
 import { useUIStore } from "../../stores/ui-store";
 
@@ -36,6 +37,9 @@ export function ModelPickerOverlay() {
     scope === "session" && activeId ? (sessionOverride ?? cwdEffective) : cwdEffective;
 
   const [query, setQuery] = useState("");
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useFocusTrap(dialogRef, open, { initialFocus: inputRef });
 
   useEffect(() => {
     if (!open) return;
@@ -102,11 +106,19 @@ export function ModelPickerOverlay() {
         className="absolute inset-0 cursor-default bg-transparent"
         onClick={() => setOpen(false)}
       />
-      <div className="relative flex max-h-[70vh] w-[560px] max-w-full flex-col overflow-hidden rounded-xl border border-border bg-panel shadow-2xl">
+      <dialog
+        ref={dialogRef}
+        open
+        aria-modal="true"
+        aria-labelledby="model-picker-title"
+        className="relative m-0 flex max-h-[70vh] w-[560px] max-w-full flex-col overflow-hidden rounded-xl border border-border bg-panel p-0 shadow-2xl"
+      >
         <header className="flex items-center gap-2 border-b border-border px-4 py-3">
           <Cpu className="h-4 w-4 text-muted-foreground" />
           <div className="flex-1">
-            <div className="text-sm font-medium">Switch model</div>
+            <div id="model-picker-title" className="text-sm font-medium">
+              Switch model
+            </div>
             <div className="mt-0.5 text-[11px] text-muted-foreground">{scopeHint}</div>
           </div>
           {activeId && cwd && (
@@ -151,9 +163,11 @@ export function ModelPickerOverlay() {
 
         <div className="border-b border-border px-3 py-2">
           <input
+            ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter models…"
+            aria-label="Filter models"
             className="w-full rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary"
           />
         </div>
@@ -218,7 +232,7 @@ export function ModelPickerOverlay() {
             ? "Per-session override detaches this session and reattaches it on the (cwd, model) agent via ACP loadSession. Other sessions stay on the cwd default."
             : "Switching kills the current Copilot child for this cwd. Existing messages remain; the next prompt starts a fresh ACP session under the chosen model."}
         </footer>
-      </div>
+      </dialog>
     </div>
   );
 }

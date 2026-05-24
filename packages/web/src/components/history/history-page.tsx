@@ -173,6 +173,7 @@ export function HistoryPage() {
             className="h-6 w-6"
             onClick={() => void fetchSessions()}
             title="Refresh"
+            aria-label="Refresh history"
           >
             <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
           </Button>

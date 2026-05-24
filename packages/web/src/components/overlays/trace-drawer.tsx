@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useFocusTrap } from "../../lib/focus-trap";
 import { useUIStore } from "../../stores/ui-store";
 
 function fmtTs(ts: number) {
@@ -18,6 +19,9 @@ export function TraceDrawer() {
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   const [kind, setKind] = useState<string>("");
   const [query, setQuery] = useState<string>("");
+  const drawerRef = useRef<HTMLDialogElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  useFocusTrap(drawerRef, open, { initialFocus: searchRef });
 
   // Distinct kinds present in the current trace buffer, used for the filter
   // dropdown. Re-computed on each trace update.
@@ -74,10 +78,18 @@ export function TraceDrawer() {
   if (!open) return null;
 
   return (
-    <aside className="fixed inset-y-0 right-0 z-40 flex w-[640px] max-w-[90vw] flex-col border-l border-border bg-panel text-foreground shadow-2xl">
+    <dialog
+      ref={drawerRef}
+      open
+      aria-modal="true"
+      aria-labelledby="trace-title"
+      className="fixed inset-y-0 right-0 z-40 ml-auto mr-0 flex h-dvh w-[640px] max-w-[90vw] flex-col border-l border-border bg-panel p-0 text-foreground shadow-2xl"
+    >
       <header className="flex items-center justify-between border-b border-border px-3 py-2 text-sm">
         <div className="flex items-center gap-2">
-          <span className="font-medium">Trace</span>
+          <span id="trace-title" className="font-medium">
+            Trace
+          </span>
           <span className="text-xs text-muted-foreground">
             {filtered.length} / {trace.length}
           </span>
@@ -125,6 +137,7 @@ export function TraceDrawer() {
             type="button"
             className="text-muted-foreground hover:text-foreground"
             onClick={() => setOpen(false)}
+            aria-label="Close trace drawer"
           >
             <X className="h-4 w-4" />
           </button>
@@ -132,8 +145,10 @@ export function TraceDrawer() {
       </header>
       <div className="border-b border-border px-3 py-1.5">
         <input
+          ref={searchRef}
           type="text"
           placeholder="Search kind or payload…"
+          aria-label="Search trace events"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="w-full rounded border border-border bg-bg px-2 py-1 font-mono text-[11px] outline-none placeholder:text-muted-foreground"
@@ -173,7 +188,7 @@ export function TraceDrawer() {
           })
         )}
       </div>
-    </aside>
+    </dialog>
   );
 }
 

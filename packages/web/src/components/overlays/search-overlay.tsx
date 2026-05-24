@@ -1,5 +1,6 @@
 import { Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useFocusTrap } from "../../lib/focus-trap";
 import { useUIStore } from "../../stores/ui-store";
 
 interface SearchHit {
@@ -44,6 +45,8 @@ export function SearchOverlay() {
   const [loading, setLoading] = useState(false);
   const [sel, setSel] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useFocusTrap(dialogRef, open, { initialFocus: inputRef });
 
   // Focus + reset on open.
   useEffect(() => {
@@ -143,17 +146,25 @@ export function SearchOverlay() {
       onClick={() => setOpen(false)}
     >
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop-click stop only */}
-      <div
-        className="flex max-h-[70vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-border bg-panel-elevated shadow-2xl"
+      <dialog
+        ref={dialogRef}
+        open
+        aria-modal="true"
+        aria-labelledby="search-title"
+        className="relative m-0 flex max-h-[70vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-border bg-panel-elevated p-0 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 border-border border-b p-3">
           <Search className="h-4 w-4 text-muted-foreground" />
+          <h2 id="search-title" className="sr-only">
+            Search sessions
+          </h2>
           <input
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search across all sessions…"
+            aria-label="Search across all sessions"
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           {loading && (
@@ -166,6 +177,7 @@ export function SearchOverlay() {
             onClick={() => setOpen(false)}
             className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
             title="Close (Esc)"
+            aria-label="Close search"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -225,7 +237,7 @@ export function SearchOverlay() {
             </ul>
           )}
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }

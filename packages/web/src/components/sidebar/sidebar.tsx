@@ -61,6 +61,65 @@ export function Sidebar() {
       .filter(([_, list]) => list.length > 0)
       .map(([cwd, list]) => ({ cwd, list: list.sort((a, b) => b.updatedAt - a.updatedAt) }));
   }, [sessions, q]);
+  const displaySessionIds = useMemo(
+    () => groups.flatMap(({ list }) => list.map((session) => session.id)),
+    [groups],
+  );
+  const [focusedSessionId, setFocusedSessionId] = useState<string | null>(active);
+  const sessionListRef = useRef<HTMLDivElement | null>(null);
+  const previousActiveRef = useRef<string | null>(active);
+
+  useEffect(() => {
+    if (active !== previousActiveRef.current) {
+      previousActiveRef.current = active;
+      if (active && displaySessionIds.includes(active)) setFocusedSessionId(active);
+      return;
+    }
+    setFocusedSessionId((current) =>
+      current && displaySessionIds.includes(current) ? current : (displaySessionIds[0] ?? null),
+    );
+  }, [active, displaySessionIds]);
+
+  const focusSessionOption = (id: string) => {
+    const option = Array.from(
+      sessionListRef.current?.querySelectorAll<HTMLButtonElement>("[data-session-id]") ?? [],
+    ).find((element) => element.dataset.sessionId === id);
+    option?.focus();
+  };
+
+  const onSessionListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (displaySessionIds.length === 0) return;
+    const target = event.target as HTMLElement;
+    if (!target.closest("[data-session-id]")) return;
+
+    const currentId =
+      target.closest<HTMLElement>("[data-session-id]")?.dataset.sessionId ??
+      focusedSessionId ??
+      active ??
+      displaySessionIds[0];
+    const currentIndex = Math.max(0, displaySessionIds.indexOf(currentId));
+    let nextId: string | null = null;
+
+    if (event.key === "ArrowDown") {
+      nextId = displaySessionIds[Math.min(currentIndex + 1, displaySessionIds.length - 1)];
+    } else if (event.key === "ArrowUp") {
+      nextId = displaySessionIds[Math.max(currentIndex - 1, 0)];
+    } else if (event.key === "Home") {
+      nextId = displaySessionIds[0];
+    } else if (event.key === "End") {
+      nextId = displaySessionIds[displaySessionIds.length - 1];
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      setActive(currentId);
+      return;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    setFocusedSessionId(nextId);
+    window.requestAnimationFrame(() => focusSessionOption(nextId));
+  };
 
   // Numeric hotkey hints (Cmd+1..9): map session.id → "1".."9" for the first 9
   // sessions in display order (unfiltered).
@@ -165,12 +224,21 @@ export function Sidebar() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search sessions"
+          aria-label="Search sessions"
           className="h-8 pl-7 text-xs"
         />
       </div>
 
       <ScrollArea className="flex-1">
-        <div className="px-2 pb-3">
+        <div
+          ref={sessionListRef}
+          // biome-ignore lint/a11y/useSemanticElements: roving session buttons expose listbox semantics.
+          role="listbox"
+          aria-label="Sessions"
+          tabIndex={-1}
+          className="px-2 pb-3"
+          onKeyDown={onSessionListKeyDown}
+        >
           {groups.length === 0 && (
             <div className="px-2 py-8 text-center text-xs text-muted-foreground">
               No sessions yet.
@@ -187,12 +255,14 @@ export function Sidebar() {
                   {cwd}
                 </span>
               </div>
-              <ul className="space-y-0.5">
+              <ul className="space-y-0.5" aria-label={cwd}>
                 {list.map((s) => (
                   <SidebarSessionItem
                     key={s.id}
                     session={s}
                     isActive={s.id === active}
+                    isFocused={s.id === focusedSessionId}
+                    onFocus={() => setFocusedSessionId(s.id)}
                     onActivate={() => setActive(s.id)}
                     hotkey={hotkeyIndex.get(s.id)}
                   />
@@ -209,7 +279,13 @@ export function Sidebar() {
 export function SidebarRail({ onExpand }: { onExpand: () => void }) {
   return (
     <aside className="flex h-full w-12 shrink-0 flex-col items-center border-r border-border bg-panel py-2">
-      <Button variant="ghost" size="icon" onClick={onExpand} title="Expand sidebar (⌘\)">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onExpand}
+        title="Expand sidebar (⌘\)"
+        aria-label="Expand sidebar"
+      >
         <ChevronRight className="h-4 w-4" />
       </Button>
     </aside>
@@ -219,11 +295,15 @@ export function SidebarRail({ onExpand }: { onExpand: () => void }) {
 function SidebarSessionItem({
   session: s,
   isActive,
+  isFocused,
+  onFocus,
   onActivate,
   hotkey,
 }: {
   session: SessionState;
   isActive: boolean;
+  isFocused: boolean;
+  onFocus: () => void;
   onActivate: () => void;
   hotkey?: number;
 }) {
@@ -272,6 +352,11 @@ function SidebarSessionItem({
             toggleFanout(s.id);
           }}
           aria-pressed={fanoutSelected}
+          aria-label={
+            fanoutSelected
+              ? `Remove ${s.title} from broadcast selection`
+              : `Add ${s.title} to broadcast selection`
+          }
           title={
             fanoutSelected
               ? "Remove from broadcast selection"
@@ -312,6 +397,12 @@ function SidebarSessionItem({
       ) : (
         <button
           type="button"
+          // biome-ignore lint/a11y/useSemanticElements: roving session button acts as a selectable listbox option.
+          role="option"
+          aria-selected={isActive}
+          tabIndex={isFocused ? 0 : -1}
+          data-session-id={s.id}
+          onFocus={onFocus}
           onClick={onActivate}
           onDoubleClick={() => setEditing(true)}
           className={cn(
@@ -358,6 +449,7 @@ function SidebarSessionItem({
             }}
             className="absolute right-7 top-1/2 hidden -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground group-hover/item:block"
             title="Rename session"
+            aria-label={`Rename ${s.title}`}
           >
             <Pencil className="h-3 w-3" />
           </button>
@@ -377,6 +469,7 @@ function SidebarSessionItem({
             }}
             className="absolute right-1.5 top-1/2 hidden -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive group-hover/item:block"
             title="Delete session"
+            aria-label={`Delete ${s.title}`}
           >
             <Trash2 className="h-3 w-3" />
           </button>
@@ -396,6 +489,7 @@ function SidebarSessionItem({
               }}
               className="absolute right-12 top-1/2 hidden -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-warn/20 hover:text-warn group-hover/item:block disabled:opacity-60"
               title={s.reattaching ? "Reattaching…" : "Reattach session"}
+              aria-label={s.reattaching ? `Reattaching ${s.title}` : `Reattach ${s.title}`}
             >
               <RotateCcw className={cn("h-3 w-3", s.reattaching && "animate-spin")} />
             </button>

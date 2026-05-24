@@ -63,7 +63,13 @@ export function Inspector() {
     >
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <span className="text-xs font-medium text-muted-foreground">Inspector</span>
-        <Button variant="ghost" size="icon" onClick={toggle} title="Collapse (⌘B)">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggle}
+          title="Collapse (⌘B)"
+          aria-label="Collapse inspector"
+        >
           <ChevronLeft className="h-4 w-4 rotate-180" />
         </Button>
       </div>
@@ -179,7 +185,13 @@ export function Inspector() {
 export function InspectorRail({ onExpand }: { onExpand: () => void }) {
   return (
     <aside className="flex h-full w-12 shrink-0 flex-col items-center border-l border-border bg-panel py-2">
-      <Button variant="ghost" size="icon" onClick={onExpand} title="Expand inspector (⌘B)">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onExpand}
+        title="Expand inspector (⌘B)"
+        aria-label="Expand inspector"
+      >
         <ChevronLeft className="h-4 w-4" />
       </Button>
     </aside>

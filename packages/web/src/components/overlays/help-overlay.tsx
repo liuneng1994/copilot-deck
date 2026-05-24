@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { BUILTIN_COMMANDS } from "../../lib/builtin-commands";
+import { useFocusTrap } from "../../lib/focus-trap";
 import { useUIStore } from "../../stores/ui-store";
 
 const SHORTCUTS: { keys: string; desc: string }[] = [
@@ -24,6 +25,9 @@ const SHORTCUTS: { keys: string; desc: string }[] = [
 export function HelpOverlay() {
   const open = useUIStore((s) => s.helpOpen);
   const setOpen = useUIStore((s) => s.setHelpOpen);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useFocusTrap(dialogRef, open, { initialFocus: closeRef });
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -53,15 +57,24 @@ export function HelpOverlay() {
         className="absolute inset-0 cursor-default bg-transparent"
         onClick={() => setOpen(false)}
       />
-      <div className="relative flex max-h-[80vh] w-[640px] max-w-full flex-col overflow-hidden rounded-xl border border-border bg-panel shadow-2xl">
+      <dialog
+        ref={dialogRef}
+        open
+        aria-modal="true"
+        aria-labelledby="help-title"
+        className="relative m-0 flex max-h-[80vh] w-[640px] max-w-full flex-col overflow-hidden rounded-xl border border-border bg-panel p-0 shadow-2xl"
+      >
         <header className="flex items-center justify-between border-b border-border px-4 py-3">
           <div>
-            <div className="text-sm font-medium">Agent View — Help</div>
+            <div id="help-title" className="text-sm font-medium">
+              Agent View — Help
+            </div>
             <div className="mt-0.5 text-xs text-muted-foreground">
               Keyboard shortcuts and built-in slash commands
             </div>
           </div>
           <button
+            ref={closeRef}
             type="button"
             className="rounded p-1 text-muted-foreground hover:text-foreground"
             onClick={() => setOpen(false)}
@@ -129,7 +142,7 @@ export function HelpOverlay() {
             </p>
           </section>
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }
