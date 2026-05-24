@@ -7,6 +7,7 @@ import { SessionHeader } from "./components/conversation/session-header";
 import { HistoryPage } from "./components/history/history-page";
 import { Inspector, InspectorRail } from "./components/inspector/inspector";
 import { ResizeHandle } from "./components/layout/resize-handle";
+import { MissionControl } from "./components/mission-control/mission-control";
 import { CommandPalette } from "./components/overlays/command-palette";
 import { ConfirmDialogHost } from "./components/overlays/confirm-dialog";
 import { HelpOverlay } from "./components/overlays/help-overlay";
@@ -139,6 +140,10 @@ export function App() {
       {topView === "history" ? (
         <div className="flex min-h-0 flex-1">
           <HistoryPage />
+        </div>
+      ) : topView === "mission-control" ? (
+        <div className="flex min-h-0 flex-1">
+          <MissionControl />
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">

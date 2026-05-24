@@ -1,4 +1,4 @@
-import { Bot, Command, History, Moon, Settings } from "lucide-react";
+import { Bot, Command, History, LayoutDashboard, Moon, Settings } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { useUIStore } from "../../stores/ui-store";
 import { useUserPrefs } from "../../stores/user-prefs-store";
@@ -25,6 +25,13 @@ export function TopBar() {
         <nav className="ml-2 flex items-center gap-0.5 rounded-md border border-border bg-panel-elevated p-0.5">
           <TabButton active={topView === "workspace"} onClick={() => setTopView("workspace")}>
             Workspace
+          </TabButton>
+          <TabButton
+            active={topView === "mission-control"}
+            onClick={() => setTopView("mission-control")}
+          >
+            <LayoutDashboard className="h-3 w-3" />
+            Mission
           </TabButton>
           <TabButton active={topView === "history"} onClick={() => setTopView("history")}>
             <History className="h-3 w-3" />

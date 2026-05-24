@@ -145,6 +145,27 @@ export interface SessionState {
   reattaching?: boolean;
   /** Render-hint injection mode (defaults to "prompt"). */
   renderHintMode?: "agents_md" | "prompt" | "off";
+  /** Per-turn snapshots of cumulative counters; finalized when streaming→idle.
+   * Pushed only on `appendUserMessage` so hydrated history has no entries —
+   * the Perf tab gracefully shows "—" for token/cost on pre-snapshot turns. */
+  turnSnapshots?: TurnSnapshot[];
+}
+
+export interface TurnSnapshot {
+  /** Index in session.messages of the user message that started the turn. */
+  turnIndex: number;
+  /** ID of the user message that started the turn. */
+  userMsgId: string;
+  /** Timestamp of the user message. */
+  userTs: number;
+  /** When streaming finished (or undefined while in-progress). */
+  endTs?: number;
+  startTokensIn: number;
+  startTokensOut: number;
+  startCost: number;
+  endTokensIn?: number;
+  endTokensOut?: number;
+  endCost?: number;
 }
 
 export interface PermissionRequest {
@@ -214,7 +235,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   traceFilters: { direction?: "in" | "out"; sessionScope: boolean };
   traceDrawerOpen: boolean;
   /** Active tab in the inspector pane. */
-  inspectorTab: "plan" | "tools" | "files" | "terminal" | "tasks" | "config";
+  inspectorTab: "plan" | "tools" | "files" | "terminal" | "tasks" | "perf" | "config";
   /** Help/keyboard reference overlay. */
   helpOpen: boolean;
   findOpen: boolean;
@@ -239,7 +260,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   /** Command palette overlay visibility. */
   commandPaletteOpen: boolean;
   /** Which top-level view is active in the shell. */
-  topView: "workspace" | "history";
+  topView: "workspace" | "history" | "mission-control";
   /** Most-recent available-update info from the server. Null when up-to-date or unknown. */
   availableUpdate: {
     installed: string;
@@ -352,7 +373,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   setModelPickerOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setCommandPaletteOpen: (open: boolean) => void;
-  setTopView: (view: "workspace" | "history") => void;
+  setTopView: (view: "workspace" | "history" | "mission-control") => void;
   setAvailableUpdate: (info: UIState["availableUpdate"]) => void;
   snoozeUpdate: (days: number) => void;
   setFilePreviewPath: (path: string | null) => void;
@@ -889,10 +910,20 @@ export const useUIStore = create<UIState>((set, get, api) => ({
     set((state) => {
       const s = state.sessions[sessionId];
       if (!s) return state;
+      const ts = Date.now();
       const nextMessages = capMessages([
         ...s.messages,
-        { id, role: "user", text, ts: Date.now(), attachments },
+        { id, role: "user", text, ts, attachments },
       ]);
+      // Push a fresh turn snapshot with current cumulative counters.
+      const snap: TurnSnapshot = {
+        turnIndex: s.turnSnapshots?.length ?? 0,
+        userMsgId: id,
+        userTs: ts,
+        startTokensIn: s.tokensIn ?? 0,
+        startTokensOut: s.tokensOut ?? 0,
+        startCost: s.costAmount ?? 0,
+      };
       return {
         sessions: {
           ...state.sessions,
@@ -901,8 +932,9 @@ export const useUIStore = create<UIState>((set, get, api) => ({
             messages: nextMessages,
             totalMessages: (s.totalMessages ?? s.messages.length) + 1,
             earliestLoadedTs: s.earliestLoadedTs ?? nextMessages[0]?.ts ?? null,
-            updatedAt: Date.now(),
+            updatedAt: ts,
             title: s.messages.length === 0 ? text.slice(0, 60) : s.title,
+            turnSnapshots: [...(s.turnSnapshots ?? []), snap],
           },
         },
       };
@@ -969,14 +1001,32 @@ export const useUIStore = create<UIState>((set, get, api) => ({
       const s = state.sessions[sessionId];
       if (!s) return state;
       const prev = s.status;
-      const next = {
-        sessions: { ...state.sessions, [sessionId]: { ...s, status, updatedAt: Date.now() } },
-      };
-      // When a session leaves the streaming/awaiting_perm state for an
-      // actionable one (idle/error), drain the next queued prompt — if any —
-      // on the next microtask so this reducer can return cleanly first.
+      // Finalize the most recent unfinalized turn snapshot on
+      // streaming/awaiting_perm → idle/error transitions.
       const drainable = status === "idle" || status === "error";
       const wasBusy = prev === "streaming" || prev === "awaiting_perm";
+      let turnSnapshots = s.turnSnapshots;
+      if (drainable && wasBusy && turnSnapshots && turnSnapshots.length > 0) {
+        const last = turnSnapshots[turnSnapshots.length - 1];
+        if (last && last.endTs === undefined) {
+          turnSnapshots = [
+            ...turnSnapshots.slice(0, -1),
+            {
+              ...last,
+              endTs: Date.now(),
+              endTokensIn: s.tokensIn ?? last.startTokensIn,
+              endTokensOut: s.tokensOut ?? last.startTokensOut,
+              endCost: s.costAmount ?? last.startCost,
+            },
+          ];
+        }
+      }
+      const next = {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...s, status, turnSnapshots, updatedAt: Date.now() },
+        },
+      };
       if (drainable && wasBusy) {
         const queue = state.queuedPrompts[sessionId] ?? [];
         if (queue.length > 0 && !s.detached && !s.crashed) {

@@ -7,13 +7,15 @@ import { MessageBubble } from "./message-bubble";
 import { ToolCallCard } from "./tool-call-card";
 import { ToolGroupCard } from "./tool-group-card";
 import { TurnDiffSummary } from "./turn-diff-summary";
+import { TurnPerfRow } from "./turn-perf-row";
 
 type TimelineItem =
   | { kind: "loadOlder"; ts: number }
   | { kind: "message"; ts: number; data: SessionState["messages"][number] }
   | { kind: "toolCall"; ts: number; data: ToolCallState }
   | { kind: "toolGroup"; ts: number; calls: ToolCallState[]; groupKey: string }
-  | { kind: "turnSummary"; ts: number; turnId: string; toolCallIds: string[] };
+  | { kind: "turnSummary"; ts: number; turnId: string; toolCallIds: string[] }
+  | { kind: "turnPerf"; ts: number; turnId: string };
 
 const NEAR_BOTTOM_PX = 80;
 const TOOL_GROUP_THRESHOLD = 2;
@@ -35,6 +37,8 @@ function itemKey(it: TimelineItem): string {
       return `tg-${it.groupKey}`;
     case "turnSummary":
       return `ts-${it.turnId}`;
+    case "turnPerf":
+      return `tp-${it.turnId}`;
   }
 }
 
@@ -62,15 +66,24 @@ export function Conversation({ session }: { session: SessionState }) {
     }
     base.sort((a, b) => a.ts - b.ts);
 
-    // Inject TurnDiffSummary at end of each turn (same rules as before).
+    // Inject TurnDiffSummary at end of each turn (same rules as before) and
+    // a TurnPerfRow chip for every turn (regardless of tool count).
     const out: TimelineItem[] = [];
     let turnStartIdx = -1;
     let turnToolIds: string[] = [];
     let turnUserMsgId: string | null = null;
     const flushTurn = () => {
-      if (turnStartIdx < 0 || turnToolIds.length < 2 || !turnUserMsgId) return;
-      const ts = out.length > 0 ? out[out.length - 1].ts + 0.5 : Date.now();
-      out.push({ kind: "turnSummary", ts, turnId: turnUserMsgId, toolCallIds: turnToolIds });
+      if (turnStartIdx < 0 || !turnUserMsgId) return;
+      const baseTs = out.length > 0 ? out[out.length - 1].ts + 0.5 : Date.now();
+      if (turnToolIds.length >= 2) {
+        out.push({
+          kind: "turnSummary",
+          ts: baseTs,
+          turnId: turnUserMsgId,
+          toolCallIds: turnToolIds,
+        });
+      }
+      out.push({ kind: "turnPerf", ts: baseTs + 0.1, turnId: turnUserMsgId });
     };
     for (let i = 0; i < base.length; i++) {
       const it = base[i];
@@ -346,6 +359,9 @@ function RenderItem({
   if (it.kind === "turnSummary") {
     return <TurnDiffSummary toolCallIds={it.toolCallIds} />;
   }
+  if (it.kind === "turnPerf") {
+    return <TurnPerfRowWrapper sessionId={sessionId} turnId={it.turnId} />;
+  }
   const m = it.data;
   return (
     <MessageBubble
@@ -371,6 +387,12 @@ function CrashBanner({ info }: { info?: { code: number | null; signal: string | 
       </p>
     </div>
   );
+}
+
+function TurnPerfRowWrapper({ sessionId, turnId }: { sessionId: string; turnId: string }) {
+  const session = useUIStore((s) => s.sessions[sessionId]);
+  if (!session) return null;
+  return <TurnPerfRow session={session} turnUserMsgId={turnId} />;
 }
 
 function EmptyConversation({ cwd }: { cwd: string }) {

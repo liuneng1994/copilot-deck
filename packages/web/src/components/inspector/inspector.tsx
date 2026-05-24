@@ -2,6 +2,7 @@ import {
   ChevronLeft,
   FileCode2,
   FolderTree,
+  Gauge,
   ListChecks,
   Play,
   Settings2,
@@ -13,6 +14,7 @@ import { ToolCallCard } from "../conversation/tool-call-card";
 import { Button } from "../ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { FilesTab } from "./files-tab";
+import { PerfTab } from "./perf";
 import { PlanTab } from "./plan-tab";
 import { TasksTab } from "./tasks-tab";
 import { TerminalTab } from "./terminal-tab";
@@ -117,6 +119,10 @@ export function Inspector() {
               <span className="ml-0.5 rounded bg-muted px-1 text-[9px]">{cwdTaskCount}</span>
             )}
           </TabsTrigger>
+          <TabsTrigger value="perf" className="gap-1">
+            <Gauge className="h-3 w-3" />
+            Perf
+          </TabsTrigger>
         </TabsList>
         <TabsList className="mx-2 mt-1">
           <TabsTrigger value="config" className="gap-1">
@@ -154,6 +160,9 @@ export function Inspector() {
           </TabsContent>
           <TabsContent value="tasks">
             {session ? <TasksTab session={session} /> : <Empty label="Select a session." />}
+          </TabsContent>
+          <TabsContent value="perf">
+            {session ? <PerfTab session={session} /> : <Empty label="Select a session." />}
           </TabsContent>
           <TabsContent value="config" className="px-2">
             {session ? (
