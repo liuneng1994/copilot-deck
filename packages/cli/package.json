@@ -1,6 +1,6 @@
 {
   "name": "copilot-deck",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Browser-based multi-session control panel for the GitHub Copilot CLI (ACP)",
   "keywords": ["copilot", "agent", "acp", "cli", "github-copilot"],
   "license": "MIT",
