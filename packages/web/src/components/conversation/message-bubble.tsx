@@ -329,10 +329,25 @@ function RestoreCheckpointButton({
   messageId: string;
 }) {
   const checkpoint = useCheckpointStore((s) => s.findByMessage(sessionId, messageId));
+  const sessionHasAny = useCheckpointStore(
+    (s) => (s.bySession[sessionId]?.length ?? 0) > 0,
+  );
   const setNotice = useUIStore((s) => s.setNotice);
   const [busy, setBusy] = useState(false);
 
-  if (!checkpoint) return null;
+  if (!checkpoint) {
+    // Surface the missing-checkpoint case so the affordance is discoverable
+    // (instead of an invisible no-op). Tooltip explains the most common
+    // reasons; the button itself stays disabled.
+    const reason = sessionHasAny
+      ? "No checkpoint was captured for this prompt (snapshot may have failed; see logs)."
+      : "Checkpoints unavailable — cwd is not a git repo or git-checkpoint server isn't running.";
+    return (
+      <ToolbarButton onClick={() => {}} title={`Restore unavailable — ${reason}`} disabled>
+        <History className="h-3 w-3" />
+      </ToolbarButton>
+    );
+  }
 
   const onRestore = async () => {
     if (busy) return;
