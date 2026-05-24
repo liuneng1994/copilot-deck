@@ -60,22 +60,25 @@ function computeRows(oldText: string, newText: string): DiffRow[] {
 }
 
 function extractLinesFromHtml(html: string): string[] {
-  // Shiki returns <pre><code><span class="line">...</span>\n<span ...>... lines
+  // Shiki emits `<pre><code><span class="line">…</span>\n<span class="line">…</span>…</code></pre>`
+  // where each line span contains **nested** token spans. A naive non-greedy regex stops
+  // at the first inner `</span>`, so we'd render only the first token per line. Use the
+  // DOM to walk balanced markup instead.
+  if (typeof DOMParser !== "undefined") {
+    try {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const lineEls = doc.querySelectorAll("code .line, pre .line");
+      if (lineEls.length > 0) {
+        return Array.from(lineEls).map((el) => (el as HTMLElement).innerHTML);
+      }
+    } catch {
+      // fall through
+    }
+  }
+  // Fallback: strip outer <pre><code> wrapper and split on newlines between line spans.
   const m = /<code[^>]*>([\s\S]*)<\/code>/.exec(html);
-  const body = m?.[1] ?? html;
-  // Split on the line span boundaries; Shiki emits one `<span class="line">…</span>` per line.
-  const out: string[] = [];
-  const re = /<span class="line">([\s\S]*?)<\/span>/g;
-  let mm = re.exec(body);
-  while (mm !== null) {
-    out.push(mm[1]);
-    mm = re.exec(body);
-  }
-  if (out.length === 0) {
-    // Fallback: split text node by newlines
-    out.push(body);
-  }
-  return out;
+  const body = (m?.[1] ?? html).replace(/^\s*<span class="line">|<\/span>\s*$/g, "");
+  return body.split(/<\/span>\s*\n\s*<span class="line">/);
 }
 
 export function DiffView({
@@ -141,10 +144,13 @@ export function DiffView({
         </span>
         <span className="select-none px-1 text-muted-foreground">{sign}</span>
         {html ? (
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki produces sanitized highlight HTML
-          <span dangerouslySetInnerHTML={{ __html: html }} />
+          <span
+            className="overflow-x-auto whitespace-pre"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki produces sanitized highlight HTML
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
         ) : (
-          <span>{r.text}</span>
+          <span className="overflow-x-auto whitespace-pre">{r.text}</span>
         )}
       </div>
     );
@@ -168,7 +174,9 @@ export function DiffView({
         >
           {r.oldNo ?? ""}
         </span>
-        <span className={cn("border-r border-border/40 px-2", leftBg)}>
+        <span
+          className={cn("overflow-x-auto whitespace-pre border-r border-border/40 px-2", leftBg)}
+        >
           {leftHtml != null ? (
             // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki produces sanitized highlight HTML
             <span dangerouslySetInnerHTML={{ __html: leftHtml }} />
@@ -184,7 +192,7 @@ export function DiffView({
         >
           {r.newNo ?? ""}
         </span>
-        <span className={cn("px-2", rightBg)}>
+        <span className={cn("overflow-x-auto whitespace-pre px-2", rightBg)}>
           {rightHtml != null ? (
             // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki produces sanitized highlight HTML
             <span dangerouslySetInnerHTML={{ __html: rightHtml }} />
