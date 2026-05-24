@@ -327,6 +327,19 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
 
 const nowId = () => Math.random().toString(36).slice(2, 10);
 
+/** Per-session message cap (FIFO eviction); avoids unbounded growth in
+ * long-lived agentic sessions. The full history is still persisted server-side
+ * and can be re-hydrated on demand. */
+const MAX_MESSAGES_PER_SESSION = 2000;
+/** Per-message text cap (~1 MB). Beyond this we keep the tail so streaming
+ * agent replies remain readable. */
+const MAX_MESSAGE_TEXT = 1_000_000;
+
+function capMessages(arr: Message[]): Message[] {
+  if (arr.length <= MAX_MESSAGES_PER_SESSION) return arr;
+  return arr.slice(arr.length - MAX_MESSAGES_PER_SESSION);
+}
+
 function sigForBlock(b: ToolCallContentBlock): string {
   if (b.kind === "diff") return `diff:${b.path ?? ""}:${b.oldText ?? ""}:${b.newText ?? ""}`;
   if (b.kind === "text") return `text:${b.text ?? ""}`;
@@ -651,6 +664,15 @@ export const useUIStore = create<UIState>((set, get, api) => ({
         lines: [],
         done: false,
       };
+      // Auto-evict this entry 60s after completion so the extOps map stays
+      // bounded for long-lived browser tabs.
+      setTimeout(() => {
+        useUIStore.setState((cur) => {
+          if (!cur.extOps[msg.opId]) return cur;
+          const { [msg.opId]: _, ...rest } = cur.extOps;
+          return { extOps: rest };
+        });
+      }, 60_000);
       return {
         extOps: {
           ...s.extOps,
@@ -708,8 +730,17 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   removeSession: (id) =>
     set((state) => {
       const { [id]: _, ...rest } = state.sessions;
+      // Drop tool calls owned by this session — they would otherwise leak
+      // forever in the flat toolCalls map.
+      const toolCalls: Record<string, ToolCallState> = {};
+      for (const [tid, tc] of Object.entries(state.toolCalls)) {
+        if (tc.sessionId !== id) toolCalls[tid] = tc;
+      }
+      const { [id]: __, ...epochRest } = state.composerLoadEpoch;
       return {
         sessions: rest,
+        toolCalls,
+        composerLoadEpoch: epochRest,
         activeSessionId: state.activeSessionId === id ? null : state.activeSessionId,
       };
     }),
@@ -719,12 +750,16 @@ export const useUIStore = create<UIState>((set, get, api) => ({
     set((state) => {
       const s = state.sessions[sessionId];
       if (!s) return state;
+      const nextMessages = capMessages([
+        ...s.messages,
+        { id, role: "user", text, ts: Date.now(), attachments },
+      ]);
       return {
         sessions: {
           ...state.sessions,
           [sessionId]: {
             ...s,
-            messages: [...s.messages, { id, role: "user", text, ts: Date.now(), attachments }],
+            messages: nextMessages,
             updatedAt: Date.now(),
             title: s.messages.length === 0 ? text.slice(0, 60) : s.title,
           },
@@ -741,12 +776,16 @@ export const useUIStore = create<UIState>((set, get, api) => ({
       const last = s.messages[s.messages.length - 1];
       let messages: Message[];
       if (last && last.role === "agent") {
-        messages = [
-          ...s.messages.slice(0, -1),
-          { ...last, text: last.text + chunk, ts: Date.now() },
-        ];
+        const merged = last.text + chunk;
+        // Cap a single agent message at ~1 MB to keep DOM diffs and JSON
+        // payloads (export, hydrate-back) sane.
+        const text = merged.length > MAX_MESSAGE_TEXT ? merged.slice(-MAX_MESSAGE_TEXT) : merged;
+        messages = [...s.messages.slice(0, -1), { ...last, text, ts: Date.now() }];
       } else {
-        messages = [...s.messages, { id: nowId(), role: "agent", text: chunk, ts: Date.now() }];
+        messages = capMessages([
+          ...s.messages,
+          { id: nowId(), role: "agent", text: chunk, ts: Date.now() },
+        ]);
       }
       return {
         sessions: { ...state.sessions, [sessionId]: { ...s, messages, updatedAt: Date.now() } },
@@ -762,7 +801,10 @@ export const useUIStore = create<UIState>((set, get, api) => ({
           ...state.sessions,
           [sessionId]: {
             ...s,
-            messages: [...s.messages, { id: nowId(), role: "system", text, ts: Date.now() }],
+            messages: capMessages([
+              ...s.messages,
+              { id: nowId(), role: "system", text, ts: Date.now() },
+            ]),
             updatedAt: Date.now(),
           },
         },

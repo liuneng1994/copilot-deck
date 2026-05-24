@@ -109,7 +109,11 @@ export class SessionManager {
     }
     // Mark all previously-tracked sessions as detached until their cwd respawns.
     store.markAllDetached();
+    // Skip very old sessions (>30 days) from the in-memory detached set —
+    // they remain in SQLite but won't bloat memory on long-running servers.
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
     for (const s of store.listSessions()) {
+      if (s.updatedAt < cutoff) continue;
       this.detachedSessions.add(s.id);
       if (s.model) this.modelBySession.set(s.id, s.model);
     }
@@ -501,6 +505,7 @@ export class SessionManager {
           if (entry.agent === agent) {
             droppedSessionIds.push(sid);
             this.sessions.delete(sid);
+            this.streams.delete(sid);
             this.detachedSessions.add(sid);
             this.store.markSessionDetached(sid, true);
           }
