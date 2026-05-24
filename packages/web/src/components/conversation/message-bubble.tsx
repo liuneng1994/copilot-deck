@@ -60,6 +60,7 @@ export function MessageBubble({
   }
 
   const isUser = message.role === "user";
+  const compact = useUIStore((s) => s.compactView);
   return (
     <div
       data-msg-id={message.id}
@@ -78,7 +79,8 @@ export function MessageBubble({
       <div className="relative max-w-[80%]">
         <div
           className={cn(
-            "rounded-xl border px-3.5 py-2.5 text-sm",
+            "rounded-xl border px-3.5 py-2.5",
+            compact && !isUser ? "text-[15px] leading-relaxed" : "text-sm",
             isUser
               ? "border-primary/30 bg-primary/10 text-foreground"
               : "border-border bg-panel-elevated text-foreground",

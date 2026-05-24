@@ -1,6 +1,7 @@
 import { ArrowDown, Pause } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type SessionState, type ToolCallState, useUIStore } from "../../stores/ui-store";
+import { ActivityBar } from "./activity-bar";
 import { MessageBubble } from "./message-bubble";
 import { ToolCallCard } from "./tool-call-card";
 import { ToolGroupCard } from "./tool-group-card";
@@ -180,6 +181,7 @@ export function Conversation({ session }: { session: SessionState }) {
 
   return (
     <div className="relative flex-1 min-h-0">
+      <ActivityBar session={session} />
       <div ref={ref} data-conversation-root className="h-full overflow-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-4 px-6 py-6">
           {session.crashed && <CrashBanner info={session.crashInfo} />}

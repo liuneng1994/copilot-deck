@@ -5,6 +5,7 @@ import {
   Download,
   FileCode2,
   Gauge,
+  LayoutList,
   Loader2,
   MoreHorizontal,
   Pencil,
@@ -54,6 +55,8 @@ export function SessionHeader({ session }: { session: SessionState }) {
   const modelBySession = useUIStore((s) => s.modelBySession);
   const setPickerOpen = useUIStore((s) => s.setModelPickerOpen);
   const removeSession = useUIStore((s) => s.removeSession);
+  const compactView = useUIStore((s) => s.compactView);
+  const setCompactView = useUIStore((s) => s.setCompactView);
   const sessionOverrideId = modelBySession[session.id];
   const currentModelId = sessionOverrideId ?? modelByCwd[session.cwd] ?? defaultModel ?? "";
   const currentModel = models.find((m) => m.id === currentModelId);
@@ -152,6 +155,12 @@ export function SessionHeader({ session }: { session: SessionState }) {
                 icon={<Copy className="h-3.5 w-3.5" />}
                 label="Duplicate (new session)"
                 onClick={onDuplicate}
+              />
+              <div className="my-1 h-px bg-border" />
+              <MenuItem
+                icon={<LayoutList className="h-3.5 w-3.5" />}
+                label={compactView ? "Compact view: on" : "Compact view: off"}
+                onClick={() => setCompactView(!compactView)}
               />
               <div className="my-1 h-px bg-border" />
               <MenuItem

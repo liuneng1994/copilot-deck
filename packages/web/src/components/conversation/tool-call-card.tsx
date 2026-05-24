@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "../../lib/cn";
+import { useUIStore } from "../../stores/ui-store";
 import type { ToolCallContentBlock, ToolCallState } from "../../stores/ui-store";
 import { DiffView } from "./diff-view";
 import { FileLink } from "./file-link";
@@ -52,7 +53,10 @@ function elapsed(c: ToolCallState) {
 }
 
 export function ToolCallCard({ call }: { call: ToolCallState }) {
-  const [open, setOpen] = useState(call.status !== "completed");
+  const compact = useUIStore((s) => s.compactView);
+  // In compact mode we default-collapse everything (including failures) —
+  // the user opted into less noise. Otherwise default to open while running.
+  const [open, setOpen] = useState(!compact && call.status !== "completed");
   const v = statusVisual(call.status);
   const k = (call.kind || "").toLowerCase();
   const looksShell =

@@ -251,6 +251,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   filePreviewMaximized: boolean;
   /** Preferred diff view mode in the inspector files pane. Persisted in localStorage. */
   diffViewMode: DiffViewMode;
+  compactView: boolean;
   /** Per-session unsent composer drafts. Persisted in localStorage. */
   drafts: Record<string, string>;
   /** Per-session sent-prompt history for ↑/↓ recall. Persisted in localStorage. */
@@ -341,6 +342,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   setFilePreviewPath: (path: string | null) => void;
   setFilePreviewMaximized: (value: boolean) => void;
   setDiffViewMode: (mode: DiffViewMode) => void;
+  setCompactView: (on: boolean) => void;
   setDraft: (sessionId: string, text: string) => void;
   /** Update the sidebar/inspector width (px) with min/max clamp; persists to localStorage. */
   setSidebarWidth: (px: number) => void;
@@ -495,6 +497,22 @@ function saveDiffViewMode(mode: DiffViewMode): void {
   } catch {}
 }
 
+const COMPACT_VIEW_KEY = "agent-view:compact-view:v1";
+function loadCompactView(): boolean {
+  if (typeof localStorage === "undefined") return false;
+  try {
+    return localStorage.getItem(COMPACT_VIEW_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function saveCompactView(on: boolean): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(COMPACT_VIEW_KEY, on ? "1" : "0");
+  } catch {}
+}
+
 const UPDATE_SNOOZE_KEY = "copilot-deck:update-snoozed-until";
 function loadUpdateSnooze(): number {
   if (typeof localStorage === "undefined") return 0;
@@ -587,6 +605,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   filePreviewPath: null,
   filePreviewMaximized: false,
   diffViewMode: loadDiffViewMode(),
+  compactView: loadCompactView(),
   drafts: loadDrafts(),
   promptHistory: loadPromptHistory(),
   composerLoadEpoch: {},
@@ -1271,6 +1290,10 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   setDiffViewMode: (mode) => {
     saveDiffViewMode(mode);
     set({ diffViewMode: mode });
+  },
+  setCompactView: (on) => {
+    saveCompactView(on);
+    set({ compactView: on });
   },
   setDraft: (sessionId, text) =>
     set((s) => {
