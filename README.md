@@ -130,18 +130,80 @@ the CLI's own historical sessions.
 packages/
 ├── shared/   shared WS protocol types + curated model list
 ├── server/   Fastify + WebSocket + ACP client + SQLite
-└── web/      Vite + React + Tailwind + shadcn/ui
+├── web/      Vite + React + Tailwind + shadcn/ui
+└── cli/      published `copilot-deck` npm bin + bundled server/web
 scripts/
-└── smoke.mjs   end-to-end smoke (Node 22 built-in WebSocket)
+├── smoke.mjs       end-to-end WS smoke (dev server)
+├── smoke-cli.mjs   end-to-end smoke of the installed bin
+└── build-cli-bundle.mjs  bundles server+web+shared into packages/cli/dist-bundle
 plan.md         full design, UI wireframes, milestones
 ```
 
-## Prerequisites
+## Install
 
-- Node.js ≥ 22 (built-in `WebSocket` / `Readable.toWeb`)
-- pnpm ≥ 10
-- Authenticated `copilot` CLI — `copilot --version` works,
-  `copilot --acp --stdio` is available.
+Requires Node.js ≥ 22 and a working `copilot` CLI on `PATH`
+(`copilot --version` works, `copilot --acp --stdio` available).
+
+```bash
+# one-shot
+npx copilot-deck
+
+# or install globally
+npm install -g copilot-deck
+copilot-deck
+```
+
+The CLI:
+
+- spawns the bundled server, picks a free port near `4173`,
+- serves the prebuilt web UI from the same origin,
+- opens your default browser,
+- polls GitHub Releases once a day and surfaces a non-intrusive banner
+  when a newer version is published.
+
+Common flags:
+
+```
+copilot-deck                       # start (default)
+copilot-deck start --port 4200 --no-open --no-update-check
+copilot-deck doctor                # Node / Copilot CLI / data dir / sqlite
+copilot-deck version
+copilot-deck data-dir
+copilot-deck upgrade               # print upgrade command
+copilot-deck upgrade --run         # spawn `npm i -g copilot-deck@latest`
+copilot-deck --help
+```
+
+## Upgrade
+
+The banner inside the app shows the latest released version with a
+copy-to-clipboard install command, link to release notes, and a 7-day
+snooze. Upgrading is always explicit — Copilot Deck never installs
+itself.
+
+```bash
+npm install -g copilot-deck@latest
+# or
+copilot-deck upgrade --run
+```
+
+After upgrading, restart the `copilot-deck` process.
+
+## Data directory
+
+By default Copilot Deck stores its SQLite database, update cache, and
+permissions decisions under `~/.copilot-deck/`. On first run it copies
+any pre-existing `~/.agent-view/` (used before the rename) so your
+history survives the migration. The legacy directory is left untouched
+as a safety net.
+
+Resolution order:
+
+1. `AGENT_VIEW_DB` — full path to `db.sqlite` (legacy override)
+2. `COPILOT_DECK_HOME` — directory; `db.sqlite` is created inside it
+3. `~/.copilot-deck/db.sqlite`
+
+`copilot-deck data-dir` prints the resolved location.
 
 ## Development
 
@@ -160,11 +222,13 @@ pnpm --filter @agent-view/server dev
 pnpm --filter @agent-view/web dev
 ```
 
-Smoke (no browser):
+Build + run the published CLI locally (uses the embedded prebuilt
+bundle):
 
 ```bash
-pnpm --filter @agent-view/server dev &
-node scripts/smoke.mjs   # expects "pong" + stopReason=end_turn
+pnpm build                                 # server + web + cli bundle
+node packages/cli/bin/copilot-deck.mjs     # same entry npm users get
+pnpm smoke:cli                             # end-to-end bin smoke
 ```
 
 Quality gates:
@@ -178,13 +242,17 @@ pnpm typecheck   # tsc --noEmit across all workspaces
 
 | Variable | Default | Notes |
 |---|---|---|
-| `PORT` | `4000` | Server listen port |
+| `PORT` | `4173` (CLI) / `4000` (`pnpm dev`) | Server listen port |
 | `HOST` | `127.0.0.1` | Server listen address |
 | `COPILOT_CLI_PATH` | `copilot` (PATH) | Copilot CLI executable |
 | `COPILOT_DEFAULT_MODEL` | `~/.copilot/settings.json::model` ?? `claude-sonnet-4.5` | Default `--model` when spawning |
-| `AGENT_VIEW_DB` | `~/.agent-view/db.sqlite` | Server-side SQLite path |
+| `COPILOT_DECK_HOME` | `~/.copilot-deck` | Data directory |
+| `AGENT_VIEW_DB` | _(unset)_ | Full path override (legacy) |
 | `AGENT_VIEW_TRACE_MAX` | `5000` | trace_events rotation cap |
 | `AGENT_VIEW_EDITOR` | `code` | "Open in editor" launcher |
+| `COPILOT_DECK_STATIC_DIR` | _(set by CLI bundle)_ | Static web assets dir served by Fastify |
+| `COPILOT_DECK_DISABLE_UPDATE_CHECK` | _(unset)_ | `=1` to skip the GitHub Releases poll |
+| `COPILOT_DECK_VERSION` | _(set by CLI bundle)_ | Reported by `/api/version` |
 
 ## Status
 

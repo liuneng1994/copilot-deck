@@ -199,6 +199,17 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   settingsOpen: boolean;
   /** Which top-level view is active in the shell. */
   topView: "workspace" | "history";
+  /** Most-recent available-update info from the server. Null when up-to-date or unknown. */
+  availableUpdate: {
+    installed: string;
+    latest: string;
+    tag: string;
+    url: string;
+    notes: string;
+    publishedAt: string;
+  } | null;
+  /** Latest snooze deadline (ms epoch) set via the update banner. */
+  updateSnoozedUntil: number;
   /** Inspector Files-tab: which path the user opened (clicked or set externally). */
   filePreviewPath: string | null;
   /** Per-session unsent composer drafts. Persisted in localStorage. */
@@ -269,6 +280,8 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   setModelPickerOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setTopView: (view: "workspace" | "history") => void;
+  setAvailableUpdate: (info: UIState["availableUpdate"]) => void;
+  snoozeUpdate: (days: number) => void;
   setFilePreviewPath: (path: string | null) => void;
   setDraft: (sessionId: string, text: string) => void;
   /** Update the sidebar/inspector width (px) with min/max clamp; persists to localStorage. */
@@ -393,6 +406,24 @@ function savePanelWidths(w: { sidebar: number; inspector: number }): void {
   } catch {}
 }
 
+const UPDATE_SNOOZE_KEY = "copilot-deck:update-snoozed-until";
+function loadUpdateSnooze(): number {
+  if (typeof localStorage === "undefined") return 0;
+  try {
+    const raw = localStorage.getItem(UPDATE_SNOOZE_KEY);
+    const n = raw ? Number.parseInt(raw, 10) : 0;
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+function saveUpdateSnooze(until: number): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(UPDATE_SNOOZE_KEY, String(until));
+  } catch {}
+}
+
 export const useUIStore = create<UIState>((set, get, api) => ({
   ...createFilesSlice(set, get, api),
   sidebarCollapsed: false,
@@ -425,6 +456,8 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   modelPickerOpen: false,
   settingsOpen: false,
   topView: "workspace",
+  availableUpdate: null,
+  updateSnoozedUntil: loadUpdateSnooze(),
   filePreviewPath: null,
   drafts: loadDrafts(),
   promptHistory: loadPromptHistory(),
@@ -986,6 +1019,12 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   setModelPickerOpen: (open) => set({ modelPickerOpen: open }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
   setTopView: (view) => set({ topView: view }),
+  setAvailableUpdate: (info) => set({ availableUpdate: info }),
+  snoozeUpdate: (days) => {
+    const until = Date.now() + days * 24 * 60 * 60 * 1000;
+    saveUpdateSnooze(until);
+    set({ updateSnoozedUntil: until, availableUpdate: null });
+  },
   setFilePreviewPath: (path) => set({ filePreviewPath: path }),
   setDraft: (sessionId, text) =>
     set((s) => {

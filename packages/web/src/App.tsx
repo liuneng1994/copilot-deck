@@ -17,6 +17,7 @@ import { SettingsDrawer } from "./components/overlays/settings-drawer";
 import { TraceDrawer } from "./components/overlays/trace-drawer";
 import { StatusBar } from "./components/shell/status-bar";
 import { TopBar } from "./components/shell/top-bar";
+import { UpdateBanner } from "./components/shell/update-banner";
 import { Sidebar, SidebarRail } from "./components/sidebar/sidebar";
 import { orderedSessions } from "./lib/session-order";
 import { useWsBridge } from "./lib/ws-bridge";
@@ -109,6 +110,7 @@ export function App() {
   return (
     <div className="flex h-screen w-screen flex-col bg-background text-foreground">
       <TopBar />
+      <UpdateBanner />
       {topView === "history" ? (
         <div className="flex min-h-0 flex-1">
           <HistoryPage />

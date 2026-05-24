@@ -18,6 +18,8 @@ import type { SessionManager } from "./session-manager.js";
 
 interface Deps {
   manager: SessionManager;
+  installedVersion?: string;
+  updateChecker?: import("./update-check.js").UpdateChecker;
 }
 
 const DEFAULT_FILE_RANGE_BYTES = 65_536;
@@ -85,6 +87,44 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
   };
 
   app.get("/api/health", async () => ({ ok: true }));
+
+  // ─── Install & upgrade diagnostics ──────────────────────────────────────────
+  app.get("/api/version", async () => {
+    const installed = deps.installedVersion ?? "0.0.0";
+    let copilotCli: string | null = null;
+    try {
+      const { runDoctor } = await import("./doctor.js");
+      const report = await runDoctor();
+      const cli = report.checks.find((c) => c.id === "copilot-cli");
+      copilotCli = cli?.severity === "ok" ? cli.detail : null;
+    } catch {
+      copilotCli = null;
+    }
+    return {
+      installed,
+      node: process.versions.node,
+      copilotCli,
+      platform: process.platform,
+      arch: process.arch,
+    };
+  });
+
+  app.get("/api/doctor", async () => {
+    const { runDoctor } = await import("./doctor.js");
+    return runDoctor();
+  });
+
+  app.get("/api/updates/latest", async () => {
+    const checker = deps.updateChecker;
+    if (!checker) return { enabled: false };
+    return { enabled: true, ...checker.getCache() };
+  });
+
+  app.post("/api/updates/check", async () => {
+    const checker = deps.updateChecker;
+    if (!checker) return { enabled: false };
+    return { enabled: true, ...(await checker.refresh()) };
+  });
 
   // ─── Copilot CLI history (read-only adapter over ~/.copilot/session-store.db) ───
   app.get<{ Querystring: { cwd?: string; q?: string; limit?: string } }>(

@@ -383,6 +383,16 @@ export type ServerToClient =
       sessionId: string;
       title: string;
     }
+  | {
+      // A newer Copilot Deck version is available on GitHub Releases.
+      type: "update_available";
+      installed: string;
+      latest: string;
+      tag: string;
+      url: string;
+      notes: string;
+      publishedAt: string;
+    }
   | GitStatusMessage
   | FilesIndexInvalidatedMessage
   | FileChangedMessage

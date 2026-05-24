@@ -384,6 +384,20 @@ export function useWsBridge() {
           store.upsertSession({ id: msg.sessionId, title: msg.title });
           break;
         }
+        case "update_available": {
+          // Honor the user's snooze deadline.
+          const until = store.updateSnoozedUntil ?? 0;
+          if (Date.now() < until) break;
+          store.setAvailableUpdate({
+            installed: msg.installed,
+            latest: msg.latest,
+            tag: msg.tag,
+            url: msg.url,
+            notes: msg.notes,
+            publishedAt: msg.publishedAt,
+          });
+          break;
+        }
       }
     });
     return () => {

@@ -1,8 +1,10 @@
 node_modules
 dist
+dist-bundle
 .vite
 .DS_Store
 *.log
+*.tsbuildinfo
 data/
 .env
 .env.local

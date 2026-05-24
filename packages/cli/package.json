@@ -1,0 +1,39 @@
+{
+  "name": "copilot-deck",
+  "version": "0.1.0",
+  "description": "Browser-based multi-session control panel for the GitHub Copilot CLI (ACP)",
+  "keywords": ["copilot", "agent", "acp", "cli", "github-copilot"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/liuneng1994/copilot-deck.git"
+  },
+  "homepage": "https://github.com/liuneng1994/copilot-deck#readme",
+  "bugs": "https://github.com/liuneng1994/copilot-deck/issues",
+  "type": "module",
+  "bin": {
+    "copilot-deck": "./bin/copilot-deck.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": ["bin", "dist", "dist-bundle", "README.md"],
+  "scripts": {
+    "build": "tsc && node ../../scripts/build-cli-bundle.mjs",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.22.1",
+    "@fastify/static": "^8.0.4",
+    "@fastify/websocket": "^11.0.2",
+    "better-sqlite3": "^12.10.0",
+    "chokidar": "^5.0.0",
+    "fastify": "^5.1.0",
+    "open": "^10.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "typescript": "^5.6.3"
+  }
+}

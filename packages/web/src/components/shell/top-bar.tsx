@@ -14,7 +14,7 @@ export function TopBar() {
           <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/15 text-primary">
             <Bot className="h-3.5 w-3.5" />
           </div>
-          <span className="text-sm font-semibold tracking-tight">Agent View</span>
+          <span className="text-sm font-semibold tracking-tight">Copilot Deck</span>
           <span className="ml-1 rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
             preview
           </span>

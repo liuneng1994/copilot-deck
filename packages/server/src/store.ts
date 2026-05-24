@@ -1,7 +1,5 @@
-import { mkdirSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import Database from "better-sqlite3";
+import { resolveDataDir } from "./data-dir.js";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -132,10 +130,7 @@ END;
 const TRACE_MAX_ROWS = Number(process.env.AGENT_VIEW_TRACE_MAX ?? 5000);
 
 function defaultDbPath(): string {
-  if (process.env.AGENT_VIEW_DB) return process.env.AGENT_VIEW_DB;
-  const dir = path.join(os.homedir(), ".agent-view");
-  mkdirSync(dir, { recursive: true });
-  return path.join(dir, "db.sqlite");
+  return resolveDataDir().dbPath;
 }
 
 export interface PlanEntry {

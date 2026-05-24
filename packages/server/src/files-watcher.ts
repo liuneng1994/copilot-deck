@@ -28,6 +28,7 @@ const IGNORED = [
   /(^|\/)target\//,
   /(^|\/)coverage\//,
   /(^|\/)\.agent-view\//,
+  /(^|\/)\.copilot-deck\//,
 ];
 
 export function startFilesWatcher(deps: Deps): () => void {

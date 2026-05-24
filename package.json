@@ -4,11 +4,12 @@
   "private": true,
   "packageManager": "pnpm@10.23.0",
   "scripts": {
-    "dev": "pnpm -r --parallel run dev",
-    "build": "pnpm -r run build",
+    "dev": "pnpm -r --parallel --filter=!copilot-deck run dev",
+    "build": "pnpm -r --filter=!copilot-deck run build && pnpm --filter copilot-deck run build",
     "typecheck": "pnpm -r run typecheck",
     "lint": "biome check .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "smoke:cli": "node scripts/smoke-cli.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

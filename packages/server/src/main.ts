@@ -3,9 +3,13 @@
 // Wires together SessionManager (Copilot ACP orchestrator), REST routes, and
 // the WebSocket gateway for real-time session updates.
 
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import type { ClientToServer, ServerToClient } from "@agent-view/shared";
+import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import Fastify from "fastify";
+import { resolveDataDir } from "./data-dir.js";
 import { invalidateMcpUserCache, registerMcpRoutes } from "./extensions/routes-mcp.js";
 import {
   invalidateMarketplaceCache,
@@ -22,10 +26,30 @@ import { registerOutlineRoutes } from "./outline/routes.js";
 import { registerRoutes } from "./routes.js";
 import { SessionManager } from "./session-manager.js";
 import { Store } from "./store.js";
+import { UpdateChecker } from "./update-check.js";
 import { type WsContext, dispatchWs } from "./ws-handlers.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
 const HOST = process.env.HOST ?? "127.0.0.1";
+
+function readInstalledVersion(): string {
+  // Prefer COPILOT_DECK_VERSION env (set by the CLI bundle), else read the
+  // sibling package.json (dev mode, dist mode).
+  if (process.env.COPILOT_DECK_VERSION) return process.env.COPILOT_DECK_VERSION;
+  const candidates = [
+    path.join(process.cwd(), "package.json"),
+    path.join(import.meta.dirname ?? __dirname, "..", "package.json"),
+  ];
+  for (const p of candidates) {
+    try {
+      if (existsSync(p)) {
+        const pkg = JSON.parse(readFileSync(p, "utf8")) as { version?: string };
+        if (pkg.version) return pkg.version;
+      }
+    } catch {}
+  }
+  return "0.0.0";
+}
 
 async function main() {
   const app = Fastify({ logger: { level: "info" } });
@@ -43,6 +67,45 @@ async function main() {
     for (const send of clients) send(msg);
   };
 
+  // ── Install & upgrade infrastructure ────────────────────────────────────────
+  const installedVersion = readInstalledVersion();
+  const dataDir = resolveDataDir();
+  const updateChecker = new UpdateChecker({
+    installedVersion,
+    dataDir: dataDir.dir,
+    onUpdate: (info, installed) => {
+      broadcast({
+        type: "update_available",
+        installed,
+        latest: info.latest,
+        tag: info.tag,
+        url: info.url,
+        notes: info.notes,
+        publishedAt: info.publishedAt,
+      });
+    },
+  });
+  if (process.env.COPILOT_DECK_DISABLE_UPDATE_CHECK !== "1") {
+    updateChecker.start();
+  }
+
+  // ── Optional static-file serve for bundled web assets ───────────────────────
+  const staticDir = process.env.COPILOT_DECK_STATIC_DIR;
+  if (staticDir && existsSync(staticDir)) {
+    await app.register(fastifyStatic, {
+      root: path.resolve(staticDir),
+      prefix: "/",
+      wildcard: false,
+    });
+    // SPA fallback: any non-/api, non-/ws GET returns index.html.
+    app.setNotFoundHandler((req, reply) => {
+      if (req.method === "GET" && !req.url.startsWith("/api/") && !req.url.startsWith("/ws")) {
+        return reply.sendFile("index.html");
+      }
+      reply.code(404).send({ error: "not found", url: req.url });
+    });
+  }
+
   const extensionWatchers = startExtensionWatchers({
     manager,
     broadcast,
@@ -56,7 +119,7 @@ async function main() {
   });
   const stopFilesWatcher = startFilesWatcher({ manager, broadcast });
 
-  registerRoutes(app, { manager });
+  registerRoutes(app, { manager, installedVersion, updateChecker });
   registerMcpRoutes(app, { manager });
   registerPluginRoutes(app, { broadcast });
   registerSkillsRoutes(app, { manager, broadcast });
@@ -82,6 +145,28 @@ async function main() {
         send({ type: "hydrate", sessions: manager.hydrate() });
       } catch (e) {
         app.log.warn({ err: e }, "hydrate send failed");
+      }
+
+      // If an update is already known at connection time, surface it now so
+      // late-joining clients don't need to wait for the next poll cycle.
+      const cache = updateChecker.getCache();
+      if (
+        cache.latest &&
+        cache.latest.latest !== cache.installed &&
+        // simple lexical compare guard — checker has already validated it's newer
+        cache.latest.latest > cache.installed
+      ) {
+        try {
+          send({
+            type: "update_available",
+            installed: cache.installed,
+            latest: cache.latest.latest,
+            tag: cache.latest.tag,
+            url: cache.latest.url,
+            notes: cache.latest.notes,
+            publishedAt: cache.latest.publishedAt,
+          });
+        } catch {}
       }
 
       const unsubs = [
@@ -176,6 +261,7 @@ async function main() {
 
   const shutdown = async () => {
     app.log.info("shutting down");
+    updateChecker.stop();
     stopFilesWatcher();
     await extensionWatchers.close();
     await manager.shutdownAll();
@@ -186,7 +272,10 @@ async function main() {
   process.on("SIGTERM", shutdown);
 
   await app.listen({ port: PORT, host: HOST });
-  app.log.info(`agent-view server listening on http://${HOST}:${PORT}`);
+  app.log.info(`copilot-deck server v${installedVersion} listening on http://${HOST}:${PORT}`);
+  if (dataDir.migrated) {
+    app.log.info(`migrated data dir from ~/.agent-view → ${dataDir.dir}`);
+  }
 }
 
 main().catch((e) => {
