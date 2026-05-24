@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import type { SessionState, ToolCallState } from "../../../stores/ui-store";
 import { useUIStore } from "../../../stores/ui-store";
 import { FilePreview } from "./file-preview";
@@ -23,7 +23,8 @@ export function FilesTab({ session, toolCalls }: FilesTabProps) {
   const externalPath = useUIStore((s) => s.filePreviewPath);
   const setExternalPath = useUIStore((s) => s.setFilePreviewPath);
   const viewMode = useUIStore((s) => s.filesViewMode);
-  const [maximized, setMaximized] = useState(false);
+  const maximized = useUIStore((s) => s.filePreviewMaximized);
+  const setMaximized = useUIStore((s) => s.setFilePreviewMaximized);
 
   useEffect(() => {
     void loadFilesOverview(session.cwd);

@@ -217,6 +217,8 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   updateSnoozedUntil: number;
   /** Inspector Files-tab: which path the user opened (clicked or set externally). */
   filePreviewPath: string | null;
+  /** Inspector Files-tab: whether the file preview is rendered in the fullscreen overlay. */
+  filePreviewMaximized: boolean;
   /** Preferred diff view mode in the inspector files pane. Persisted in localStorage. */
   diffViewMode: DiffViewMode;
   /** Per-session unsent composer drafts. Persisted in localStorage. */
@@ -293,6 +295,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   setAvailableUpdate: (info: UIState["availableUpdate"]) => void;
   snoozeUpdate: (days: number) => void;
   setFilePreviewPath: (path: string | null) => void;
+  setFilePreviewMaximized: (value: boolean) => void;
   setDiffViewMode: (mode: DiffViewMode) => void;
   setDraft: (sessionId: string, text: string) => void;
   /** Update the sidebar/inspector width (px) with min/max clamp; persists to localStorage. */
@@ -490,6 +493,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   availableUpdate: null,
   updateSnoozedUntil: loadUpdateSnooze(),
   filePreviewPath: null,
+  filePreviewMaximized: false,
   diffViewMode: loadDiffViewMode(),
   drafts: loadDrafts(),
   promptHistory: loadPromptHistory(),
@@ -1065,6 +1069,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
     set({ updateSnoozedUntil: until, availableUpdate: null });
   },
   setFilePreviewPath: (path) => set({ filePreviewPath: path }),
+  setFilePreviewMaximized: (value) => set({ filePreviewMaximized: value }),
   setDiffViewMode: (mode) => {
     saveDiffViewMode(mode);
     set({ diffViewMode: mode });

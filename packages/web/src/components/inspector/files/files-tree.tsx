@@ -137,6 +137,7 @@ export function FilesTree({ entries, session }: FilesTreeProps) {
   const filters = useUIStore((s) => s.filters);
   const selectedFilePath = useUIStore((s) => s.selectedFilePath);
   const setSelectedFilePath = useUIStore((s) => s.setSelectedFilePath);
+  const setFilePreviewMaximized = useUIStore((s) => s.setFilePreviewMaximized);
   const [toggledClosed, setToggledClosed] = useState<Set<string>>(() => new Set());
   const [toggledOpen, setToggledOpen] = useState<Set<string>>(() => new Set());
   const [openGenerated, setOpenGenerated] = useState<Set<string>>(() => new Set());
@@ -269,6 +270,10 @@ export function FilesTree({ entries, session }: FilesTreeProps) {
           selected={key === selectedFilePath}
           session={session}
           onClick={() => setSelectedFilePath(key)}
+          onDoubleClick={() => {
+            setSelectedFilePath(key);
+            setFilePreviewMaximized(true);
+          }}
         />
       );
     }

@@ -9,6 +9,7 @@ interface FileRowProps {
   selected: boolean;
   session: SessionState;
   onClick: () => void;
+  onDoubleClick?: () => void;
 }
 
 const sourceDotClass: Record<string, string> = {
@@ -67,7 +68,14 @@ function splitPath(entry: FileEntry) {
   };
 }
 
-export function FileRow({ entry, depth, selected, session, onClick }: FileRowProps) {
+export function FileRow({
+  entry,
+  depth,
+  selected,
+  session,
+  onClick,
+  onDoubleClick,
+}: FileRowProps) {
   const { dir, base } = splitPath(entry);
   const gitStatus = `${entry.gitX ?? " "}${entry.gitY ?? " "}`;
   const changed = (entry.added ?? 0) + (entry.removed ?? 0) > 0;
@@ -82,7 +90,12 @@ export function FileRow({ entry, depth, selected, session, onClick }: FileRowPro
       )}
       style={{ paddingLeft: `${12 + depth * 12}px` }}
     >
-      <button type="button" onClick={onClick} className="flex min-w-0 flex-1 items-center gap-2">
+      <button
+        type="button"
+        onClick={onClick}
+        onDoubleClick={onDoubleClick}
+        className="flex min-w-0 flex-1 items-center gap-2"
+      >
         <span
           className={cn(
             "h-2 w-2 shrink-0 rounded-full",
