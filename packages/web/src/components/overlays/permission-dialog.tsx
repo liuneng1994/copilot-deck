@@ -1,5 +1,15 @@
 import type { PermissionOption, PermissionToolCallSnapshot } from "@agent-view/shared";
-import { Check, Eye, FileCode2, Globe, ShieldAlert, Terminal, X } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  FileCode2,
+  Globe,
+  ShieldAlert,
+  Terminal,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { sendWs } from "../../lib/ws-client";
 import { useUIStore } from "../../stores/ui-store";
@@ -222,13 +232,11 @@ export function PermissionDialog() {
                 </span>
               </div>
               {parsed.newContent !== undefined && (
-                <div className="overflow-hidden rounded border border-border">
-                  <DiffView
-                    path={parsed.path}
-                    oldText={parsed.oldContent ?? ""}
-                    newText={parsed.newContent}
-                  />
-                </div>
+                <FoldableDiff
+                  path={parsed.path}
+                  oldText={parsed.oldContent ?? ""}
+                  newText={parsed.newContent}
+                />
               )}
             </div>
           )}
@@ -312,4 +320,86 @@ function safeJson(v: unknown) {
   } catch {
     return String(v);
   }
+}
+
+const DIFF_FOLD_KEY = "copilot-deck:diff-fold-prefs";
+
+function readDiffFoldPrefs(): Record<string, "show" | "hide"> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(DIFF_FOLD_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, "show" | "hide">) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeDiffFoldPref(path: string, v: "show" | "hide") {
+  if (typeof window === "undefined") return;
+  try {
+    const cur = readDiffFoldPrefs();
+    cur[path] = v;
+    window.localStorage.setItem(DIFF_FOLD_KEY, JSON.stringify(cur));
+  } catch {}
+}
+
+function FoldableDiff({
+  path,
+  oldText,
+  newText,
+}: {
+  path: string;
+  oldText: string;
+  newText: string;
+}) {
+  const lineCount = useMemo(
+    () => Math.max(oldText.split("\n").length, newText.split("\n").length),
+    [oldText, newText],
+  );
+  const adds = useMemo(() => {
+    let n = 0;
+    const oldLines = new Set(oldText.split("\n"));
+    for (const l of newText.split("\n")) if (!oldLines.has(l)) n++;
+    return n;
+  }, [oldText, newText]);
+  const dels = useMemo(() => {
+    let n = 0;
+    const newLines = new Set(newText.split("\n"));
+    for (const l of oldText.split("\n")) if (!newLines.has(l)) n++;
+    return n;
+  }, [oldText, newText]);
+
+  const prefs = useMemo(() => readDiffFoldPrefs(), []);
+  const remembered = prefs[path];
+  const defaultOpen = remembered ? remembered === "show" : lineCount <= 30;
+  const [open, setOpen] = useState(defaultOpen);
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    writeDiffFoldPref(path, next ? "show" : "hide");
+  };
+
+  return (
+    <div className="overflow-hidden rounded border border-border">
+      <button
+        type="button"
+        onClick={toggle}
+        className="flex w-full items-center gap-2 border-b border-border bg-panel-elevated px-2 py-1 text-left text-[11px] hover:bg-muted"
+      >
+        {open ? (
+          <ChevronDown className="h-3 w-3 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+        )}
+        <span className="text-muted-foreground">{open ? "Hide" : "Show"} diff</span>
+        <span className="ml-auto flex items-center gap-2 font-mono text-[10px]">
+          <span className="text-success">+{adds}</span>
+          <span className="text-destructive">−{dels}</span>
+          <span className="text-muted-foreground">{lineCount} lines</span>
+        </span>
+      </button>
+      {open && <DiffView path={path} oldText={oldText} newText={newText} />}
+    </div>
+  );
 }
