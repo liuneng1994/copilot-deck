@@ -391,6 +391,33 @@ function capMessages(arr: Message[]): Message[] {
   return arr.slice(arr.length - MAX_MESSAGES_PER_SESSION);
 }
 
+/**
+ * Copilot CLI streams successive prose chunks without any separator,
+ * producing run-on text like "... rewrite it:Now rewrite Conversation".
+ * When joining a new chunk onto existing text, insert a paragraph break if
+ * the previous chunk ends in sentence/clause-ending punctuation and the new
+ * chunk starts with non-whitespace. Conservative on purpose so word
+ * fragments (Copilot sometimes splits mid-word) are never altered — those
+ * never end in `.!?:` etc.
+ */
+function joinAgentChunk(prev: string, next: string): string {
+  if (!prev) return next;
+  if (!next) return prev;
+  const lastChar = prev.slice(-1);
+  const firstChar = next.charAt(0);
+  if (/\s/.test(lastChar) || /\s/.test(firstChar)) return prev + next;
+  // Sentence-end punctuation jammed against non-whitespace → break.
+  if (/[.!?:;。！？：；]/.test(lastChar)) return `${prev}\n\n${next}`;
+  // Word-word jam (lowercase/letter/中文/closing bracket then capital/中文/opening) → space.
+  if (
+    /[a-z0-9\u4e00-\u9fff)\]"'’」』）]/.test(lastChar) &&
+    /[A-Z\u4e00-\u9fff([{"'“「『（]/.test(firstChar)
+  ) {
+    return `${prev} ${next}`;
+  }
+  return prev + next;
+}
+
 function sigForBlock(b: ToolCallContentBlock): string {
   if (b.kind === "diff") return `diff:${b.path ?? ""}:${b.oldText ?? ""}:${b.newText ?? ""}`;
   if (b.kind === "text") return `text:${b.text ?? ""}`;
@@ -882,7 +909,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
       let messages: Message[];
       let totalDelta = 0;
       if (last && last.role === "agent") {
-        const merged = last.text + chunk;
+        const merged = joinAgentChunk(last.text, chunk);
         const text = merged.length > MAX_MESSAGE_TEXT ? merged.slice(-MAX_MESSAGE_TEXT) : merged;
         messages = [...s.messages.slice(0, -1), { ...last, text, ts: Date.now() }];
       } else {
