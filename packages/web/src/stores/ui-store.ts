@@ -198,6 +198,8 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   modelPickerOpen: boolean;
   /** Settings drawer visibility. */
   settingsOpen: boolean;
+  /** Command palette overlay visibility. */
+  commandPaletteOpen: boolean;
   /** Which top-level view is active in the shell. */
   topView: "workspace" | "history";
   /** Most-recent available-update info from the server. Null when up-to-date or unknown. */
@@ -282,6 +284,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   setRenderHintMode: (sessionId: string, mode: "agents_md" | "prompt" | "off") => void;
   setModelPickerOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
+  setCommandPaletteOpen: (open: boolean) => void;
   setTopView: (view: "workspace" | "history") => void;
   setAvailableUpdate: (info: UIState["availableUpdate"]) => void;
   snoozeUpdate: (days: number) => void;
@@ -477,6 +480,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   modelBySession: {},
   modelPickerOpen: false,
   settingsOpen: false,
+  commandPaletteOpen: false,
   topView: "workspace",
   availableUpdate: null,
   updateSnoozedUntil: loadUpdateSnooze(),
@@ -1041,6 +1045,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
     }),
   setModelPickerOpen: (open) => set({ modelPickerOpen: open }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   setTopView: (view) => set({ topView: view }),
   setAvailableUpdate: (info) => set({ availableUpdate: info }),
   snoozeUpdate: (days) => {

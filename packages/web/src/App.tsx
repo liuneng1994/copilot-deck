@@ -7,6 +7,7 @@ import { SessionHeader } from "./components/conversation/session-header";
 import { HistoryPage } from "./components/history/history-page";
 import { Inspector, InspectorRail } from "./components/inspector/inspector";
 import { ResizeHandle } from "./components/layout/resize-handle";
+import { CommandPalette } from "./components/overlays/command-palette";
 import { ConfirmDialogHost } from "./components/overlays/confirm-dialog";
 import { HelpOverlay } from "./components/overlays/help-overlay";
 import { ModelPickerOverlay } from "./components/overlays/model-picker";
@@ -81,6 +82,10 @@ export function App() {
       if (e.key === "\\") {
         e.preventDefault();
         toggleSidebar();
+      } else if (e.key === "k") {
+        e.preventDefault();
+        const st = useUIStore.getState();
+        st.setCommandPaletteOpen(!st.commandPaletteOpen);
       } else if (e.key === "b") {
         e.preventDefault();
         toggleInspector();
@@ -199,6 +204,7 @@ export function App() {
       <SearchOverlay />
       <ModelPickerOverlay />
       <SettingsDrawer />
+      <CommandPalette />
       <ConfirmDialogHost />
     </div>
   );

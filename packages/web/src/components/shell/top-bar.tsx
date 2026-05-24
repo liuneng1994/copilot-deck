@@ -32,12 +32,17 @@ export function TopBar() {
       <div className="flex items-center gap-1">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className="text-xs text-muted-foreground">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground"
+              onClick={() => useUIStore.getState().setCommandPaletteOpen(true)}
+            >
               <Command className="h-3.5 w-3.5" />
               <span className="ml-1">⌘K</span>
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Command palette (todo)</TooltipContent>
+          <TooltipContent>Command palette</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
