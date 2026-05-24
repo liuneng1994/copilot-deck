@@ -3,10 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type SessionState, type ToolCallState, useUIStore } from "../../stores/ui-store";
 import { MessageBubble } from "./message-bubble";
 import { ToolCallCard } from "./tool-call-card";
+import { TurnDiffSummary } from "./turn-diff-summary";
 
 type TimelineItem =
   | { kind: "message"; ts: number; data: SessionState["messages"][number] }
-  | { kind: "toolCall"; ts: number; data: ToolCallState };
+  | { kind: "toolCall"; ts: number; data: ToolCallState }
+  | { kind: "turnSummary"; ts: number; turnId: string; toolCallIds: string[] };
 
 const NEAR_BOTTOM_PX = 80;
 
@@ -24,16 +26,49 @@ export function Conversation({ session }: { session: SessionState }) {
   const programmaticScrollRef = useRef(0);
 
   const items: TimelineItem[] = useMemo(() => {
-    const out: TimelineItem[] = session.messages.map((m) => ({
+    const base: TimelineItem[] = session.messages.map((m) => ({
       kind: "message",
       ts: m.ts,
       data: m,
     }));
     for (const id of session.toolCallIds) {
       const c = allToolCalls[id];
-      if (c) out.push({ kind: "toolCall", ts: c.ts, data: c });
+      if (c) base.push({ kind: "toolCall", ts: c.ts, data: c });
     }
-    out.sort((a, b) => a.ts - b.ts);
+    base.sort((a, b) => a.ts - b.ts);
+
+    // Inject a TurnDiffSummary at the END of each turn. A turn = sequence of
+    // items starting at a user message, ending right before the next user
+    // message (or end of list).
+    const out: TimelineItem[] = [];
+    let turnStartIdx = -1;
+    let turnToolIds: string[] = [];
+    let turnUserMsgId: string | null = null;
+    const flushTurn = (insertBeforeIndex: number) => {
+      if (turnStartIdx < 0 || turnToolIds.length < 2 || !turnUserMsgId) return;
+      const ts =
+        insertBeforeIndex > 0 && out.length > 0 ? out[out.length - 1].ts + 0.5 : Date.now();
+      out.push({
+        kind: "turnSummary",
+        ts,
+        turnId: turnUserMsgId,
+        toolCallIds: turnToolIds,
+      });
+    };
+    for (let i = 0; i < base.length; i++) {
+      const it = base[i];
+      const isUserMsg = it.kind === "message" && it.data.role === "user";
+      if (isUserMsg) {
+        flushTurn(i);
+        turnStartIdx = i;
+        turnToolIds = [];
+        turnUserMsgId = it.data.id;
+      } else if (it.kind === "toolCall") {
+        turnToolIds.push(it.data.id);
+      }
+      out.push(it);
+    }
+    flushTurn(base.length);
     return out;
   }, [session.messages, session.toolCallIds, allToolCalls]);
 
@@ -114,6 +149,9 @@ export function Conversation({ session }: { session: SessionState }) {
                   <ToolCallCard call={it.data} />
                 </div>
               );
+            }
+            if (it.kind === "turnSummary") {
+              return <TurnDiffSummary key={`ts-${it.turnId}`} toolCallIds={it.toolCallIds} />;
             }
             const m = it.data;
             return (
