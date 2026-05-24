@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 
 export interface PidRecord {
   pid: number;
@@ -27,6 +28,51 @@ export function isAlive(pid: number): boolean {
     const err = e as NodeJS.ErrnoException;
     // EPERM means a process exists but we can't signal it — treat as alive.
     return err.code === "EPERM";
+  }
+}
+
+/**
+ * Best-effort check that `pid` is actually a copilot-deck server process and
+ * not some unrelated process that recycled the PID after an abnormal exit.
+ *
+ * Returns true if we cannot determine (e.g. /proc unavailable and `ps`
+ * missing) so we never falsely declare the user's running deck as stale —
+ * the caller should treat a true return as "probably deck".
+ */
+export function isCopilotDeckProcess(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+
+  // Linux: read /proc/<pid>/cmdline (NUL-separated argv).
+  try {
+    const cmdlinePath = `/proc/${pid}/cmdline`;
+    if (existsSync(cmdlinePath)) {
+      const raw = readFileSync(cmdlinePath, "utf8");
+      // argv null-separated; replace NUL with space for matching.
+      const cmd = raw.replace(/\0/g, " ");
+      return /copilot-deck|@agent-view\/server|packages\/server\/dist\/main\.js|dist-bundle\/server\/main\.js/.test(
+        cmd,
+      );
+    }
+  } catch {
+    // fall through
+  }
+
+  // macOS / fallback: shell out to `ps -p <pid> -o command=`.
+  try {
+    const out = execFileSync("ps", ["-p", String(pid), "-o", "command="], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    if (out && out.trim().length > 0) {
+      return /copilot-deck|@agent-view\/server|packages\/server\/dist\/main\.js|dist-bundle\/server\/main\.js/.test(
+        out,
+      );
+    }
+    return false;
+  } catch {
+    // `ps` not available or process gone — treat as "probably deck" so we
+    // don't silently drop a live pidfile on platforms we can't introspect.
+    return true;
   }
 }
 
@@ -60,11 +106,14 @@ export function clearPidFile(): void {
   }
 }
 
-/** Read the PID file but drop it (and return null) if the recorded process is gone. */
+/**
+ * Read the PID file but drop it (and return null) if the recorded process is
+ * gone OR the PID has been recycled by some unrelated process.
+ */
 export function readLivePidFile(): PidRecord | null {
   const rec = readPidFile();
   if (!rec) return null;
-  if (!isAlive(rec.pid)) {
+  if (!isAlive(rec.pid) || !isCopilotDeckProcess(rec.pid)) {
     clearPidFile();
     return null;
   }

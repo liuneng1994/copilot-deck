@@ -1,5 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { clearPidFile, isAlive, readPidFile } from "../lib/pidfile.js";
+import { clearPidFile, isAlive, isCopilotDeckProcess, readPidFile } from "../lib/pidfile.js";
 
 export interface StopOptions {
   force: boolean;
@@ -15,6 +15,13 @@ export async function runStop(opts: StopOptions): Promise<void> {
   if (!isAlive(rec.pid)) {
     clearPidFile();
     process.stdout.write(`stale pid file removed (pid ${rec.pid} is gone).\n`);
+    return;
+  }
+  if (!isCopilotDeckProcess(rec.pid)) {
+    clearPidFile();
+    process.stdout.write(
+      `stale pid file removed (pid ${rec.pid} was recycled by an unrelated process).\n`,
+    );
     return;
   }
 
