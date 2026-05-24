@@ -233,9 +233,7 @@ function UsageBadge({ session }: { session: SessionState }) {
       : pct >= 75
         ? "text-amber-600 dark:text-amber-400"
         : "text-muted-foreground";
-  const title =
-    `Context: ${formatTokens(used)} / ${formatTokens(total)} (${pct.toFixed(1)}%)` +
-    (typeof cost === "number" ? ` · Cost: ${formatCost(cost, currency)}` : "");
+  const title = `Context: ${formatTokens(used)} / ${formatTokens(total)} (${pct.toFixed(1)}%)${typeof cost === "number" ? ` · Cost: ${formatCost(cost, currency)}` : ""}`;
   return (
     <span
       className={`flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[11px] ${tone}`}

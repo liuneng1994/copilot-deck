@@ -44,12 +44,12 @@ export function FilesTab({ session, toolCalls }: FilesTabProps) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [maximized]);
+  }, [maximized, setMaximized]);
 
   // Auto-exit fullscreen when no file is selected.
   useEffect(() => {
     if (!selectedFilePath && maximized) setMaximized(false);
-  }, [selectedFilePath, maximized]);
+  }, [selectedFilePath, maximized, setMaximized]);
 
   const detail = selectedFilePath ? (
     <>
