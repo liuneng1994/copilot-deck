@@ -599,20 +599,6 @@ export function InlineDiff({ path, session }: InlineDiffProps) {
               </button>
             ))}
           </div>
-          <button
-            type="button"
-            onClick={() => setCollapsed(new Set(folds.map((fold) => fold.key)))}
-            className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            ⌄ collapse all
-          </button>
-          <button
-            type="button"
-            onClick={() => setCollapsed(new Set())}
-            className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            ⌃ expand all
-          </button>
         </div>
       </div>
       {headError ? (
