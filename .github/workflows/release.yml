@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 0.1.1). Leave empty to use the value already in packages/cli/package.json."
+        required: false
+        type: string
+      dry_run:
+        description: "Build and run smoke only; skip npm publish and GitHub Release."
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, publish to npm, create GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+          always-auth: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve version
+        id: ver
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            tag="${GITHUB_REF_NAME}"
+            version="${tag#v}"
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            version="${{ inputs.version }}"
+            tag="v${version}"
+          else
+            version=$(node -p "require('./packages/cli/package.json').version")
+            tag="v${version}"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${tag} (version ${version})"
+
+      - name: Sync packages/cli/package.json version
+        run: |
+          set -euo pipefail
+          target="${{ steps.ver.outputs.version }}"
+          current=$(node -p "require('./packages/cli/package.json').version")
+          if [[ "${current}" != "${target}" ]]; then
+            echo "Updating packages/cli version ${current} -> ${target}"
+            node -e "const fs=require('fs');const p='packages/cli/package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version='${target}';fs.writeFileSync(p, JSON.stringify(j,null,2)+'\n');"
+          fi
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build (all workspaces + CLI bundle)
+        run: pnpm build
+
+      - name: Smoke test CLI bundle
+        run: pnpm smoke:cli
+
+      - name: Publish to npm
+        if: ${{ github.event_name == 'push' || inputs.dry_run != true }}
+        working-directory: packages/cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "::error::NPM_TOKEN secret is not set"
+            exit 1
+          fi
+          # prepublishOnly would re-run pnpm build inside the package; skip it
+          # because we already built from the workspace root with full deps.
+          npm publish --access public --provenance --ignore-scripts
+
+      - name: Create GitHub Release
+        if: ${{ github.event_name == 'push' || inputs.dry_run != true }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.ver.outputs.tag }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists, skipping create"
+          else
+            gh release create "$tag" \
+              --title "$tag" \
+              --generate-notes
+          fi
