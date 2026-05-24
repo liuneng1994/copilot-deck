@@ -1,7 +1,7 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 
 export interface PidRecord {
   pid: number;

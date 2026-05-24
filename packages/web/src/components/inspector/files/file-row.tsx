@@ -68,14 +68,7 @@ function splitPath(entry: FileEntry) {
   };
 }
 
-export function FileRow({
-  entry,
-  depth,
-  selected,
-  session,
-  onClick,
-  onDoubleClick,
-}: FileRowProps) {
+export function FileRow({ entry, depth, selected, session, onClick, onDoubleClick }: FileRowProps) {
   const { dir, base } = splitPath(entry);
   const gitStatus = `${entry.gitX ?? " "}${entry.gitY ?? " "}`;
   const changed = (entry.added ?? 0) + (entry.removed ?? 0) > 0;

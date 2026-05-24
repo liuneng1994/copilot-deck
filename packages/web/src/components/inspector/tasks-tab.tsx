@@ -93,8 +93,8 @@ export function TasksTab({ session }: { session: SessionState }) {
 
       {cwdTasks.length === 0 ? (
         <div className="px-2 py-6 text-center text-xs text-muted-foreground">
-          No background tasks yet. Long-running commands started here run independently of the
-          agent and survive across prompts.
+          No background tasks yet. Long-running commands started here run independently of the agent
+          and survive across prompts.
         </div>
       ) : (
         <div className="space-y-2">
@@ -174,9 +174,7 @@ function TaskCard({ taskId }: { taskId: string }) {
         }}
         className="max-h-64 overflow-auto bg-background p-2 font-mono text-[11px] leading-snug text-foreground"
       >
-        {task.outputTail || (
-          <span className="text-muted-foreground">(no output yet)</span>
-        )}
+        {task.outputTail || <span className="text-muted-foreground">(no output yet)</span>}
       </pre>
     </div>
   );

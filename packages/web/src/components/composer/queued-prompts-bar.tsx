@@ -19,8 +19,7 @@ export function QueuedPromptsBar({ session }: { session: SessionState }) {
 
   if (queue.length === 0) return null;
 
-  const paused =
-    session.status === "awaiting_perm" || session.detached || session.crashed;
+  const paused = session.status === "awaiting_perm" || session.detached || session.crashed;
 
   return (
     <div className="mx-auto mb-1.5 flex max-w-3xl flex-wrap items-center gap-1.5 px-3 text-[11px] text-muted-foreground">
@@ -29,7 +28,10 @@ export function QueuedPromptsBar({ session }: { session: SessionState }) {
         Queued ({queue.length})
         {paused && (
           <span className="ml-1 text-warn">
-            — {session.detached || session.crashed ? "session detached" : "paused, awaiting permission"}
+            —{" "}
+            {session.detached || session.crashed
+              ? "session detached"
+              : "paused, awaiting permission"}
           </span>
         )}
         :
@@ -44,9 +46,7 @@ export function QueuedPromptsBar({ session }: { session: SessionState }) {
             {preview(q.text)}
           </span>
           {q.localAttachments && q.localAttachments.length > 0 && (
-            <span className="text-[9px] text-muted-foreground">
-              📎{q.localAttachments.length}
-            </span>
+            <span className="text-[9px] text-muted-foreground">📎{q.localAttachments.length}</span>
           )}
           <button
             type="button"

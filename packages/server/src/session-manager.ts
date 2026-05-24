@@ -272,9 +272,7 @@ export class SessionManager {
       const recent = this.store.listMessagesPaged(s.id, { limit: HYDRATE_MESSAGE_LIMIT });
       const earliestLoadedTs = recent.length > 0 ? recent[0].ts : null;
       const toolCalls =
-        earliestLoadedTs === null
-          ? []
-          : this.store.listToolCallsSince(s.id, earliestLoadedTs);
+        earliestLoadedTs === null ? [] : this.store.listToolCallsSince(s.id, earliestLoadedTs);
       return {
         id: s.id,
         cwd: s.cwd,

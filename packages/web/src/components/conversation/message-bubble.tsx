@@ -245,9 +245,7 @@ function RestoreCheckpointButton({
   messageId: string;
 }) {
   const checkpoint = useCheckpointStore((s) => s.findByMessage(sessionId, messageId));
-  const sessionHasAny = useCheckpointStore(
-    (s) => (s.bySession[sessionId]?.length ?? 0) > 0,
-  );
+  const sessionHasAny = useCheckpointStore((s) => (s.bySession[sessionId]?.length ?? 0) > 0);
   const setNotice = useUIStore((s) => s.setNotice);
   const [busy, setBusy] = useState(false);
 

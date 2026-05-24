@@ -628,9 +628,7 @@ export function Composer({ session }: { session: SessionState }) {
                     <Button
                       size="sm"
                       onClick={send}
-                      disabled={
-                        (!text.trim() && pending.length === 0) || reloading || detached
-                      }
+                      disabled={(!text.trim() && pending.length === 0) || reloading || detached}
                       className="h-7 gap-1.5"
                     >
                       <Send className="h-3 w-3" />

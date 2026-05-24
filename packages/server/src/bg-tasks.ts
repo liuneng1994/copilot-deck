@@ -107,7 +107,11 @@ export class BgTaskManager extends EventEmitter {
     if (this.tasks.size <= MAX_TASKS) return;
     const finished = [...this.tasks.values()]
       .filter((t) => t.snapshot.status !== "running" && t.snapshot.status !== "starting")
-      .sort((a, b) => (a.snapshot.exitedAt ?? a.snapshot.startedAt) - (b.snapshot.exitedAt ?? b.snapshot.startedAt));
+      .sort(
+        (a, b) =>
+          (a.snapshot.exitedAt ?? a.snapshot.startedAt) -
+          (b.snapshot.exitedAt ?? b.snapshot.startedAt),
+      );
     const overflow = this.tasks.size - MAX_TASKS;
     for (let i = 0; i < overflow && i < finished.length; i++) {
       this.remove(finished[i].snapshot.id);
@@ -154,11 +158,7 @@ export class BgTaskManager extends EventEmitter {
     this.tasks.clear();
   }
 
-  private setStatus(
-    id: string,
-    status: BgTaskStatus,
-    extra?: Partial<BgTaskSnapshot>,
-  ): void {
+  private setStatus(id: string, status: BgTaskStatus, extra?: Partial<BgTaskSnapshot>): void {
     const entry = this.tasks.get(id);
     if (!entry) return;
     entry.snapshot = { ...entry.snapshot, status, ...extra };

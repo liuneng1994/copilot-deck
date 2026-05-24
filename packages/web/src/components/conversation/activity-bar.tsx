@@ -64,8 +64,7 @@ export function ActivityBar({ session }: { session: SessionState }) {
   if (calls.length === 0) return null;
 
   // Count back to most recent user message → "op N of this turn".
-  const lastUserTs =
-    [...session.messages].reverse().find((m) => m.role === "user")?.ts ?? 0;
+  const lastUserTs = [...session.messages].reverse().find((m) => m.role === "user")?.ts ?? 0;
   const turnCalls = calls.filter((c) => c.ts >= lastUserTs);
   if (turnCalls.length === 0) return null;
 

@@ -79,16 +79,15 @@ export function TerminalBlock({ text }: { text: string }) {
  * +/- lines, and `path:line:col` location markers. Cheap and additive —
  * runs after ansi-to-html so any real SGR colors take precedence.
  */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: detecting ANSI ESC[ sequences is the point
 const ANSI_RE = /\x1b\[/;
 function colorizePlain(html: string): string {
   return html
     .split("\n")
     .map((line) => {
       // Diff markers (--- / +++ headers also caught here but harmless)
-      if (/^[+][^+]/.test(line))
-        return `<span style="color:#a6e3a1">${line}</span>`;
-      if (/^[-][^-]/.test(line))
-        return `<span style="color:#f38ba8">${line}</span>`;
+      if (/^[+][^+]/.test(line)) return `<span style="color:#a6e3a1">${line}</span>`;
+      if (/^[-][^-]/.test(line)) return `<span style="color:#f38ba8">${line}</span>`;
       // Severity prefixes
       const sev = line.match(/^(\s*)(error|err|fatal|fail|failed|panic)(:|\s)/i);
       if (sev) return `<span style="color:#f38ba8">${line}</span>`;

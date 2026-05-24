@@ -673,8 +673,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
       for (const t of tasks) map[t.id] = t;
       return { bgTasks: map };
     }),
-  upsertBgTask: (task) =>
-    set((state) => ({ bgTasks: { ...state.bgTasks, [task.id]: task } })),
+  upsertBgTask: (task) => set((state) => ({ bgTasks: { ...state.bgTasks, [task.id]: task } })),
   appendBgTaskOutput: (taskId, chunk) =>
     set((state) => {
       const existing = state.bgTasks[taskId];
@@ -1378,7 +1377,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
           messages,
           toolCallIds,
           totalMessages: h.totalMessages ?? messages.length,
-          earliestLoadedTs: h.earliestLoadedTs ?? (messages[0]?.ts ?? null),
+          earliestLoadedTs: h.earliestLoadedTs ?? messages[0]?.ts ?? null,
           createdAt: h.createdAt,
           updatedAt: h.updatedAt,
           detached: h.detached,

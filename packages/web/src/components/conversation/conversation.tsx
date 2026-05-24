@@ -48,8 +48,7 @@ export function Conversation({ session }: { session: SessionState }) {
   const [pendingCount, setPendingCount] = useState(0);
   const programmaticScrollRef = useRef(0);
 
-  const hasOlder =
-    (session.totalMessages ?? session.messages.length) > session.messages.length;
+  const hasOlder = (session.totalMessages ?? session.messages.length) > session.messages.length;
 
   const items: TimelineItem[] = useMemo(() => {
     const base: TimelineItem[] = session.messages.map((m) => ({
@@ -118,7 +117,7 @@ export function Conversation({ session }: { session: SessionState }) {
     flushBuf();
 
     if (hasOlder) {
-      grouped.unshift({ kind: "loadOlder", ts: -Infinity });
+      grouped.unshift({ kind: "loadOlder", ts: Number.NEGATIVE_INFINITY });
     }
     return grouped;
   }, [session.messages, session.toolCallIds, allToolCalls, hasOlder]);
@@ -237,10 +236,7 @@ export function Conversation({ session }: { session: SessionState }) {
             <EmptyConversation cwd={session.cwd} />
           </div>
         ) : (
-          <div
-            style={{ height: `${virtualizer.getTotalSize()}px` }}
-            className="relative w-full"
-          >
+          <div style={{ height: `${virtualizer.getTotalSize()}px` }} className="relative w-full">
             {virtualItems.map((vi) => {
               const it = items[vi.index];
               return (
@@ -264,8 +260,7 @@ export function Conversation({ session }: { session: SessionState }) {
                       lastMsgId={lastMsg?.id}
                       historyLoading={!!session.historyLoading}
                       remaining={
-                        (session.totalMessages ?? session.messages.length) -
-                        session.messages.length
+                        (session.totalMessages ?? session.messages.length) - session.messages.length
                       }
                       onLoadOlder={() => loadOlder(session.id)}
                     />

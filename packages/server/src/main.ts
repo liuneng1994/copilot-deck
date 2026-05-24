@@ -9,6 +9,7 @@ import type { ClientToServer, ServerToClient } from "@agent-view/shared";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import Fastify from "fastify";
+import { BgTaskManager } from "./bg-tasks.js";
 import { resolveDataDir } from "./data-dir.js";
 import { invalidateMcpUserCache, registerMcpRoutes } from "./extensions/routes-mcp.js";
 import {
@@ -26,7 +27,6 @@ import { registerOutlineRoutes } from "./outline/routes.js";
 import { registerRoutes } from "./routes.js";
 import { SessionManager } from "./session-manager.js";
 import { Store } from "./store.js";
-import { BgTaskManager } from "./bg-tasks.js";
 import { UpdateChecker } from "./update-check.js";
 import { type WsContext, dispatchWs } from "./ws-handlers.js";
 
