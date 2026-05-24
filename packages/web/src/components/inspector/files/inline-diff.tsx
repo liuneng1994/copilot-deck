@@ -1,7 +1,7 @@
 import { diffLines } from "diff";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../../lib/cn";
-import type { SessionState, ToolCallState } from "../../../stores/ui-store";
+import type { DiffViewMode, SessionState, ToolCallState } from "../../../stores/ui-store";
 import { useUIStore } from "../../../stores/ui-store";
 
 interface InlineDiffProps {
@@ -31,6 +31,13 @@ interface FoldedRun {
   start: number;
   end: number;
   count: number;
+}
+
+type VisibleDiffItem = DiffRow | FoldedRun;
+
+interface SplitPair {
+  left: VisibleDiffItem | null;
+  right: VisibleDiffItem | null;
 }
 
 const FOLD_THRESHOLD = 50;
@@ -181,6 +188,41 @@ function changedLineCount(rows: DiffRow[], kind: "add" | "del") {
   return rows.filter((row) => row.kind === kind).length;
 }
 
+function buildSplitPairs(items: VisibleDiffItem[]): SplitPair[] {
+  const pairs: SplitPair[] = [];
+  let deletions: DiffRow[] = [];
+  let additions: DiffRow[] = [];
+
+  const flushChanges = () => {
+    const count = Math.max(deletions.length, additions.length);
+    for (let index = 0; index < count; index += 1) {
+      pairs.push({ left: deletions[index] ?? null, right: additions[index] ?? null });
+    }
+    deletions = [];
+    additions = [];
+  };
+
+  for (const item of items) {
+    if ("count" in item || item.kind === "ctx" || item.kind === "hunk") {
+      flushChanges();
+      pairs.push({ left: item, right: item });
+    } else if (item.kind === "del") {
+      deletions.push(item);
+    } else {
+      additions.push(item);
+    }
+  }
+  flushChanges();
+
+  return pairs;
+}
+
+function pairHunkIndex(pair: SplitPair): number | undefined {
+  const left = pair.left && !("count" in pair.left) ? pair.left.hunkIndex : undefined;
+  if (left !== undefined) return left;
+  return pair.right && !("count" in pair.right) ? pair.right.hunkIndex : undefined;
+}
+
 function isEditableTarget(target: EventTarget | null) {
   return (
     target instanceof HTMLElement &&
@@ -196,8 +238,12 @@ export function InlineDiff({ path, session }: InlineDiffProps) {
   const [headError, setHeadError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [activeHunk, setActiveHunk] = useState<number | null>(null);
+  const diffViewMode = useUIStore((s) => s.diffViewMode);
+  const setDiffViewMode = useUIStore((s) => s.setDiffViewMode);
   const hunkRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const initKeyRef = useRef<string | null>(null);
+  const leftPaneRef = useRef<HTMLDivElement | null>(null);
+  const rightPaneRef = useRef<HTMLDivElement | null>(null);
 
   const netPair = useMemo(
     () => aggregateNetDiff(path, session, toolCalls),
@@ -292,10 +338,22 @@ export function InlineDiff({ path, session }: InlineDiffProps) {
     }
   }
 
+  const splitPairs = buildSplitPairs(visibleRows);
   const adds = rows ? changedLineCount(rows, "add") : 0;
   const dels = rows ? changedLineCount(rows, "del") : 0;
   const isLoading = source === "head" && rows === null && !headError;
   const emptyText = source === "head" ? "Identical to HEAD" : "No changes for this file";
+
+  const syncScroll = (
+    sourceRef: RefObject<HTMLDivElement | null>,
+    targetRef: RefObject<HTMLDivElement | null>,
+  ) => {
+    const sourceEl = sourceRef.current;
+    const targetEl = targetRef.current;
+    if (!sourceEl || !targetEl) return;
+    if (Math.abs(targetEl.scrollTop - sourceEl.scrollTop) < 1) return;
+    targetEl.scrollTop = sourceEl.scrollTop;
+  };
 
   const renderRow = (item: DiffRow | FoldedRun, index: number) => {
     if ("count" in item) {
@@ -373,6 +431,120 @@ export function InlineDiff({ path, session }: InlineDiffProps) {
     );
   };
 
+  const renderSplitCell = (
+    item: VisibleDiffItem | null,
+    side: "left" | "right",
+    key: string,
+    ref?: (node: HTMLDivElement | null) => void,
+  ) => {
+    if (!item) {
+      return (
+        <div
+          key={key}
+          ref={ref}
+          className="grid grid-cols-[48px_24px_1fr] bg-muted/20 font-mono text-[12px] leading-[1.55]"
+        >
+          <span className="select-none border-r border-border/40 px-1 text-right text-[10px] text-muted-foreground" />
+          <span className="select-none px-1 text-muted-foreground" />
+          <span className="whitespace-pre px-1">&nbsp;</span>
+        </div>
+      );
+    }
+
+    if ("count" in item) {
+      return (
+        <button
+          key={key}
+          type="button"
+          onClick={() => toggleFold(item.key)}
+          className="grid w-full grid-cols-[48px_24px_1fr] border-y border-border/40 bg-muted/25 font-mono text-[11px] leading-6 text-muted-foreground hover:bg-muted/50"
+        >
+          <span />
+          <span>…</span>
+          <span className="text-left">{item.count} lines collapsed (click)</span>
+        </button>
+      );
+    }
+
+    if (item.kind === "hunk") {
+      return (
+        <div
+          key={key}
+          ref={ref}
+          className={cn(
+            "grid grid-cols-[48px_24px_1fr] bg-primary/10 font-mono text-[11px] leading-6 text-primary",
+            activeHunk === item.hunkIndex && "ring-1 ring-primary",
+          )}
+        >
+          <span />
+          <span>@@</span>
+          <span className="truncate px-2">{item.text}</span>
+        </div>
+      );
+    }
+
+    const sign = item.kind === "add" ? "+" : item.kind === "del" ? "-" : " ";
+    const bg =
+      item.kind === "add" ? "bg-success/15" : item.kind === "del" ? "bg-destructive/15" : "";
+    const fg =
+      item.kind === "add"
+        ? "text-success"
+        : item.kind === "del"
+          ? "text-destructive"
+          : "text-muted-foreground";
+    const lineNo = side === "left" ? item.oldNo : item.newNo;
+
+    return (
+      <div
+        key={key}
+        ref={ref}
+        className={cn(
+          "grid grid-cols-[48px_24px_1fr] font-mono text-[12px] leading-[1.55]",
+          bg,
+          activeHunk === item.hunkIndex && "ring-1 ring-primary",
+        )}
+      >
+        <span className="select-none border-r border-border/40 px-1 text-right text-[10px] text-muted-foreground">
+          {lineNo ?? ""}
+        </span>
+        <span className={cn("select-none px-1", fg)}>{sign}</span>
+        <span className="whitespace-pre px-1">{item.text}</span>
+      </div>
+    );
+  };
+
+  const renderSplitPane = (side: "left" | "right") =>
+    splitPairs.map((pair, index) => {
+      const hunkIndex = pairHunkIndex(pair);
+      const previousHunk = index > 0 ? pairHunkIndex(splitPairs[index - 1]) : undefined;
+      const ref =
+        side === "left" && hunkIndex !== undefined && previousHunk !== hunkIndex
+          ? (node: HTMLDivElement | null) => {
+              hunkRefs.current[hunkIndex] = node;
+            }
+          : undefined;
+      return renderSplitCell(pair[side], side, `${side}-${index}`, ref);
+    });
+
+  const splitView = (
+    <div className="grid grid-cols-2 border-t border-border/40">
+      <div
+        ref={leftPaneRef}
+        onScroll={() => syncScroll(leftPaneRef, rightPaneRef)}
+        className="max-h-[360px] overflow-auto border-r border-border/60"
+      >
+        {renderSplitPane("left")}
+      </div>
+      <div
+        ref={rightPaneRef}
+        onScroll={() => syncScroll(rightPaneRef, leftPaneRef)}
+        className="max-h-[360px] overflow-auto"
+      >
+        {renderSplitPane("right")}
+      </div>
+    </div>
+  );
+
   return (
     <div className="border-b border-border bg-background">
       <div className="flex items-center justify-between gap-2 border-b border-border bg-panel/60 px-3 py-1.5 text-[11px]">
@@ -404,12 +576,29 @@ export function InlineDiff({ path, session }: InlineDiffProps) {
             </button>
           </div>
           <span className="truncate font-mono text-foreground">{path}</span>
-          <span className="shrink-0 text-muted-foreground">
-            <span className="text-success">+{adds}</span>{" "}
-            <span className="text-destructive">−{dels}</span>
+          <span className="inline-flex shrink-0 gap-2 text-xs">
+            <span className="text-emerald-600 dark:text-emerald-400">+{adds}</span>
+            <span className="text-rose-600 dark:text-rose-400">-{dels}</span>
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          <div className="mr-1 flex overflow-hidden rounded border border-border">
+            {(["unified", "split"] as DiffViewMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setDiffViewMode(mode)}
+                className={cn(
+                  "px-2 py-0.5 text-xs capitalize",
+                  diffViewMode === mode
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:bg-muted/60",
+                )}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             onClick={() => setCollapsed(new Set(folds.map((fold) => fold.key)))}
@@ -426,17 +615,23 @@ export function InlineDiff({ path, session }: InlineDiffProps) {
           </button>
         </div>
       </div>
-      <div className="max-h-[360px] overflow-auto">
-        {headError ? (
-          <div className="px-3 py-2 text-[11px] text-destructive">{headError}</div>
-        ) : isLoading ? (
-          <div className="px-3 py-2 text-[11px] text-muted-foreground">Loading diff…</div>
-        ) : !rows || rows.length === 0 ? (
-          <div className="px-3 py-2 text-[11px] text-muted-foreground">{emptyText}</div>
-        ) : (
-          visibleRows.map(renderRow)
-        )}
-      </div>
+      {headError ? (
+        <div className="max-h-[360px] overflow-auto px-3 py-2 text-[11px] text-destructive">
+          {headError}
+        </div>
+      ) : isLoading ? (
+        <div className="max-h-[360px] overflow-auto px-3 py-2 text-[11px] text-muted-foreground">
+          Loading diff…
+        </div>
+      ) : !rows || rows.length === 0 ? (
+        <div className="max-h-[360px] overflow-auto px-3 py-2 text-[11px] text-muted-foreground">
+          {emptyText}
+        </div>
+      ) : diffViewMode === "split" ? (
+        splitView
+      ) : (
+        <div className="max-h-[360px] overflow-auto">{visibleRows.map(renderRow)}</div>
+      )}
     </div>
   );
 }

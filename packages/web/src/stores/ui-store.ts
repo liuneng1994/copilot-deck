@@ -19,6 +19,7 @@ export type { FilesSlice };
 
 export type SessionStatus = "idle" | "streaming" | "awaiting_perm" | "reloading" | "error";
 export type MessageRole = "user" | "agent" | "system";
+export type DiffViewMode = "unified" | "split";
 
 export interface MessageAttachment {
   id: string;
@@ -212,6 +213,8 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   updateSnoozedUntil: number;
   /** Inspector Files-tab: which path the user opened (clicked or set externally). */
   filePreviewPath: string | null;
+  /** Preferred diff view mode in the inspector files pane. Persisted in localStorage. */
+  diffViewMode: DiffViewMode;
   /** Per-session unsent composer drafts. Persisted in localStorage. */
   drafts: Record<string, string>;
   /** Per-session sent-prompt history for ↑/↓ recall. Persisted in localStorage. */
@@ -283,6 +286,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   setAvailableUpdate: (info: UIState["availableUpdate"]) => void;
   snoozeUpdate: (days: number) => void;
   setFilePreviewPath: (path: string | null) => void;
+  setDiffViewMode: (mode: DiffViewMode) => void;
   setDraft: (sessionId: string, text: string) => void;
   /** Update the sidebar/inspector width (px) with min/max clamp; persists to localStorage. */
   setSidebarWidth: (px: number) => void;
@@ -406,6 +410,24 @@ function savePanelWidths(w: { sidebar: number; inspector: number }): void {
   } catch {}
 }
 
+const DIFF_VIEW_MODE_KEY = "agent-view:diff-view-mode:v1";
+function loadDiffViewMode(): DiffViewMode {
+  if (typeof localStorage === "undefined") return "unified";
+  try {
+    const raw = localStorage.getItem(DIFF_VIEW_MODE_KEY);
+    return raw === "split" ? "split" : "unified";
+  } catch {
+    return "unified";
+  }
+}
+
+function saveDiffViewMode(mode: DiffViewMode): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(DIFF_VIEW_MODE_KEY, mode);
+  } catch {}
+}
+
 const UPDATE_SNOOZE_KEY = "copilot-deck:update-snoozed-until";
 function loadUpdateSnooze(): number {
   if (typeof localStorage === "undefined") return 0;
@@ -459,6 +481,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   availableUpdate: null,
   updateSnoozedUntil: loadUpdateSnooze(),
   filePreviewPath: null,
+  diffViewMode: loadDiffViewMode(),
   drafts: loadDrafts(),
   promptHistory: loadPromptHistory(),
   composerLoadEpoch: {},
@@ -1026,6 +1049,10 @@ export const useUIStore = create<UIState>((set, get, api) => ({
     set({ updateSnoozedUntil: until, availableUpdate: null });
   },
   setFilePreviewPath: (path) => set({ filePreviewPath: path }),
+  setDiffViewMode: (mode) => {
+    saveDiffViewMode(mode);
+    set({ diffViewMode: mode });
+  },
   setDraft: (sessionId, text) =>
     set((s) => {
       const next: Record<string, string> = { ...s.drafts };
