@@ -4,6 +4,7 @@ import {
   Cpu,
   Download,
   FileCode2,
+  Gauge,
   Loader2,
   MoreHorizontal,
   Pencil,
@@ -118,6 +119,7 @@ export function SessionHeader({ session }: { session: SessionState }) {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <UsageBadge session={session} />
           <button
             type="button"
             onClick={() => setPickerOpen(true)}
@@ -180,6 +182,69 @@ export function SessionHeader({ session }: { session: SessionState }) {
         />
       </div>
     </>
+  );
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}k`;
+  return String(n);
+}
+
+function formatCost(amount: number, currency: string): string {
+  const sym = currency === "USD" ? "$" : currency === "EUR" ? "€" : `${currency} `;
+  if (amount < 0.01) return `${sym}<0.01`;
+  if (amount < 1) return `${sym}${amount.toFixed(3)}`;
+  return `${sym}${amount.toFixed(2)}`;
+}
+
+function UsageBadge({ session }: { session: SessionState }) {
+  const used = session.ctxUsed;
+  const total = session.ctxTotal;
+  const cost = session.costAmount;
+  const currency = session.costCurrency ?? "USD";
+  if (typeof used !== "number" || typeof total !== "number" || total <= 0) {
+    if (typeof cost === "number") {
+      return (
+        <span
+          className="flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground"
+          title={`Cumulative session cost: ${formatCost(cost, currency)}`}
+        >
+          <Gauge className="h-3 w-3" />
+          <span className="font-mono">{formatCost(cost, currency)}</span>
+        </span>
+      );
+    }
+    return null;
+  }
+  const pct = Math.min(100, Math.max(0, (used / total) * 100));
+  const tone =
+    pct >= 90
+      ? "text-red-600 dark:text-red-400"
+      : pct >= 75
+        ? "text-amber-600 dark:text-amber-400"
+        : "text-muted-foreground";
+  const title =
+    `Context: ${formatTokens(used)} / ${formatTokens(total)} (${pct.toFixed(1)}%)` +
+    (typeof cost === "number" ? ` · Cost: ${formatCost(cost, currency)}` : "");
+  return (
+    <span
+      className={`flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[11px] ${tone}`}
+      title={title}
+    >
+      <Gauge className="h-3 w-3" />
+      <span className="font-mono">
+        {formatTokens(used)}/{formatTokens(total)}
+      </span>
+      <span className="opacity-70">·</span>
+      <span className="font-mono">{pct.toFixed(0)}%</span>
+      {typeof cost === "number" && (
+        <>
+          <span className="opacity-70">·</span>
+          <span className="font-mono">{formatCost(cost, currency)}</span>
+        </>
+      )}
+    </span>
   );
 }
 

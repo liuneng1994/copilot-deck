@@ -103,6 +103,9 @@ export interface SessionState {
   /** Context window usage if session_info_update provided it. */
   ctxUsed?: number;
   ctxTotal?: number;
+  /** Cumulative cost reported via ACP usage_update.cost. */
+  costAmount?: number;
+  costCurrency?: string;
   /** Set to true when the underlying child process exited unexpectedly. */
   crashed?: boolean;
   crashInfo?: { code: number | null; signal: string | null };
@@ -256,6 +259,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   appendToolCallContent: (id: string, block: ToolCallContentBlock) => void;
 
   setSessionCtx: (sessionId: string, used: number | undefined, total: number | undefined) => void;
+  setSessionCost: (sessionId: string, amount: number, currency: string) => void;
   markSessionCrashed: (
     sessionId: string,
     info: { code: number | null; signal: string | null },
@@ -663,6 +667,8 @@ export const useUIStore = create<UIState>((set, get, api) => ({
         crashInfo: s.crashInfo ?? existing?.crashInfo,
         ctxUsed: s.ctxUsed ?? existing?.ctxUsed,
         ctxTotal: s.ctxTotal ?? existing?.ctxTotal,
+        costAmount: existing?.costAmount,
+        costCurrency: existing?.costCurrency,
       };
       return { sessions: { ...state.sessions, [s.id]: merged } };
     }),
@@ -907,6 +913,18 @@ export const useUIStore = create<UIState>((set, get, api) => ({
         sessions: {
           ...state.sessions,
           [sessionId]: { ...existing, ctxUsed: used, ctxTotal: total },
+        },
+      };
+    }),
+
+  setSessionCost: (sessionId, amount, currency) =>
+    set((state) => {
+      const existing = state.sessions[sessionId];
+      if (!existing) return state;
+      return {
+        sessions: {
+          ...state.sessions,
+          [sessionId]: { ...existing, costAmount: amount, costCurrency: currency },
         },
       };
     }),

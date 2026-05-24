@@ -1,4 +1,4 @@
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, Pause } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type SessionState, type ToolCallState, useUIStore } from "../../stores/ui-store";
 import { MessageBubble } from "./message-bubble";
@@ -8,10 +8,20 @@ type TimelineItem =
   | { kind: "message"; ts: number; data: SessionState["messages"][number] }
   | { kind: "toolCall"; ts: number; data: ToolCallState };
 
+const NEAR_BOTTOM_PX = 80;
+
 export function Conversation({ session }: { session: SessionState }) {
   const ref = useRef<HTMLDivElement>(null);
   const allToolCalls = useUIStore((s) => s.toolCalls);
-  const [showJump, setShowJump] = useState(false);
+  // `pinned` means the user explicitly scrolled away from the tail and wants
+  // updates to stop auto-following until they jump back.
+  const [pinned, setPinned] = useState(false);
+  const itemCountRef = useRef(0);
+  const pinnedRef = useRef(false);
+  const [pendingCount, setPendingCount] = useState(0);
+  // Tracks the last programmatic scroll so we can ignore it in the scroll
+  // handler (otherwise auto-scrolling would itself appear as user motion).
+  const programmaticScrollRef = useRef(0);
 
   const items: TimelineItem[] = useMemo(() => {
     const out: TimelineItem[] = session.messages.map((m) => ({
@@ -30,30 +40,57 @@ export function Conversation({ session }: { session: SessionState }) {
   const scrollToBottom = useCallback(() => {
     const el = ref.current;
     if (!el) return;
+    programmaticScrollRef.current = Date.now();
     el.scrollTop = el.scrollHeight;
+    setPinned(false);
+    pinnedRef.current = false;
+    setPendingCount(0);
   }, []);
 
-  // Auto-scroll to bottom on new content (unless user scrolled up).
+  // Auto-scroll to bottom on new content unless the user has pinned the view.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on items change, ref reads are intentional
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
-    if (nearBottom) {
-      requestAnimationFrame(() => {
-        el.scrollTop = el.scrollHeight;
-      });
+    const newCount = items.length;
+    const added = newCount - itemCountRef.current;
+    itemCountRef.current = newCount;
+    if (pinnedRef.current) {
+      if (added > 0) setPendingCount((c) => c + added);
+      return;
     }
+    requestAnimationFrame(() => {
+      programmaticScrollRef.current = Date.now();
+      el.scrollTop = el.scrollHeight;
+    });
   }, [items]);
 
-  // Track whether user has scrolled away from the bottom so we can offer a
-  // jump-back affordance. Threshold matches the auto-scroll heuristic.
+  // Watch user scrolls. Any upward scroll during streaming flips pinned=true.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    let lastTop = el.scrollTop;
     const onScroll = () => {
+      // Ignore programmatic scrolls that happened in the same tick.
+      if (Date.now() - programmaticScrollRef.current < 50) {
+        lastTop = el.scrollTop;
+        return;
+      }
       const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-      setShowJump(distance > 240);
+      const atBottom = distance < NEAR_BOTTOM_PX;
+      const scrolledUp = el.scrollTop < lastTop;
+      lastTop = el.scrollTop;
+
+      if (atBottom) {
+        if (pinnedRef.current) {
+          pinnedRef.current = false;
+          setPinned(false);
+          setPendingCount(0);
+        }
+      } else if (scrolledUp && !pinnedRef.current) {
+        pinnedRef.current = true;
+        setPinned(true);
+      }
     };
     onScroll();
     el.addEventListener("scroll", onScroll, { passive: true });
@@ -62,6 +99,7 @@ export function Conversation({ session }: { session: SessionState }) {
 
   const lastMsg = session.messages[session.messages.length - 1];
   const streaming = session.status === "streaming";
+  const showJump = pinned;
 
   return (
     <div className="relative flex-1 min-h-0">
@@ -89,15 +127,21 @@ export function Conversation({ session }: { session: SessionState }) {
           })}
         </div>
       </div>
+      {pinned && streaming && (
+        <div className="pointer-events-none absolute right-6 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+          <Pause className="h-3 w-3" />
+          Follow paused
+        </div>
+      )}
       {showJump && (
         <button
           type="button"
           onClick={scrollToBottom}
-          title="Jump to latest"
+          title="Resume follow & jump to latest"
           className="absolute bottom-4 right-6 z-10 flex h-9 items-center gap-1.5 rounded-full border border-border bg-panel-elevated px-3 text-xs text-foreground shadow-md transition-colors hover:bg-muted"
         >
           <ArrowDown className="h-3.5 w-3.5" />
-          Jump to latest
+          {pendingCount > 0 ? `${pendingCount} new` : "Jump to latest"}
         </button>
       )}
     </div>

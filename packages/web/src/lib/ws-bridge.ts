@@ -41,6 +41,10 @@ interface AcpUpdate {
   };
   // session_info_update fields (best-effort, copilot may rename)
   contextUsage?: { used?: number; total?: number };
+  // usage_update (ACP >= 0.22) fields
+  used?: number;
+  size?: number;
+  cost?: { amount?: number; currency?: string } | null;
   // current_mode_update
   currentModeId?: string;
   [k: string]: unknown;
@@ -235,6 +239,15 @@ export function useWsBridge() {
             case "session_info_update": {
               const cu = u.contextUsage;
               if (cu) store.setSessionCtx(sid, cu.used, cu.total);
+              break;
+            }
+            case "usage_update": {
+              if (typeof u.used === "number" && typeof u.size === "number") {
+                store.setSessionCtx(sid, u.used, u.size);
+              }
+              if (u.cost && typeof u.cost.amount === "number") {
+                store.setSessionCost(sid, u.cost.amount, u.cost.currency ?? "USD");
+              }
               break;
             }
             case "status_update": {
