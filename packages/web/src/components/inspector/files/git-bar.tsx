@@ -18,8 +18,11 @@ function displayPath(entry: FileEntry) {
 export function GitBar({ cwd, status }: GitBarProps) {
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const touchedEntries = useUIStore((s) => s.filesOverview[cwd]?.touched);
-  const agentEntries = (touchedEntries ?? []).filter((entry) => entry.source === "agent");
+  const overview = useUIStore((s) => s.filesOverview[cwd]);
+  const touchedEntries = overview?.touched;
+  const agentTouchedSet = new Set(overview?.agentTouched ?? []);
+  // Subset of working-tree changes that the agent touched this session.
+  const agentEntries = (touchedEntries ?? []).filter((entry) => agentTouchedSet.has(entry.rel));
 
   if (!status) {
     return (

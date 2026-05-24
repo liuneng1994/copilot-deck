@@ -4,6 +4,10 @@ import type { StateCreator } from "zustand";
 export interface FilesOverview {
   gitStatus: GitStatus;
   touched: FileEntry[];
+  /** Paths (relative to cwd) the agent has edited during this session.
+   *  Overlaid as a 🤖 badge on matching rows in the Files tab. The list
+   *  itself is driven by git status, not by this set, so commits drain it. */
+  agentTouched: string[];
   generation: number;
 }
 
@@ -101,6 +105,7 @@ export const createFilesSlice: StateCreator<FilesSlice & any, [], [], FilesSlice
       const data = (await response.json()) as {
         gitStatus: GitStatus;
         touched: FileEntry[];
+        agentTouched?: string[];
       };
       const prev = get().filesOverview[cwd];
       set({
@@ -109,6 +114,7 @@ export const createFilesSlice: StateCreator<FilesSlice & any, [], [], FilesSlice
           [cwd]: {
             gitStatus: data.gitStatus,
             touched: data.touched,
+            agentTouched: data.agentTouched ?? [],
             generation: (prev?.generation ?? 0) + 1,
           },
         },

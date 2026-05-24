@@ -8,6 +8,7 @@ import { FileRow } from "./file-row";
 
 interface FilesTreeProps {
   entries: FileEntry[];
+  agentTouched: Set<string>;
   session: SessionState;
 }
 
@@ -50,9 +51,9 @@ function compareEntries(sort: "recency" | "changes" | "path") {
   };
 }
 
-function filterBySource(entry: FileEntry, source: string) {
-  if (source === "touched") return entry.source === "agent";
-  if (source === "dirty") return entry.source === "dirty";
+function filterBySource(entry: FileEntry, source: string, agentTouched: Set<string>) {
+  if (source === "touched") return agentTouched.has(entry.rel);
+  if (source === "dirty") return entry.source === "dirty" || entry.source === "staged";
   if (source === "untracked") return entry.source === "untracked";
   return true;
 }
@@ -133,7 +134,7 @@ function collectDirPaths(node: TreeNode, out = new Set<string>()) {
   return out;
 }
 
-export function FilesTree({ entries, session }: FilesTreeProps) {
+export function FilesTree({ entries, agentTouched, session }: FilesTreeProps) {
   const filters = useUIStore((s) => s.filters);
   const selectedFilePath = useUIStore((s) => s.selectedFilePath);
   const setSelectedFilePath = useUIStore((s) => s.setSelectedFilePath);
@@ -146,7 +147,7 @@ export function FilesTree({ entries, session }: FilesTreeProps) {
   const sortedEntries = useMemo(() => {
     const query = filters.query.trim().toLowerCase();
     return entries
-      .filter((entry) => filterBySource(entry, filters.source))
+      .filter((entry) => filterBySource(entry, filters.source, agentTouched))
       .filter(
         (entry) =>
           !query ||
@@ -156,7 +157,7 @@ export function FilesTree({ entries, session }: FilesTreeProps) {
       .filter((entry) => filters.showGenerated || !entry.isGenerated || !filters.flat)
       .slice()
       .sort(compareEntries(filters.sort));
-  }, [entries, filters]);
+  }, [entries, agentTouched, filters]);
 
   const tree = useMemo(() => buildTree(sortedEntries), [sortedEntries]);
   const defaultOpenDirs = useMemo(() => collectDirPaths(tree), [tree]);
@@ -269,6 +270,7 @@ export function FilesTree({ entries, session }: FilesTreeProps) {
           depth={row.depth}
           selected={key === selectedFilePath}
           session={session}
+          agentTouched={agentTouched.has(row.entry.rel)}
           onClick={() => setSelectedFilePath(key)}
           onDoubleClick={() => {
             setSelectedFilePath(key);

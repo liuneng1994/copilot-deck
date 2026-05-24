@@ -139,7 +139,7 @@ export interface ExtensionOpDone {
 }
 
 // === Files v2 types ===
-export type FileSource = "agent" | "dirty" | "untracked" | "clean";
+export type FileSource = "dirty" | "untracked" | "staged";
 export type GitFlag = "M" | "A" | "D" | "R" | "C" | "U" | "?" | "!" | " ";
 
 export interface GitFileFlag {

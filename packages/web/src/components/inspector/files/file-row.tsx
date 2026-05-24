@@ -1,4 +1,5 @@
 import type { FileEntry } from "@agent-view/shared";
+import { Bot } from "lucide-react";
 import { cn } from "../../../lib/cn";
 import type { SessionState } from "../../../stores/ui-store";
 import { FileActions } from "./file-actions";
@@ -8,15 +9,17 @@ interface FileRowProps {
   depth: number;
   selected: boolean;
   session: SessionState;
+  /** True when this path was touched by the agent during the current session.
+   *  Drives the 🤖 badge; does NOT affect list membership. */
+  agentTouched?: boolean;
   onClick: () => void;
   onDoubleClick?: () => void;
 }
 
 const sourceDotClass: Record<string, string> = {
-  agent: "bg-sky-400",
   dirty: "bg-amber-400",
   untracked: "bg-violet-400",
-  clean: "bg-fg-subtle",
+  staged: "bg-emerald-400",
 };
 
 function gitBadgeClass(entry: FileEntry) {
@@ -68,7 +71,15 @@ function splitPath(entry: FileEntry) {
   };
 }
 
-export function FileRow({ entry, depth, selected, session, onClick, onDoubleClick }: FileRowProps) {
+export function FileRow({
+  entry,
+  depth,
+  selected,
+  session,
+  agentTouched,
+  onClick,
+  onDoubleClick,
+}: FileRowProps) {
   const { dir, base } = splitPath(entry);
   const gitStatus = `${entry.gitX ?? " "}${entry.gitY ?? " "}`;
   const changed = (entry.added ?? 0) + (entry.removed ?? 0) > 0;
@@ -92,10 +103,19 @@ export function FileRow({ entry, depth, selected, session, onClick, onDoubleClic
         <span
           className={cn(
             "h-2 w-2 shrink-0 rounded-full",
-            sourceDotClass[entry.source] ?? sourceDotClass.clean,
+            sourceDotClass[entry.source] ?? "bg-muted",
           )}
           aria-label={`${entry.source} source`}
         />
+        {agentTouched && (
+          <span
+            className="shrink-0 text-primary"
+            title="Touched by Copilot this session"
+            aria-label="Touched by Copilot this session"
+          >
+            <Bot className="h-3 w-3" />
+          </span>
+        )}
         <span
           className={cn(
             "w-6 shrink-0 rounded border px-0.5 text-center font-mono text-[10px] leading-4",

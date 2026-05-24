@@ -1,4 +1,3 @@
-import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { FileEntry, GitStatus } from "@agent-view/shared";
 import type { FastifyInstance, FastifyReply } from "fastify";
@@ -254,46 +253,26 @@ function aggregateTouched(cwd: string, manager: SessionManager): FileTouch[] {
   return [...map.values()].sort((a, b) => b.lastTouchAt - a.lastTouchAt);
 }
 
-function sourceForGitFile(file: GitStatus["files"][number]): "dirty" | "untracked" {
-  return file.x === "?" || file.y === "?" ? "untracked" : "dirty";
+function sourceForGitFile(file: GitStatus["files"][number]): "dirty" | "untracked" | "staged" {
+  if (file.x === "?" || file.y === "?") return "untracked";
+  // X is the index/staged column; Y is the worktree. A non-blank X with a
+  // blank Y means "fully staged, no further worktree edits" → staged.
+  if (file.x !== " " && file.x !== "!" && file.y === " ") {
+    return "staged";
+  }
+  return "dirty";
 }
 
 export async function buildOverview(
   cwd: string,
   manager: SessionManager,
-): Promise<{ gitStatus: GitStatus; touched: FileEntry[] }> {
+): Promise<{ gitStatus: GitStatus; touched: FileEntry[]; agentTouched: string[] }> {
   const gitStatus = await getGitStatus(cwd);
-  const gitByRel = new Map(gitStatus.files.map((file) => [file.path, file]));
-  const entries: FileEntry[] = [];
-  const touchedRels = new Set<string>();
 
-  for (const touch of aggregateTouched(cwd, manager)) {
-    const rel = path.relative(cwd, touch.path);
-    const gitFile = gitByRel.get(rel);
-    touchedRels.add(rel);
-    let missing = false;
-    try {
-      await fs.stat(touch.path);
-    } catch {
-      missing = true;
-    }
-    entries.push({
-      path: touch.path,
-      rel,
-      source: "agent",
-      gitX: gitFile?.x,
-      gitY: gitFile?.y,
-      isGenerated: isGeneratedFile(rel),
-      lastTouchAt: touch.lastTouchAt,
-      added: touch.added,
-      removed: touch.removed,
-      callCount: touch.callCount,
-      missing,
-    });
-  }
-
-  const gitEntries = gitStatus.files
-    .filter((file) => !touchedRels.has(file.path))
+  // Files tab is git-driven: the visible list is exactly the working tree
+  // changes. agent-touched paths are computed separately so the client can
+  // overlay a 🤖 badge but the list itself drains on commit.
+  const entries: FileEntry[] = gitStatus.files
     .map<FileEntry>((file) => {
       const abs = path.resolve(cwd, file.path);
       return {
@@ -307,8 +286,15 @@ export async function buildOverview(
     })
     .sort((a, b) => a.rel.localeCompare(b.rel));
 
-  entries.push(...gitEntries);
-  return { gitStatus, touched: entries };
+  // Compute the "touched this session" overlay set. We still walk tool_calls
+  // so the UI can show a badge for files the agent edited, but these paths
+  // do not synthesize standalone list rows.
+  const agentTouched =
+    gitStatus.isRepo === false
+      ? []
+      : aggregateTouched(cwd, manager).map((touch) => path.relative(cwd, touch.path));
+
+  return { gitStatus, touched: entries, agentTouched };
 }
 
 export function registerFilesOverviewRoutes(app: FastifyInstance, deps: Deps): void {

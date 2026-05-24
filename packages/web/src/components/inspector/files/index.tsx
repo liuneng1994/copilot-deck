@@ -1,5 +1,5 @@
-import { X } from "lucide-react";
-import { useEffect } from "react";
+import { GitBranch, X } from "lucide-react";
+import { useEffect, useMemo } from "react";
 import type { SessionState, ToolCallState } from "../../../stores/ui-store";
 import { useUIStore } from "../../../stores/ui-store";
 import { FilePreview } from "./file-preview";
@@ -62,6 +62,12 @@ export function FilesTab({ session, toolCalls }: FilesTabProps) {
     </>
   ) : null;
 
+  const agentTouchedSet = useMemo(
+    () => new Set(overview?.agentTouched ?? []),
+    [overview?.agentTouched],
+  );
+  const isNonRepo = overview?.gitStatus?.isRepo === false;
+
   return (
     <div className="flex h-full flex-col">
       <GitBar cwd={session.cwd} status={overview?.gitStatus} />
@@ -71,8 +77,14 @@ export function FilesTab({ session, toolCalls }: FilesTabProps) {
           <GrepPanel cwd={session.cwd} />
         ) : viewMode === "timeline" ? (
           <TimelinePanel session={session} toolCalls={toolCalls} />
+        ) : isNonRepo ? (
+          <NonRepoEmptyState />
         ) : (
-          <FilesTree entries={overview?.touched ?? []} session={session} />
+          <FilesTree
+            entries={overview?.touched ?? []}
+            agentTouched={agentTouchedSet}
+            session={session}
+          />
         )}
       </div>
       {selectedFilePath && !maximized && (
@@ -108,6 +120,19 @@ export function FilesTab({ session, toolCalls }: FilesTabProps) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function NonRepoEmptyState() {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2 px-6 py-12 text-center">
+      <GitBranch className="h-8 w-8 text-muted-foreground/60" />
+      <div className="text-sm font-medium text-foreground">Not a git repository</div>
+      <div className="max-w-xs text-[11px] text-muted-foreground">
+        Initialize git in this folder to track changes. Files tab is git-driven and has nothing to
+        show until then.
+      </div>
     </div>
   );
 }
