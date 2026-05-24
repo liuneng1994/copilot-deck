@@ -26,6 +26,16 @@ export class CopilotAgent {
 
     this.process = spawn(executable, args, {
       stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        // Encourage child tools (git, ls, grep, npm, pytest, ...) that
+        // Copilot CLI spawns to emit ANSI color codes even though their
+        // stdout is a pipe, not a TTY. Without this everything in the
+        // terminal block renders monochrome.
+        FORCE_COLOR: process.env.FORCE_COLOR ?? "1",
+        CLICOLOR: process.env.CLICOLOR ?? "1",
+        CLICOLOR_FORCE: process.env.CLICOLOR_FORCE ?? "1",
+      },
     }) as ChildProcessWithoutNullStreams;
 
     this.process.stderr.setEncoding("utf8");
