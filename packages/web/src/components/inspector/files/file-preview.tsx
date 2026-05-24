@@ -12,6 +12,8 @@ const HEX_HEADER_BYTES = 256;
 interface FilePreviewProps {
   path: string;
   cwd: string;
+  onRequestMaximize?: () => void;
+  hideMaximize?: boolean;
 }
 
 interface FileResponse {
@@ -266,7 +268,7 @@ function OutlineList({ nodes, depth = 0 }: { nodes: OutlineNode[]; depth?: numbe
   );
 }
 
-export function FilePreview({ path, cwd }: FilePreviewProps) {
+export function FilePreview({ path, cwd, onRequestMaximize, hideMaximize }: FilePreviewProps) {
   const generation = useUIStore((s) => s.filesOverview[cwd]?.generation ?? 0);
   const [state, setState] = useState<PreviewState | null>(null);
   const [outline, setOutline] = useState<OutlineNode[] | null>(null);
@@ -456,7 +458,7 @@ export function FilePreview({ path, cwd }: FilePreviewProps) {
     </>
   );
 
-  if (maximized) {
+  if (maximized && !onRequestMaximize) {
     return (
       <div
         className="fixed inset-0 z-50 flex items-stretch justify-center bg-background/90 p-4 backdrop-blur-sm"
@@ -491,17 +493,19 @@ export function FilePreview({ path, cwd }: FilePreviewProps) {
 
   return (
     <div className="flex min-h-0 flex-col text-[12px]">
-      <div className="flex items-center justify-end border-b border-border bg-panel/40 px-2 py-1">
-        <button
-          type="button"
-          onClick={() => setMaximized(true)}
-          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="Maximize for easier reading"
-        >
-          <Maximize2 className="h-3 w-3" />
-          Maximize
-        </button>
-      </div>
+      {hideMaximize ? null : (
+        <div className="flex items-center justify-end border-b border-border bg-panel/40 px-2 py-1">
+          <button
+            type="button"
+            onClick={() => (onRequestMaximize ? onRequestMaximize() : setMaximized(true))}
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="Maximize for easier reading"
+          >
+            <Maximize2 className="h-3 w-3" />
+            Maximize
+          </button>
+        </div>
+      )}
       {body}
     </div>
   );
