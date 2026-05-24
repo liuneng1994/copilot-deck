@@ -162,6 +162,8 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   activeSessionId: string | null;
   wsConnected: boolean;
   lastError: string | null;
+  /** Cwds for which a create_session WS request is in-flight (awaiting session_created or error). */
+  pendingCreates: string[];
 
   sessions: Record<string, SessionState>;
   toolCalls: Record<string, ToolCallState>;
@@ -230,6 +232,8 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   setActiveSession: (id: string | null) => void;
   setWsConnected: (v: boolean) => void;
   setLastError: (e: string | null) => void;
+  beginCreateSession: (cwd: string) => void;
+  endCreateSession: (cwd: string) => void;
 
   upsertSession: (s: Partial<SessionState> & { id: string }) => void;
   removeSession: (id: string) => void;
@@ -456,6 +460,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   activeSessionId: null,
   wsConnected: false,
   lastError: null,
+  pendingCreates: [],
   sessions: {},
   toolCalls: {},
   permissionQueue: [],
@@ -624,6 +629,12 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   setActiveSession: (id) => set({ activeSessionId: id }),
   setWsConnected: (v) => set({ wsConnected: v }),
   setLastError: (e) => set({ lastError: e }),
+  beginCreateSession: (cwd) =>
+    set((s) =>
+      s.pendingCreates.includes(cwd) ? s : { pendingCreates: [...s.pendingCreates, cwd] },
+    ),
+  endCreateSession: (cwd) =>
+    set((s) => ({ pendingCreates: s.pendingCreates.filter((c) => c !== cwd) })),
 
   upsertSession: (s) =>
     set((state) => {

@@ -117,6 +117,7 @@ export function useWsBridge() {
             status: "idle",
             renderHintMode: "prompt",
           });
+          store.endCreateSession(msg.cwd);
           if (msg.modes) {
             store.setMode(
               msg.sessionId,
@@ -300,6 +301,7 @@ export function useWsBridge() {
             store.setReattaching(msg.sessionId, false);
           } else {
             store.setLastError(msg.message);
+            for (const cwd of useUIStore.getState().pendingCreates) store.endCreateSession(cwd);
           }
           break;
         }

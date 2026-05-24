@@ -2,6 +2,7 @@ import {
   ChevronRight,
   FolderOpen,
   FolderPlus,
+  Loader2,
   MessageSquare,
   Pencil,
   Plus,
@@ -37,7 +38,14 @@ export function Sidebar() {
   const active = useUIStore((s) => s.activeSessionId);
   const setActive = useUIStore((s) => s.setActiveSession);
   const setLastError = useUIStore((s) => s.setLastError);
+  const pendingCreates = useUIStore((s) => s.pendingCreates);
+  const beginCreateSession = useUIStore((s) => s.beginCreateSession);
+  const endCreateSession = useUIStore((s) => s.endCreateSession);
   const width = useUIStore((s) => s.sidebarWidth);
+
+  const cwdTrimmed = cwdInput.trim();
+  const creatingThis = cwdTrimmed.length > 0 && pendingCreates.includes(cwdTrimmed);
+  const blocked = busy || creatingThis;
 
   const groups = useMemo(() => {
     const byCwd = new Map<string, SessionState[]>();
@@ -142,13 +150,18 @@ export function Sidebar() {
   }, [sessions]);
 
   const createSession = () => {
-    if (!cwdInput.trim()) return;
-    sendWs({ type: "create_session", cwd: cwdInput.trim() });
+    const cwd = cwdInput.trim();
+    if (!cwd || blocked) return;
+    beginCreateSession(cwd);
+    sendWs({ type: "create_session", cwd });
+    // Safety net: server should answer with session_created or error promptly;
+    // release the lock after 15s if neither arrives so the UI doesn't wedge.
+    window.setTimeout(() => endCreateSession(cwd), 15_000);
   };
 
   const createFolderAndSession = async () => {
     const path = cwdInput.trim();
-    if (!path || busy) return;
+    if (!path || blocked) return;
     setBusy(true);
     try {
       const res = await fetch("/api/mkdir", {
@@ -166,7 +179,10 @@ export function Sidebar() {
         return;
       }
       setLastError(null);
-      sendWs({ type: "create_session", cwd: data.path ?? path });
+      const cwd = data.path ?? path;
+      beginCreateSession(cwd);
+      sendWs({ type: "create_session", cwd });
+      window.setTimeout(() => endCreateSession(cwd), 15_000);
     } catch (err) {
       setLastError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -185,7 +201,7 @@ export function Sidebar() {
           onChange={setCwdInput}
           onSubmit={createSession}
           recents={recentCwds}
-          disabled={busy}
+          disabled={blocked}
         />
         <Tooltip>
           <TooltipTrigger asChild>
@@ -194,10 +210,14 @@ export function Sidebar() {
               variant="ghost"
               className="h-8 w-8 shrink-0"
               onClick={createFolderAndSession}
-              disabled={busy || !cwdInput.trim()}
+              disabled={blocked || !cwdInput.trim()}
               aria-label="Create folder and session"
             >
-              <FolderPlus className="h-4 w-4" />
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FolderPlus className="h-4 w-4" />
+              )}
             </Button>
           </TooltipTrigger>
           <TooltipContent>mkdir -p + new session</TooltipContent>
@@ -208,13 +228,20 @@ export function Sidebar() {
               size="icon"
               className="h-8 w-8 shrink-0"
               onClick={createSession}
-              disabled={busy || !cwdInput.trim()}
+              disabled={blocked || !cwdInput.trim()}
               aria-label="New session"
+              aria-busy={creatingThis}
             >
-              <Plus className="h-4 w-4" />
+              {creatingThis ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>New session in existing folder</TooltipContent>
+          <TooltipContent>
+            {creatingThis ? "Creating session…" : "New session in existing folder"}
+          </TooltipContent>
         </Tooltip>
       </div>
 
