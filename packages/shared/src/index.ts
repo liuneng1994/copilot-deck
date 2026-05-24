@@ -270,6 +270,10 @@ export type ClientToServer =
   | { type: "set_session_model"; sessionId: string; model: string }
   | { type: "reload_session"; sessionId: string }
   | { type: "reattach_session"; sessionId: string }
+  | { type: "bg_task_start"; cwd: string; command: string; label?: string }
+  | { type: "bg_task_stop"; taskId: string }
+  | { type: "bg_task_remove"; taskId: string }
+  | { type: "bg_task_list" }
   | MarkReviewedMsg
   | UnmarkReviewedMsg
   | {
@@ -424,7 +428,29 @@ export type ServerToClient =
   | FilesIndexInvalidatedMessage
   | FileChangedMessage
   | GrepChunkMessage
-  | GrepDoneMessage;
+  | GrepDoneMessage
+  | { type: "bg_task_snapshot"; tasks: BgTaskSnapshot[] }
+  | { type: "bg_task_update"; task: BgTaskSnapshot }
+  | { type: "bg_task_output"; taskId: string; chunk: string; stream: "stdout" | "stderr" }
+  | { type: "bg_task_removed"; taskId: string };
+
+export type BgTaskStatus = "starting" | "running" | "exited" | "killed" | "error";
+
+export interface BgTaskSnapshot {
+  id: string;
+  cwd: string;
+  command: string;
+  label?: string;
+  status: BgTaskStatus;
+  pid?: number;
+  startedAt: number;
+  exitedAt?: number;
+  exitCode?: number | null;
+  signal?: string | null;
+  /** Last ~64KB of merged output for clients that just connected. */
+  outputTail: string;
+  errorMessage?: string;
+}
 
 export interface TraceEventDTO {
   id: number;

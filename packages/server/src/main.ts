@@ -26,6 +26,7 @@ import { registerOutlineRoutes } from "./outline/routes.js";
 import { registerRoutes } from "./routes.js";
 import { SessionManager } from "./session-manager.js";
 import { Store } from "./store.js";
+import { BgTaskManager } from "./bg-tasks.js";
 import { UpdateChecker } from "./update-check.js";
 import { type WsContext, dispatchWs } from "./ws-handlers.js";
 
@@ -62,10 +63,17 @@ async function main() {
 
   const store = new Store();
   const manager = new SessionManager(store);
+  const bgTasks = new BgTaskManager();
   const clients = new Set<(msg: ServerToClient) => void>();
   const broadcast = (msg: ServerToClient) => {
     for (const send of clients) send(msg);
   };
+
+  bgTasks.on("update", (task) => broadcast({ type: "bg_task_update", task }));
+  bgTasks.on("output", (taskId, chunk, stream) =>
+    broadcast({ type: "bg_task_output", taskId, chunk, stream }),
+  );
+  bgTasks.on("removed", (taskId) => broadcast({ type: "bg_task_removed", taskId }));
 
   // ── Install & upgrade infrastructure ────────────────────────────────────────
   const installedVersion = readInstalledVersion();
@@ -150,6 +158,7 @@ async function main() {
       // Push the persisted snapshot first so the client paints history immediately.
       try {
         send({ type: "hydrate", sessions: manager.hydrate() });
+        send({ type: "bg_task_snapshot", tasks: bgTasks.list() });
       } catch (e) {
         app.log.warn({ err: e }, "hydrate send failed");
       }
@@ -261,6 +270,29 @@ async function main() {
           }
           return;
         }
+        if (msg.type === "bg_task_start") {
+          try {
+            bgTasks.start({ cwd: msg.cwd, command: msg.command, label: msg.label });
+          } catch (e) {
+            send({
+              type: "error",
+              message: e instanceof Error ? e.message : String(e),
+            });
+          }
+          return;
+        }
+        if (msg.type === "bg_task_stop") {
+          bgTasks.stop(msg.taskId);
+          return;
+        }
+        if (msg.type === "bg_task_remove") {
+          bgTasks.remove(msg.taskId);
+          return;
+        }
+        if (msg.type === "bg_task_list") {
+          send({ type: "bg_task_snapshot", tasks: bgTasks.list() });
+          return;
+        }
         await dispatchWs(msg, ctx);
       });
     });
@@ -271,6 +303,7 @@ async function main() {
     updateChecker.stop();
     stopFilesWatcher();
     await extensionWatchers.close();
+    bgTasks.shutdown();
     await manager.shutdownAll();
     await app.close();
     process.exit(0);

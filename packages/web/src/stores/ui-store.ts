@@ -1,4 +1,5 @@
 import type {
+  BgTaskSnapshot,
   ExtensionOpDone,
   ExtensionOpProgress,
   HydratedSession,
@@ -181,7 +182,7 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   traceFilters: { direction?: "in" | "out"; sessionScope: boolean };
   traceDrawerOpen: boolean;
   /** Active tab in the inspector pane. */
-  inspectorTab: "plan" | "tools" | "files" | "terminal" | "config";
+  inspectorTab: "plan" | "tools" | "files" | "terminal" | "tasks" | "config";
   /** Help/keyboard reference overlay. */
   helpOpen: boolean;
   findOpen: boolean;
@@ -231,6 +232,8 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   /** Sidebar / Inspector pane widths in px. Persisted in localStorage. */
   sidebarWidth: number;
   inspectorWidth: number;
+  /** Background long-running tasks keyed by id. */
+  bgTasks: Record<string, BgTaskSnapshot>;
 
   toggleSidebar: () => void;
   toggleInspector: () => void;
@@ -239,6 +242,11 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   setLastError: (e: string | null) => void;
   beginCreateSession: (cwd: string) => void;
   endCreateSession: (cwd: string) => void;
+
+  setBgTasks: (tasks: BgTaskSnapshot[]) => void;
+  upsertBgTask: (task: BgTaskSnapshot) => void;
+  appendBgTaskOutput: (taskId: string, chunk: string) => void;
+  removeBgTask: (taskId: string) => void;
 
   upsertSession: (s: Partial<SessionState> & { id: string }) => void;
   removeSession: (id: string) => void;
@@ -504,6 +512,30 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   composerLoadEpoch: {},
   sidebarWidth: loadPanelWidths().sidebar,
   inspectorWidth: loadPanelWidths().inspector,
+  bgTasks: {},
+
+  setBgTasks: (tasks) =>
+    set(() => {
+      const map: Record<string, BgTaskSnapshot> = {};
+      for (const t of tasks) map[t.id] = t;
+      return { bgTasks: map };
+    }),
+  upsertBgTask: (task) =>
+    set((state) => ({ bgTasks: { ...state.bgTasks, [task.id]: task } })),
+  appendBgTaskOutput: (taskId, chunk) =>
+    set((state) => {
+      const existing = state.bgTasks[taskId];
+      if (!existing) return state;
+      const tail = (existing.outputTail + chunk).slice(-64 * 1024);
+      return {
+        bgTasks: { ...state.bgTasks, [taskId]: { ...existing, outputTail: tail } },
+      };
+    }),
+  removeBgTask: (taskId) =>
+    set((state) => {
+      const { [taskId]: _, ...rest } = state.bgTasks;
+      return { bgTasks: rest };
+    }),
 
   loadPlugins: async () => {
     try {

@@ -3,6 +3,7 @@ import {
   FileCode2,
   FolderTree,
   ListChecks,
+  Play,
   Settings2,
   TerminalSquare,
 } from "lucide-react";
@@ -13,6 +14,7 @@ import { Button } from "../ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { FilesTab } from "./files-tab";
 import { PlanTab } from "./plan-tab";
+import { TasksTab } from "./tasks-tab";
 import { TerminalTab } from "./terminal-tab";
 
 function Empty({ label }: { label: string }) {
@@ -37,6 +39,10 @@ export function Inspector() {
   const sessionCalls = session
     ? session.toolCallIds.map((id) => toolCalls[id]).filter(Boolean)
     : [];
+  const bgTasks = useUIStore((s) => s.bgTasks);
+  const cwdTaskCount = session
+    ? Object.values(bgTasks).filter((t) => t.cwd === session.cwd).length
+    : 0;
 
   // Restore + persist per (sessionId, tab) scroll position. We keep the cache
   // in a module-local ref so it survives across re-renders but not page
@@ -104,6 +110,13 @@ export function Inspector() {
             <TerminalSquare className="h-3 w-3" />
             Term
           </TabsTrigger>
+          <TabsTrigger value="tasks" className="gap-1">
+            <Play className="h-3 w-3" />
+            Tasks
+            {cwdTaskCount > 0 && (
+              <span className="ml-0.5 rounded bg-muted px-1 text-[9px]">{cwdTaskCount}</span>
+            )}
+          </TabsTrigger>
         </TabsList>
         <TabsList className="mx-2 mt-1">
           <TabsTrigger value="config" className="gap-1">
@@ -138,6 +151,9 @@ export function Inspector() {
             ) : (
               <Empty label="Select a session." />
             )}
+          </TabsContent>
+          <TabsContent value="tasks">
+            {session ? <TasksTab session={session} /> : <Empty label="Select a session." />}
           </TabsContent>
           <TabsContent value="config" className="px-2">
             {session ? (

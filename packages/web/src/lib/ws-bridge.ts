@@ -474,6 +474,22 @@ export function useWsBridge() {
           });
           break;
         }
+        case "bg_task_snapshot": {
+          store.setBgTasks(msg.tasks);
+          break;
+        }
+        case "bg_task_update": {
+          store.upsertBgTask(msg.task);
+          break;
+        }
+        case "bg_task_output": {
+          store.appendBgTaskOutput(msg.taskId, msg.chunk);
+          break;
+        }
+        case "bg_task_removed": {
+          store.removeBgTask(msg.taskId);
+          break;
+        }
       }
     });
     return () => {
