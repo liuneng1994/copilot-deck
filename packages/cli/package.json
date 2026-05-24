@@ -2,13 +2,7 @@
   "name": "copilot-deck",
   "version": "0.1.4",
   "description": "Browser-based multi-session control panel for the GitHub Copilot CLI (ACP)",
-  "keywords": [
-    "copilot",
-    "agent",
-    "acp",
-    "cli",
-    "github-copilot"
-  ],
+  "keywords": ["copilot", "agent", "acp", "cli", "github-copilot"],
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -23,12 +17,7 @@
   "engines": {
     "node": ">=22"
   },
-  "files": [
-    "bin",
-    "dist",
-    "dist-bundle",
-    "README.md"
-  ],
+  "files": ["bin", "dist", "dist-bundle", "README.md"],
   "scripts": {
     "build": "tsc && node ../../scripts/build-cli-bundle.mjs",
     "typecheck": "tsc --noEmit",
