@@ -25,6 +25,15 @@ export function normalizeContentBlock(raw: RawBlock): ToolCallContentBlock {
   else if (t === "text") kind = "text";
   else if (t === "image") kind = "image";
 
+  // ACP often wraps output in `{ type: "content", content: { type: "text", text } }`.
+  // Inherit the kind from the inner block so we don't fall through to the raw-JSON
+  // default renderer for what is plainly text.
+  if (kind === "other" && raw.content && typeof raw.content === "object") {
+    const innerType = raw.content.type;
+    if (innerType === "text") kind = "text";
+    else if (innerType === "image") kind = "image";
+  }
+
   const block: ToolCallContentBlock = { kind, raw };
   if (kind === "diff") {
     block.path = typeof raw.path === "string" ? raw.path : undefined;

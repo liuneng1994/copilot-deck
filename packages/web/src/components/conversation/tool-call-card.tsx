@@ -54,6 +54,14 @@ function elapsed(c: ToolCallState) {
 export function ToolCallCard({ call }: { call: ToolCallState }) {
   const [open, setOpen] = useState(call.status !== "completed");
   const v = statusVisual(call.status);
+  const k = (call.kind || "").toLowerCase();
+  const looksShell =
+    k.includes("execute") ||
+    k.includes("terminal") ||
+    k.includes("bash") ||
+    k.includes("shell") ||
+    typeof extractCommand(call.rawInput) === "string";
+  const shellCommand = looksShell ? extractCommand(call.rawInput) : undefined;
 
   return (
     <div className="my-1 overflow-hidden rounded-lg border border-border bg-panel-elevated text-xs">
@@ -90,13 +98,27 @@ export function ToolCallCard({ call }: { call: ToolCallState }) {
 
       {open && (
         <div className="border-t border-border bg-panel/60 p-3">
-          {call.rawInput != null && (
-            <details className="mb-2">
-              <summary className="cursor-pointer text-[11px] text-muted-foreground">Input</summary>
-              <pre className="mt-1 max-h-40 overflow-auto rounded bg-background p-2 font-mono text-[11px] text-foreground">
-                {jsonOrText(call.rawInput)}
+          {shellCommand !== undefined ? (
+            <div className="mb-2 overflow-hidden rounded border border-border bg-background">
+              <div className="border-b border-border bg-panel-elevated px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                command
+              </div>
+              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words p-2 font-mono text-[11px] leading-snug text-foreground">
+                <span className="select-none text-muted-foreground">$ </span>
+                {shellCommand}
               </pre>
-            </details>
+            </div>
+          ) : (
+            call.rawInput != null && (
+              <details className="mb-2">
+                <summary className="cursor-pointer text-[11px] text-muted-foreground">
+                  Input
+                </summary>
+                <pre className="mt-1 max-h-40 overflow-auto rounded bg-background p-2 font-mono text-[11px] text-foreground">
+                  {jsonOrText(call.rawInput)}
+                </pre>
+              </details>
+            )
           )}
           {Array.isArray(call.locations) && call.locations.length > 0 && (
             <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px]">
@@ -119,6 +141,7 @@ export function ToolCallCard({ call }: { call: ToolCallState }) {
               block={block}
               sessionId={call.sessionId}
               callId={`${call.id}:${i}`}
+              forceTerminal={looksShell}
             />
           ))}
         </div>
@@ -131,10 +154,12 @@ function ContentBlock({
   block,
   sessionId,
   callId,
+  forceTerminal,
 }: {
   block: ToolCallContentBlock;
   sessionId: string;
   callId: string;
+  forceTerminal?: boolean;
 }) {
   if (block.kind === "diff") {
     return (
@@ -149,9 +174,7 @@ function ContentBlock({
   }
   if (block.kind === "text") {
     const text = block.text ?? jsonOrText(block.raw);
-    // Route through the same classifier used by chat bubbles so embedded
-    // tables / json / mermaid get the rich treatment (and large outputs hoist
-    // to the artifact pane).
+    if (forceTerminal) return <TerminalBlock text={text} />;
     return <ClassifiedToolText text={text} sessionId={sessionId} callId={callId} />;
   }
   if (block.kind === "image") {
@@ -162,11 +185,23 @@ function ContentBlock({
       typeof block.raw === "string" ? block.raw : `\`\`\`json\n${jsonOrText(block.raw)}\n\`\`\``;
     return <ClassifiedToolText text={text} sessionId={sessionId} callId={callId} />;
   }
+  if (forceTerminal) {
+    return <TerminalBlock text={jsonOrText(block.raw ?? block)} />;
+  }
   return (
     <pre className="mb-2 max-h-40 overflow-auto rounded bg-background p-2 font-mono text-[11px] text-muted-foreground">
       {jsonOrText(block.raw ?? block)}
     </pre>
   );
+}
+
+function extractCommand(input: unknown): string | undefined {
+  if (input == null || typeof input !== "object") return undefined;
+  const r = input as Record<string, unknown>;
+  for (const k of ["command", "cmd", "shell_command", "script"]) {
+    if (typeof r[k] === "string" && (r[k] as string).length > 0) return r[k] as string;
+  }
+  return undefined;
 }
 
 function jsonOrText(v: unknown) {
