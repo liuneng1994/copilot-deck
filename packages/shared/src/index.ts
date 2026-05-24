@@ -275,6 +275,14 @@ export type ClientToServer =
   | { type: "bg_task_stop"; taskId: string }
   | { type: "bg_task_remove"; taskId: string }
   | { type: "bg_task_list" }
+  | {
+      // User pressed "Move to background" on a foreground ACP terminal card.
+      // Server flips mode to "background" and synthesizes a clean exit so the
+      // agent's pending waitForTerminalExit resolves without truly killing the
+      // process — output continues to stream into the Tasks tab entry.
+      type: "terminal_move_to_background";
+      taskId: string;
+    }
   | MarkReviewedMsg
   | UnmarkReviewedMsg
   | {
@@ -448,6 +456,14 @@ export type ServerToClient =
 
 export type BgTaskStatus = "starting" | "running" | "exited" | "killed" | "error";
 
+/** Origin of a managed shell process. */
+export type BgTaskOrigin = "user" | "acp-terminal";
+
+/** Foreground vs background. ACP terminals start "foreground" and may be
+ *  moved to "background" by the user; user-started tasks are always
+ *  "background". */
+export type BgTaskMode = "foreground" | "background";
+
 export interface BgTaskSnapshot {
   id: string;
   cwd: string;
@@ -462,6 +478,14 @@ export interface BgTaskSnapshot {
   /** Last ~64KB of merged output for clients that just connected. */
   outputTail: string;
   errorMessage?: string;
+  /** "user" for `bg_task_start`, "acp-terminal" for Copilot-spawned shells. */
+  origin?: BgTaskOrigin;
+  /** "foreground" while in conversation, "background" after move or for user tasks. */
+  mode?: BgTaskMode;
+  /** ACP terminal id; set when origin == "acp-terminal". */
+  acpTerminalId?: string;
+  /** ACP session id that spawned this terminal (for filtering in UI). */
+  sessionId?: string;
 }
 
 export interface TraceEventDTO {

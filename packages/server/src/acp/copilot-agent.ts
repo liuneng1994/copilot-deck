@@ -56,7 +56,10 @@ export class CopilotAgent {
         protocolVersion: acp.PROTOCOL_VERSION,
         clientCapabilities: {
           fs: { readTextFile: false, writeTextFile: false },
-          terminal: false,
+          // ACP terminal extension: deck owns shell child processes so that
+          // long-running daemon commands (npm run dev, vite, …) don't hang
+          // the prompt turn. The user can "Move to background" from the UI.
+          terminal: true,
         },
       })
       .then((res) => {

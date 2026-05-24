@@ -11,6 +11,7 @@ import { useState } from "react";
 import { cn } from "../../lib/cn";
 import { useUIStore } from "../../stores/ui-store";
 import type { ToolCallContentBlock, ToolCallState } from "../../stores/ui-store";
+import { AcpTerminalInline } from "./acp-terminal-inline";
 import { DiffView } from "./diff-view";
 import { FileLink } from "./file-link";
 import { ClassifiedToolText, ImageBlock, TerminalBlock } from "./tool-content";
@@ -59,6 +60,9 @@ export function ToolCallCard({ call }: { call: ToolCallState }) {
   const [open, setOpen] = useState(!compact && call.status !== "completed");
   const v = statusVisual(call.status);
   const k = (call.kind || "").toLowerCase();
+  // Copilot's fleet "task" tool spawns a sub-agent; we surface that visually
+  // so users don't mistake it for a regular shell call.
+  const isFleetSubagent = k === "task" || k.endsWith(":task");
   const looksShell =
     k.includes("execute") ||
     k.includes("terminal") ||
@@ -81,6 +85,11 @@ export function ToolCallCard({ call }: { call: ToolCallState }) {
         )}
         <Wrench className="h-3 w-3 shrink-0 text-muted-foreground" />
         <span className="truncate font-mono text-[12px] text-foreground">{call.title}</span>
+        {isFleetSubagent && (
+          <span className="shrink-0 rounded-sm border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-primary">
+            subagent
+          </span>
+        )}
         {call.inputSummary && (
           <span className="truncate font-mono text-[11px] text-muted-foreground">
             {call.inputSummary}
@@ -173,6 +182,9 @@ function ContentBlock({
     );
   }
   if (block.kind === "terminal") {
+    if (block.terminalId) {
+      return <AcpTerminalInline terminalId={block.terminalId} fallbackText={block.text} />;
+    }
     const text = block.text ?? jsonOrText(block.raw);
     return <TerminalBlock text={text} />;
   }

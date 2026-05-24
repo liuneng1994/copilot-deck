@@ -9,7 +9,6 @@ import type { ClientToServer, ServerToClient } from "@agent-view/shared";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import Fastify from "fastify";
-import { BgTaskManager } from "./bg-tasks.js";
 import { resolveDataDir } from "./data-dir.js";
 import { invalidateMcpUserCache, registerMcpRoutes } from "./extensions/routes-mcp.js";
 import {
@@ -24,6 +23,7 @@ import { startFilesWatcher } from "./files-watcher.js";
 import { registerGitRoutes } from "./git/routes.js";
 import { registerGrepRoutes } from "./grep/routes.js";
 import { registerOutlineRoutes } from "./outline/routes.js";
+import { ProcessHost } from "./process-host.js";
 import { registerRoutes } from "./routes.js";
 import { SessionManager } from "./session-manager.js";
 import { Store } from "./store.js";
@@ -62,8 +62,11 @@ async function main() {
   });
 
   const store = new Store();
-  const manager = new SessionManager(store);
-  const bgTasks = new BgTaskManager();
+  const installedVersion = readInstalledVersion();
+  const dataDir = resolveDataDir();
+  const processHost = new ProcessHost({ dataDir: dataDir.dir });
+  const manager = new SessionManager(store, processHost);
+  const bgTasks = processHost;
   const clients = new Set<(msg: ServerToClient) => void>();
   const broadcast = (msg: ServerToClient) => {
     for (const send of clients) send(msg);
@@ -76,8 +79,6 @@ async function main() {
   bgTasks.on("removed", (taskId) => broadcast({ type: "bg_task_removed", taskId }));
 
   // ── Install & upgrade infrastructure ────────────────────────────────────────
-  const installedVersion = readInstalledVersion();
-  const dataDir = resolveDataDir();
   const updateChecker = new UpdateChecker({
     installedVersion,
     dataDir: dataDir.dir,
@@ -291,6 +292,10 @@ async function main() {
         }
         if (msg.type === "bg_task_list") {
           send({ type: "bg_task_snapshot", tasks: bgTasks.list() });
+          return;
+        }
+        if (msg.type === "terminal_move_to_background") {
+          processHost.moveToBackground(msg.taskId);
           return;
         }
         await dispatchWs(msg, ctx);

@@ -11,6 +11,7 @@ import { CopilotAgent } from "./acp/copilot-agent.js";
 import { type MessageStream, persistSessionUpdate } from "./acp/persist.js";
 import { PERMISSION_TIMEOUT_MS, readDefaultCopilotModel } from "./config.js";
 import { captureCheckpoint } from "./git-checkpoint.js";
+import type { ProcessHost } from "./process-host.js";
 import {
   DEFAULT_RENDER_HINT_MODE,
   type RenderHintMode,
@@ -104,7 +105,10 @@ export class SessionManager {
    * by us tearing down our own children during a graceful server shutdown. */
   private shuttingDown = false;
 
-  constructor(readonly store: Store) {
+  constructor(
+    readonly store: Store,
+    private readonly processHost?: ProcessHost,
+  ) {
     this.defaultModel = readDefaultCopilotModel();
     // Hydrate sticky permission decisions.
     for (const p of store.listPermissions()) {
@@ -159,6 +163,13 @@ export class SessionManager {
 
   getDefaultModel(): string {
     return this.defaultModel;
+  }
+
+  /** Look up the cwd that owns a given session id. Returns undefined if
+   *  the session is not currently attached. Used by the ACP terminal
+   *  bridge to spawn child processes in the right directory. */
+  cwdForSession(sessionId: string): string | undefined {
+    return this.sessions.get(sessionId)?.cwd;
   }
 
   /** Snapshot of {cwd → model}. Only includes cwds the user has set explicitly. */
@@ -559,6 +570,68 @@ export class SessionManager {
         });
         this.persistUpdate(cwd, params);
         this.emit(params.sessionId, params);
+      },
+      createTerminal: async (params) => {
+        if (!this.processHost) {
+          throw new Error("ACP terminal extension not enabled (no ProcessHost)");
+        }
+        const sessionCwd = this.cwdForSession(params.sessionId) ?? cwd;
+        const envObj: Record<string, string> = {};
+        for (const e of params.env ?? []) envObj[e.name] = e.value;
+        const { acpTerminalId } = this.processHost.createAcpTerminal({
+          sessionId: params.sessionId,
+          cwd: sessionCwd,
+          command: params.command,
+          args: params.args ?? [],
+          env: envObj,
+          outputByteLimit: params.outputByteLimit ?? undefined,
+        });
+        this.trace({
+          sessionId: params.sessionId,
+          cwd: sessionCwd,
+          direction: "in",
+          kind: "createTerminal",
+          payload: { command: params.command, args: params.args, terminalId: acpTerminalId },
+          ts: Date.now(),
+        });
+        return { terminalId: acpTerminalId };
+      },
+      terminalOutput: async (params) => {
+        if (!this.processHost) {
+          throw new Error("ACP terminal extension not enabled (no ProcessHost)");
+        }
+        const out = this.processHost.getOutput(params.terminalId);
+        if (!out) throw new Error(`unknown terminalId: ${params.terminalId}`);
+        return {
+          output: out.output,
+          truncated: out.truncated,
+          exitStatus: out.exitStatus
+            ? { exitCode: out.exitStatus.exitCode, signal: out.exitStatus.signal }
+            : null,
+        };
+      },
+      waitForTerminalExit: async (params) => {
+        if (!this.processHost) {
+          throw new Error("ACP terminal extension not enabled (no ProcessHost)");
+        }
+        const p = this.processHost.waitForExit(params.terminalId);
+        if (!p) throw new Error(`unknown terminalId: ${params.terminalId}`);
+        const exit = await p;
+        return { exitCode: exit.exitCode, signal: exit.signal };
+      },
+      releaseTerminal: async (params) => {
+        if (!this.processHost) {
+          throw new Error("ACP terminal extension not enabled (no ProcessHost)");
+        }
+        this.processHost.releaseAcpTerminal(params.terminalId);
+        return {};
+      },
+      killTerminal: async (params) => {
+        if (!this.processHost) {
+          throw new Error("ACP terminal extension not enabled (no ProcessHost)");
+        }
+        this.processHost.killAcpTerminal(params.terminalId);
+        return {};
       },
     };
     const agent = new CopilotAgent(client, {

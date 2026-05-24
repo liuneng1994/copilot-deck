@@ -130,6 +130,14 @@ function TaskCard({ taskId }: { taskId: string }) {
       <div className="flex items-center gap-2 border-b border-border px-2 py-1.5 text-[11px]">
         <span className={`h-2 w-2 rounded-full bg-current ${statusColor(task.status)}`} />
         <span className={`font-medium ${statusColor(task.status)}`}>{task.status}</span>
+        {task.origin === "acp-terminal" && (
+          <span
+            className="rounded-sm border border-primary/40 bg-primary/10 px-1 text-[9px] uppercase tracking-wider text-primary"
+            title="Spawned by Copilot through the ACP terminal extension"
+          >
+            from copilot
+          </span>
+        )}
         {task.label && <span className="text-foreground">{task.label}</span>}
         <span className="ml-auto flex items-center gap-2 text-muted-foreground">
           {task.pid && <span className="font-mono">pid {task.pid}</span>}

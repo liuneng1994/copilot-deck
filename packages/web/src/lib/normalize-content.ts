@@ -35,6 +35,9 @@ export function normalizeContentBlock(raw: RawBlock): ToolCallContentBlock {
   }
 
   const block: ToolCallContentBlock = { kind, raw };
+  if (kind === "terminal" && typeof raw.terminalId === "string") {
+    block.terminalId = raw.terminalId;
+  }
   if (kind === "diff") {
     block.path = typeof raw.path === "string" ? raw.path : undefined;
     block.oldText = typeof raw.oldText === "string" ? raw.oldText : undefined;

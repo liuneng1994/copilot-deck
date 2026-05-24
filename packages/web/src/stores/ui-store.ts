@@ -71,6 +71,10 @@ export interface ToolCallContentBlock {
   path?: string;
   oldText?: string;
   newText?: string;
+  /** ACP terminal-extension id — present when this block references a live
+   *  child process owned by ProcessHost. Used to look up live output and
+   *  show the "Move to background" affordance. */
+  terminalId?: string;
   raw?: unknown;
 }
 
