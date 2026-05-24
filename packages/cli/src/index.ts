@@ -5,6 +5,8 @@ import { parseArgs } from "node:util";
 import { runDataDir } from "./commands/data-dir.js";
 import { runDoctor } from "./commands/doctor.js";
 import { runStart } from "./commands/start.js";
+import { runStatus } from "./commands/status.js";
+import { runStop } from "./commands/stop.js";
 import { runUpgrade } from "./commands/upgrade.js";
 import { runVersion } from "./commands/version.js";
 
@@ -13,6 +15,8 @@ copilot-deck — browser UI for the GitHub Copilot CLI
 
 Usage:
   copilot-deck [start]              start the server and open the browser
+  copilot-deck stop                 stop the running server
+  copilot-deck status               report the running server (pid / url / uptime)
   copilot-deck doctor               check Node / Copilot CLI / data dir
   copilot-deck upgrade [--run]      print or execute the upgrade command
   copilot-deck version              print installed + latest known version
@@ -24,6 +28,11 @@ start options:
   --host <h>            bind host (default 127.0.0.1)
   --no-open             don't launch the browser
   --no-update-check     skip the GitHub Releases poll
+  --detach, -d          run in background, write a pid file, return immediately
+
+stop options:
+  --force               send SIGKILL instead of SIGTERM
+  --timeout <ms>        how long to wait for graceful exit (default 5000)
 
 Environment:
   COPILOT_DECK_HOME                   override data directory (default ~/.copilot-deck)
@@ -41,6 +50,10 @@ export async function main(argv: string[]): Promise<void> {
   switch (sub) {
     case "start":
       return runStart(parseStartArgs(rest));
+    case "stop":
+      return runStop(parseStopArgs(rest));
+    case "status":
+      return runStatus();
     case "doctor":
       return runDoctor();
     case "upgrade":
@@ -60,6 +73,7 @@ function parseStartArgs(rest: string[]): {
   host: string;
   open: boolean;
   updateCheck: boolean;
+  detach: boolean;
 } {
   const { values } = parseArgs({
     args: rest,
@@ -70,6 +84,7 @@ function parseStartArgs(rest: string[]): {
       "no-open": { type: "boolean", default: false },
       "update-check": { type: "boolean", default: true },
       "no-update-check": { type: "boolean", default: false },
+      detach: { type: "boolean", default: false, short: "d" },
     },
     allowPositionals: false,
     strict: true,
@@ -82,6 +97,24 @@ function parseStartArgs(rest: string[]): {
     host: String(values.host),
     open,
     updateCheck,
+    detach: values.detach === true,
+  };
+}
+
+function parseStopArgs(rest: string[]): { force: boolean; timeoutMs: number } {
+  const { values } = parseArgs({
+    args: rest,
+    options: {
+      force: { type: "boolean", default: false },
+      timeout: { type: "string", default: "5000" },
+    },
+    allowPositionals: false,
+    strict: true,
+  });
+  const t = Number.parseInt(String(values.timeout), 10);
+  return {
+    force: values.force === true,
+    timeoutMs: Number.isFinite(t) && t > 0 ? t : 5000,
   };
 }
 
