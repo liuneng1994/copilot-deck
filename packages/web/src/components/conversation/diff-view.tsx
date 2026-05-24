@@ -3,6 +3,7 @@ import { ExternalLink } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
 import { highlightToHtml } from "../../lib/shiki";
+import { extractShikiLineHtml } from "../../lib/shiki-lines";
 
 interface DiffRow {
   kind: "add" | "del" | "ctx";
@@ -60,25 +61,7 @@ function computeRows(oldText: string, newText: string): DiffRow[] {
 }
 
 function extractLinesFromHtml(html: string): string[] {
-  // Shiki emits `<pre><code><span class="line">…</span>\n<span class="line">…</span>…</code></pre>`
-  // where each line span contains **nested** token spans. A naive non-greedy regex stops
-  // at the first inner `</span>`, so we'd render only the first token per line. Use the
-  // DOM to walk balanced markup instead.
-  if (typeof DOMParser !== "undefined") {
-    try {
-      const doc = new DOMParser().parseFromString(html, "text/html");
-      const lineEls = doc.querySelectorAll("code .line, pre .line");
-      if (lineEls.length > 0) {
-        return Array.from(lineEls).map((el) => (el as HTMLElement).innerHTML);
-      }
-    } catch {
-      // fall through
-    }
-  }
-  // Fallback: strip outer <pre><code> wrapper and split on newlines between line spans.
-  const m = /<code[^>]*>([\s\S]*)<\/code>/.exec(html);
-  const body = (m?.[1] ?? html).replace(/^\s*<span class="line">|<\/span>\s*$/g, "");
-  return body.split(/<\/span>\s*\n\s*<span class="line">/);
+  return extractShikiLineHtml(html);
 }
 
 export function DiffView({

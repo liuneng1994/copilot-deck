@@ -1,6 +1,9 @@
 import type { OutlineNode } from "@agent-view/shared";
+import { Maximize2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "../../../lib/cn";
 import { type SupportedLang, highlightToHtml } from "../../../lib/shiki";
+import { extractShikiLineHtml } from "../../../lib/shiki-lines";
 import { useUIStore } from "../../../stores/ui-store";
 
 const CHUNK_BYTES = 64 * 1024;
@@ -93,16 +96,7 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
 }
 
 function extractLinesFromHtml(html: string): string[] {
-  const match = /<code[^>]*>([\s\S]*)<\/code>/.exec(html);
-  const body = match?.[1] ?? html;
-  const lines: string[] = [];
-  const lineRe = /<span class="line">([\s\S]*?)<\/span>/g;
-  let lineMatch = lineRe.exec(body);
-  while (lineMatch !== null) {
-    lines.push(lineMatch[1]);
-    lineMatch = lineRe.exec(body);
-  }
-  return lines;
+  return extractShikiLineHtml(html);
 }
 
 function bytesToHex(bytes: Uint8Array): string {
@@ -207,7 +201,7 @@ function CodePreview({ content, path }: { content: string; path: string }) {
             </span>
             {highlighted !== undefined ? (
               <span
-                className="flex-1 px-3"
+                className="flex-1 whitespace-pre px-3"
                 // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki produces sanitized highlight HTML
                 dangerouslySetInnerHTML={{ __html: highlighted || "&nbsp;" }}
               />
@@ -279,7 +273,19 @@ export function FilePreview({ path, cwd }: FilePreviewProps) {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [maximized, setMaximized] = useState(false);
+  const [outlineOpen, setOutlineOpen] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
+
+  // ESC closes the maximized overlay.
+  useEffect(() => {
+    if (!maximized) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMaximized(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [maximized]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `generation` is a refresh signal from git/file-watcher
   useEffect(() => {
@@ -391,17 +397,23 @@ export function FilePreview({ path, cwd }: FilePreviewProps) {
 
   const rawUrl = fileUrl("/api/file/raw", path, cwd);
   const canLoadMore = !state.isBinary && !state.isImage && state.loadedBytes < state.size;
+  const showOutline = !state.isBinary && !state.isImage && outline && outline.length > 0;
 
-  return (
-    <div className="flex min-h-0 flex-col text-[12px]">
-      <div className="flex min-h-0 max-h-[50vh] border-b border-border">
+  const body = (
+    <>
+      <div
+        className={cn("flex min-h-0 border-b border-border", maximized ? "flex-1" : "max-h-[50vh]")}
+      >
         <div className="min-w-0 flex-1 overflow-auto bg-background">
           {state.isImage ? (
             <div className="flex min-h-48 items-center justify-center p-3">
               <img
                 src={rawUrl}
                 alt={path}
-                className="max-h-[45vh] max-w-full rounded border border-border object-contain"
+                className={cn(
+                  "rounded border border-border object-contain",
+                  maximized ? "max-h-[85vh] max-w-full" : "max-h-[45vh] max-w-full",
+                )}
               />
             </div>
           ) : state.isBinary ? (
@@ -410,7 +422,7 @@ export function FilePreview({ path, cwd }: FilePreviewProps) {
             <CodePreview content={state.content} path={path} />
           )}
         </div>
-        {!state.isBinary && !state.isImage && outline ? <OutlineRail nodes={outline} /> : null}
+        {showOutline && outlineOpen ? <OutlineRail nodes={outline ?? []} /> : null}
       </div>
       <div className="flex items-center gap-3 px-3 py-2 text-[11px] text-muted-foreground">
         <span>
@@ -420,6 +432,15 @@ export function FilePreview({ path, cwd }: FilePreviewProps) {
           <span className="text-destructive">
             {error} · size {formatBytes(state.size)}
           </span>
+        ) : null}
+        {showOutline ? (
+          <button
+            type="button"
+            onClick={() => setOutlineOpen((v) => !v)}
+            className="rounded border border-border px-2 py-1 text-foreground hover:bg-muted"
+          >
+            {outlineOpen ? "Hide outline" : "Show outline"}
+          </button>
         ) : null}
         {canLoadMore ? (
           <button
@@ -432,6 +453,56 @@ export function FilePreview({ path, cwd }: FilePreviewProps) {
           </button>
         ) : null}
       </div>
+    </>
+  );
+
+  if (maximized) {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-stretch justify-center bg-background/90 p-4 backdrop-blur-sm"
+        // biome-ignore lint/a11y/useSemanticElements: native <dialog> requires imperative API; using role=dialog for compat
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Preview ${path}`}
+      >
+        <div className="flex w-full max-w-[1400px] flex-col overflow-hidden rounded-lg border border-border bg-panel shadow-2xl">
+          <div className="flex items-center gap-2 border-b border-border px-3 py-2 text-[12px]">
+            <span className="truncate font-mono text-foreground" title={path}>
+              {path}
+            </span>
+            <span className="shrink-0 text-[11px] text-muted-foreground">
+              {formatBytes(state.size)}
+            </span>
+            <button
+              type="button"
+              onClick={() => setMaximized(false)}
+              className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label="Close fullscreen preview"
+              title="Close (Esc)"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col text-[12px]">{body}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 flex-col text-[12px]">
+      <div className="flex items-center justify-end border-b border-border bg-panel/40 px-2 py-1">
+        <button
+          type="button"
+          onClick={() => setMaximized(true)}
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+          title="Maximize for easier reading"
+        >
+          <Maximize2 className="h-3 w-3" />
+          Maximize
+        </button>
+      </div>
+      {body}
     </div>
   );
 }
