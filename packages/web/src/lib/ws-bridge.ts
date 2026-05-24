@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { type ToolCallContentBlock, type ToolCallStatus, useUIStore } from "../stores/ui-store";
+import { userPrefsStore } from "../stores/user-prefs-store";
 import { normalizeContentBlock } from "./normalize-content";
+import { notify } from "./notifications";
 import { connectWs, onWsMessage } from "./ws-client";
 
 // Lightweight typed view over the ACP SessionNotification.update payload we care about.
@@ -70,6 +72,34 @@ function blocksFromUpdate(u: AcpUpdate): ToolCallContentBlock[] {
     });
   }
   return out;
+}
+
+function oneLinePreview(value: unknown, limit = 80): string | undefined {
+  let text: string | undefined;
+  if (typeof value === "string") {
+    text = value;
+  } else if (value !== undefined && value !== null) {
+    try {
+      text = JSON.stringify(value);
+    } catch {}
+  }
+  const compact = text?.replace(/\s+/g, " ").trim();
+  if (!compact) return undefined;
+  return compact.length > limit ? `${compact.slice(0, limit - 1)}…` : compact;
+}
+
+function lastAgentPreview(sessionId: string): string | undefined {
+  const session = useUIStore.getState().sessions[sessionId];
+  if (!session) return undefined;
+  for (let i = session.messages.length - 1; i >= 0; i--) {
+    const message = session.messages[i];
+    if (message.role === "agent") return oneLinePreview(message.text);
+  }
+  return undefined;
+}
+
+function selectSession(sessionId: string): void {
+  useUIStore.getState().setActiveSession(sessionId);
 }
 
 /** Subscribes to the WS stream and pushes updates into the UI store. */
@@ -231,6 +261,14 @@ export function useWsBridge() {
         }
         case "prompt_done": {
           store.setSessionStatus(msg.sessionId, "idle");
+          if (userPrefsStore.getState().notificationsEnabled) {
+            notify("prompt_done", {
+              title: "Prompt complete",
+              body: lastAgentPreview(msg.sessionId),
+              sessionId: msg.sessionId,
+              onClick: () => selectSession(msg.sessionId),
+            });
+          }
           break;
         }
         case "permission_request": {
@@ -242,6 +280,16 @@ export function useWsBridge() {
             receivedAt: Date.now(),
           });
           store.setSessionStatus(msg.sessionId, "awaiting_perm");
+          if (userPrefsStore.getState().notificationsEnabled) {
+            const toolTitle = msg.toolCall.title ?? msg.toolCall.kind ?? "Tool approval";
+            const rawInput = oneLinePreview(msg.toolCall.rawInput);
+            notify("permission_request", {
+              title: "Permission requested",
+              body: rawInput ? `${toolTitle}: ${rawInput}` : toolTitle,
+              sessionId: msg.sessionId,
+              onClick: () => selectSession(msg.sessionId),
+            });
+          }
           break;
         }
         case "error": {
