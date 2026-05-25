@@ -63,14 +63,28 @@ const fetchJson = async (path) => {
   return res.json();
 };
 
+const waitForJson = async (path) => {
+  const deadline = Date.now() + 20_000;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    try {
+      return await fetchJson(path);
+    } catch (e) {
+      lastError = e;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  throw lastError ?? new Error(`${path} did not become available`);
+};
+
 try {
-  const health = await fetchJson("/api/health");
+  const health = await waitForJson("/api/health");
   if (!health.ok) fail(`/api/health returned ${JSON.stringify(health)}`);
 
-  const version = await fetchJson("/api/version");
+  const version = await waitForJson("/api/version");
   if (!version.installed) fail(`/api/version missing installed: ${JSON.stringify(version)}`);
 
-  const doctor = await fetchJson("/api/doctor");
+  const doctor = await waitForJson("/api/doctor");
   if (!Array.isArray(doctor.checks) || doctor.checks.length === 0) {
     fail(`/api/doctor empty: ${JSON.stringify(doctor)}`);
   }
