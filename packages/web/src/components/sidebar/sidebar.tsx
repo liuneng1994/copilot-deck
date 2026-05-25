@@ -23,6 +23,10 @@ import { StatusDot } from "../ui/status-dot";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { CwdCombobox } from "./cwd-combobox";
 
+interface E2eRunSummary {
+  workspaces?: string[];
+}
+
 function statusToDot(status: SessionState["status"]) {
   if (status === "streaming") return { status: "ok" as const, pulse: true };
   if (status === "awaiting_perm") return { status: "warn" as const, pulse: true };
@@ -32,8 +36,9 @@ function statusToDot(status: SessionState["status"]) {
 
 export function Sidebar() {
   const [q, setQ] = useState("");
-  const [cwdInput, setCwdInput] = useState("/root/agents");
+  const [cwdInput, setCwdInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [e2eWorkspaces, setE2eWorkspaces] = useState<string[]>([]);
   const sessions = useUIStore((s) => s.sessions);
   const active = useUIStore((s) => s.activeSessionId);
   const setActive = useUIStore((s) => s.setActiveSession);
@@ -47,9 +52,24 @@ export function Sidebar() {
   const creatingThis = cwdTrimmed.length > 0 && pendingCreates.includes(cwdTrimmed);
   const blocked = busy || creatingThis;
 
+  useEffect(() => {
+    if (cwdInput.trim()) return;
+    let cancelled = false;
+    fetch("/api/default-cwd")
+      .then((response) => response.json() as Promise<{ cwd?: string }>)
+      .then((data) => {
+        if (!cancelled && data.cwd) setCwdInput(data.cwd);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [cwdInput]);
+
   const groups = useMemo(() => {
     const byCwd = new Map<string, SessionState[]>();
     for (const s of Object.values(sessions)) {
+      if (!s.cwd.trim()) continue;
       if (!byCwd.has(s.cwd)) byCwd.set(s.cwd, []);
       byCwd.get(s.cwd)!.push(s);
     }
@@ -69,6 +89,13 @@ export function Sidebar() {
       .filter(([_, list]) => list.length > 0)
       .map(([cwd, list]) => ({ cwd, list: list.sort((a, b) => b.updatedAt - a.updatedAt) }));
   }, [sessions, q]);
+  const filteredE2eWorkspaces = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    return e2eWorkspaces.filter((cwd) => {
+      if (Object.values(sessions).some((session) => session.cwd === cwd)) return false;
+      return !query || cwd.toLowerCase().includes(query);
+    });
+  }, [e2eWorkspaces, q, sessions]);
   const displaySessionIds = useMemo(
     () => groups.flatMap(({ list }) => list.map((session) => session.id)),
     [groups],
@@ -87,6 +114,21 @@ export function Sidebar() {
       current && displaySessionIds.includes(current) ? current : (displaySessionIds[0] ?? null),
     );
   }, [active, displaySessionIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/e2e-runs/latest")
+      .then((response) => response.json() as Promise<E2eRunSummary>)
+      .then((summary) => {
+        if (!cancelled) setE2eWorkspaces(summary.workspaces ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setE2eWorkspaces([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const focusSessionOption = (id: string) => {
     const option = Array.from(
@@ -146,17 +188,22 @@ export function Sidebar() {
       const cur = lastSeen.get(s.cwd) ?? 0;
       if (s.updatedAt > cur) lastSeen.set(s.cwd, s.updatedAt);
     }
-    return [...lastSeen.entries()].sort((a, b) => b[1] - a[1]).map(([cwd]) => cwd);
-  }, [sessions]);
+    const recent = [...lastSeen.entries()].sort((a, b) => b[1] - a[1]).map(([cwd]) => cwd);
+    return [...recent, ...e2eWorkspaces.filter((cwd) => !recent.includes(cwd))];
+  }, [sessions, e2eWorkspaces]);
 
-  const createSession = () => {
-    const cwd = cwdInput.trim();
+  const createSessionFor = (cwd: string) => {
     if (!cwd || blocked) return;
+    setCwdInput(cwd);
     beginCreateSession(cwd);
     sendWs({ type: "create_session", cwd });
     // Safety net: server should answer with session_created or error promptly;
     // release the lock after 15s if neither arrives so the UI doesn't wedge.
     window.setTimeout(() => endCreateSession(cwd), 15_000);
+  };
+
+  const createSession = () => {
+    createSessionFor(cwdInput.trim());
   };
 
   const createFolderAndSession = async () => {
@@ -266,12 +313,37 @@ export function Sidebar() {
           className="px-2 pb-3"
           onKeyDown={onSessionListKeyDown}
         >
-          {groups.length === 0 && (
+          {groups.length === 0 && filteredE2eWorkspaces.length === 0 && (
             <div className="px-2 py-8 text-center text-xs text-muted-foreground">
               No sessions yet.
               <br />
               Enter a path and hit <kbd className="rounded bg-muted px-1 py-0.5 text-[10px]">+</kbd>
               .
+            </div>
+          )}
+          {filteredE2eWorkspaces.length > 0 && (
+            <div className="mb-3">
+              <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                <FolderOpen className="h-3 w-3" />
+                <span className="truncate">E2E Workspaces</span>
+              </div>
+              <ul className="space-y-0.5" aria-label="E2E Workspaces">
+                {filteredE2eWorkspaces.map((cwd) => (
+                  <li key={cwd}>
+                    <button
+                      type="button"
+                      onClick={() => createSessionFor(cwd)}
+                      disabled={blocked}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                      title={`Create session for ${cwd}`}
+                    >
+                      <FolderOpen className="h-3 w-3 shrink-0 opacity-60" />
+                      <span className="min-w-0 flex-1 truncate">{cwd}</span>
+                      <Plus className="h-3 w-3 shrink-0 opacity-60" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
           {groups.map(({ cwd, list }) => (

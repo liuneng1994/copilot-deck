@@ -76,7 +76,7 @@ export function MessageBubble({
       >
         {isUser ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
       </div>
-      <div className="relative max-w-[80%]">
+      <div className={cn("relative", isUser ? "max-w-[80%]" : "max-w-[calc(100%-2.5rem)]")}>
         <div
           className={cn(
             "rounded-xl border px-3.5 py-2.5",

@@ -9,6 +9,7 @@ import {
 import { cn } from "../../lib/cn";
 import { sendWs } from "../../lib/ws-client";
 import { useCheckpointStore } from "../../stores/checkpoint-store";
+import { formatWorksetPrompt } from "../../stores/files-slice";
 import { type MessageAttachment, type SessionState, useUIStore } from "../../stores/ui-store";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/input";
@@ -65,6 +66,9 @@ export function Composer({ session }: { session: SessionState }) {
   const fanoutSelection = useUIStore((s) => s.fanoutSelection);
   const clearFanout = useUIStore((s) => s.clearFanoutSelection);
   const sessionsMap = useUIStore((s) => s.sessions);
+  const worksetItems = useUIStore((s) => s.worksetItems);
+  const removeWorksetItem = useUIStore((s) => s.removeWorksetItem);
+  const clearWorksetItems = useUIStore((s) => s.clearWorksetItems);
   // History recall: -1 = composing fresh; 0..N-1 = recalled from the end.
   const historyIdxRef = useRef<number>(-1);
 
@@ -252,6 +256,7 @@ export function Composer({ session }: { session: SessionState }) {
       size: p.size,
       dataUrl: p.dataUrl,
     }));
+    const promptText = formatWorksetPrompt(worksetItems, trimmed);
 
     // If the active session is currently busy, enqueue instead of sending.
     // Slash-built-ins above are excluded — they always run immediately.
@@ -259,7 +264,7 @@ export function Composer({ session }: { session: SessionState }) {
     const activeBusy = streaming || awaitingPerm;
     if (activeBusy && fanoutSelection.length < 2) {
       useUIStore.getState().enqueuePrompt(session.id, {
-        text: trimmed,
+        text: promptText,
         localAttachments: localAttachments.length > 0 ? localAttachments : undefined,
         wireAttachments: wireAttachments.length > 0 ? wireAttachments : undefined,
       });
@@ -283,18 +288,18 @@ export function Composer({ session }: { session: SessionState }) {
       // Busy fan-out target: enqueue rather than skip silently.
       if (target.status === "streaming" || target.status === "awaiting_perm") {
         useUIStore.getState().enqueuePrompt(sid, {
-          text: trimmed,
+          text: promptText,
           localAttachments: localAttachments.length > 0 ? localAttachments : undefined,
           wireAttachments: wireAttachments.length > 0 ? wireAttachments : undefined,
         });
         continue;
       }
-      appendUser(sid, trimmed, localAttachments.length > 0 ? localAttachments : undefined);
+      appendUser(sid, promptText, localAttachments.length > 0 ? localAttachments : undefined);
       setStatus(sid, "streaming");
       sendWs({
         type: "prompt",
         sessionId: sid,
-        text: trimmed,
+        text: promptText,
         attachments: wireAttachments.length > 0 ? wireAttachments : undefined,
       });
       setTimeout(() => useCheckpointStore.getState().invalidate(sid), 400);
@@ -475,6 +480,38 @@ export function Composer({ session }: { session: SessionState }) {
             }}
           />
           <div className="rounded-xl border border-border bg-panel-elevated focus-within:ring-2 focus-within:ring-ring">
+            {worksetItems.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 border-b border-border/60 px-3 pt-3 pb-2 text-[10px]">
+                <span className="mr-1 uppercase tracking-wider text-muted-foreground">Context</span>
+                {worksetItems.slice(0, 8).map((item) => (
+                  <span
+                    key={item.id}
+                    className="inline-flex max-w-[14rem] items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-primary"
+                    title={item.label}
+                  >
+                    <span className="truncate">{item.label}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeWorksetItem(item.id)}
+                      className="rounded-full hover:bg-primary/20"
+                      aria-label={`Remove ${item.label} from context`}
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </span>
+                ))}
+                {worksetItems.length > 8 ? (
+                  <span className="text-muted-foreground">+{worksetItems.length - 8} more</span>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={clearWorksetItems}
+                  className="ml-auto rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
             {pending.length > 0 && (
               <div className="flex flex-wrap items-start gap-2 border-b border-border/60 px-3 pt-3 pb-2">
                 {pending.map((p) => (

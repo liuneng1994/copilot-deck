@@ -12,7 +12,36 @@ export interface FilesOverview {
 }
 
 export type FileSourceFilter = "touched" | "dirty" | "untracked" | "all";
-export type FilesViewMode = "files" | "search" | "timeline";
+export type FilesViewMode =
+  | "files"
+  | "code"
+  | "symbols"
+  | "tests"
+  | "context"
+  | "search"
+  | "timeline";
+
+export interface WorkbenchSymbol {
+  id: string;
+  name: string;
+  kind: string;
+  path: string;
+  startLine: number;
+  endLine: number;
+}
+
+export type WorksetItem =
+  | { id: string; kind: "file"; path: string; label: string }
+  | {
+      id: string;
+      kind: "symbol";
+      path: string;
+      label: string;
+      startLine: number;
+      endLine: number;
+    }
+  | { id: string; kind: "test"; path: string; label: string; testName?: string }
+  | { id: string; kind: "buildTarget"; label: string; command: string };
 
 export interface FilesFilters {
   source: FileSourceFilter;
@@ -28,6 +57,8 @@ export interface FilesSlice {
   filesOverview: Record<string, FilesOverview | undefined>;
   filesViewMode: FilesViewMode;
   selectedFilePath: string | null;
+  focusedSymbol: WorkbenchSymbol | null;
+  worksetItems: WorksetItem[];
   reviewed: Record<string, Set<string>>;
   filters: FilesFilters;
   grepOps: Record<string, { hits: GrepHit[]; done: boolean; truncated?: boolean; error?: string }>;
@@ -35,8 +66,12 @@ export interface FilesSlice {
 
   loadFilesOverview(cwd: string): Promise<void>;
   setSelectedFilePath(path: string | null): void;
+  setFocusedSymbol(symbol: WorkbenchSymbol | null): void;
   setFilesViewMode(mode: FilesViewMode): void;
   setFilesFilters(patch: Partial<FilesFilters>): void;
+  addWorksetItem(item: WorksetItem): void;
+  removeWorksetItem(id: string): void;
+  clearWorksetItems(): void;
   hydrateReviewed(sessionId: string, paths: string[]): void;
   markReviewed(sessionId: string, path: string, reviewed: boolean): void;
   invalidateFilesIndex(cwd: string): void;
@@ -72,7 +107,29 @@ function loadInitialFilters(): FilesFilters {
 function loadInitialViewMode(): FilesViewMode {
   if (typeof window === "undefined") return "files";
   const raw = window.localStorage.getItem(VIEW_MODE_LS_KEY);
-  return raw === "files" || raw === "search" || raw === "timeline" ? raw : "files";
+  return raw === "files" ||
+    raw === "code" ||
+    raw === "symbols" ||
+    raw === "tests" ||
+    raw === "context" ||
+    raw === "search" ||
+    raw === "timeline"
+    ? raw
+    : "files";
+}
+
+export function formatWorksetPrompt(items: WorksetItem[], userText: string): string {
+  if (items.length === 0) return userText;
+  const lines = ["Use this workset:"];
+  for (const item of items) {
+    if (item.kind === "file") lines.push(`- File: ${item.path}`);
+    else if (item.kind === "symbol")
+      lines.push(`- Symbol: ${item.label} at ${item.path}:${item.startLine}-${item.endLine}`);
+    else if (item.kind === "test")
+      lines.push(`- Test: ${item.label}${item.testName ? ` (${item.testName})` : ""}`);
+    else lines.push(`- Validate: ${item.command}`);
+  }
+  return `${lines.join("\n")}\n\nTask:\n${userText}`;
 }
 
 async function sha1(text: string): Promise<string> {
@@ -93,6 +150,8 @@ export const createFilesSlice: StateCreator<FilesSlice & any, [], [], FilesSlice
   filesOverview: {},
   filesViewMode: loadInitialViewMode(),
   selectedFilePath: null,
+  focusedSymbol: null,
+  worksetItems: [],
   reviewed: {},
   filters: loadInitialFilters(),
   grepOps: {},
@@ -124,6 +183,9 @@ export const createFilesSlice: StateCreator<FilesSlice & any, [], [], FilesSlice
   setSelectedFilePath(path) {
     set({ selectedFilePath: path });
   },
+  setFocusedSymbol(symbol) {
+    set({ focusedSymbol: symbol });
+  },
   setFilesViewMode(mode) {
     set({ filesViewMode: mode });
     try {
@@ -136,6 +198,22 @@ export const createFilesSlice: StateCreator<FilesSlice & any, [], [], FilesSlice
     try {
       window.localStorage.setItem(LS_KEY, JSON.stringify(next));
     } catch {}
+  },
+  addWorksetItem(item) {
+    set((state: FilesSlice) => {
+      if (state.worksetItems.some((existing: WorksetItem) => existing.id === item.id)) {
+        return state;
+      }
+      return { worksetItems: [...state.worksetItems, item] };
+    });
+  },
+  removeWorksetItem(id) {
+    set((state: FilesSlice) => ({
+      worksetItems: state.worksetItems.filter((item: WorksetItem) => item.id !== id),
+    }));
+  },
+  clearWorksetItems() {
+    set({ worksetItems: [] });
   },
   hydrateReviewed(sessionId, paths) {
     set({ reviewed: { ...get().reviewed, [sessionId]: new Set(paths) } });

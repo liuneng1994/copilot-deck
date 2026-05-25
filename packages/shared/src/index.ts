@@ -275,6 +275,7 @@ export type ClientToServer =
   | { type: "bg_task_stop"; taskId: string }
   | { type: "bg_task_remove"; taskId: string }
   | { type: "bg_task_list" }
+  | { type: "agent_task_reply"; requestId: string; outcome: AgentTaskDecision }
   | {
       // User pressed "Move to background" on a foreground ACP terminal card.
       // Server flips mode to "background" and synthesizes a clean exit so the
@@ -452,12 +453,28 @@ export type ServerToClient =
   | { type: "bg_task_snapshot"; tasks: BgTaskSnapshot[] }
   | { type: "bg_task_update"; task: BgTaskSnapshot }
   | { type: "bg_task_output"; taskId: string; chunk: string; stream: "stdout" | "stderr" }
-  | { type: "bg_task_removed"; taskId: string };
+  | { type: "bg_task_removed"; taskId: string }
+  | { type: "agent_task_request"; request: AgentTaskRequest }
+  | { type: "agent_task_resolved"; requestId: string; outcome: AgentTaskDecision };
 
 export type BgTaskStatus = "starting" | "running" | "exited" | "killed" | "error";
 
 /** Origin of a managed shell process. */
-export type BgTaskOrigin = "user" | "acp-terminal";
+export type BgTaskOrigin = "user" | "acp-terminal" | "agent-request";
+
+export type AgentTaskKind = "command" | "test" | "review";
+export type AgentTaskDecision = "allow" | "deny";
+
+export interface AgentTaskRequest {
+  id: string;
+  sessionId: string;
+  cwd: string;
+  command: string;
+  kind: AgentTaskKind;
+  label?: string;
+  reason?: string;
+  createdAt: number;
+}
 
 /** Foreground vs background. ACP terminals start "foreground" and may be
  *  moved to "background" by the user; user-started tasks are always
@@ -486,6 +503,10 @@ export interface BgTaskSnapshot {
   acpTerminalId?: string;
   /** ACP session id that spawned this terminal (for filtering in UI). */
   sessionId?: string;
+  /** Model-requested task metadata, set when origin == "agent-request". */
+  agentTaskRequestId?: string;
+  agentTaskKind?: AgentTaskKind;
+  agentTaskReason?: string;
 }
 
 export interface TraceEventDTO {

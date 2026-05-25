@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import type { GrepHit } from "@agent-view/shared";
+import { listFiles } from "../file-index.js";
 
 export interface GrepOptions {
   cwd: string;
@@ -64,6 +67,7 @@ export function runGrep(
   let total = 0;
   let batch: GrepHit[] = [];
   let done = false;
+  let fallbackStarted = false;
   let timer: NodeJS.Timeout | undefined;
   let timeout: NodeJS.Timeout | undefined;
 
@@ -146,6 +150,41 @@ export function runGrep(
     }
   };
 
+  const fallbackScan = async () => {
+    const files = await listFiles({ cwd: opts.cwd, query: "", limit: 20_000 });
+    const needle = opts.caseSensitive ? opts.q : opts.q.toLowerCase();
+    for (const filePath of files) {
+      if (done) return;
+      let content: string;
+      try {
+        content = await readFile(path.join(opts.cwd, filePath), "utf8");
+      } catch {
+        continue;
+      }
+      const lines = content.split(/\r?\n/);
+      for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index];
+        const haystack = opts.caseSensitive ? line : line.toLowerCase();
+        let from = 0;
+        while (!done) {
+          const at = haystack.indexOf(needle, from);
+          if (at < 0) break;
+          const match = line.slice(at, at + opts.q.length);
+          addHit({
+            path: filePath,
+            line: index + 1,
+            col: at + 1,
+            before: line.slice(0, at),
+            match,
+            after: line.slice(at + opts.q.length),
+          });
+          from = at + Math.max(needle.length, 1);
+        }
+      }
+    }
+    finish({ truncated: false });
+  };
+
   const drainStdout = (chunk: Buffer) => {
     stdoutBuffer += chunk.toString("utf8");
     let newline = stdoutBuffer.indexOf("\n");
@@ -168,9 +207,20 @@ export function runGrep(
     stderr += chunk.toString("utf8");
   });
   child.on("error", (err: NodeJS.ErrnoException) => {
-    finish({ truncated: false, error: err.code === "ENOENT" ? "rg not found" : err.message });
+    if (err.code === "ENOENT") {
+      fallbackStarted = true;
+      void fallbackScan().catch((fallbackError: unknown) => {
+        finish({
+          truncated: false,
+          error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+        });
+      });
+      return;
+    }
+    finish({ truncated: false, error: err.message });
   });
   child.on("close", (code) => {
+    if (fallbackStarted) return;
     if (stdoutBuffer.length > 0) parseLine(stdoutBuffer);
     if (done) return;
     const error =

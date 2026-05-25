@@ -2,6 +2,7 @@ import { ArrowDownUp, ExternalLink, Filter } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useArtifactStore } from "../../../stores/artifact-store";
 import { cn } from "../../cn";
+import { MarkdownInline } from "../markdown";
 
 /**
  * Interactive table renderer used both inline (thumbnail mode) and in the
@@ -130,7 +131,9 @@ export function TableInline({
         />
       )}
       <div className={cn("overflow-auto", full && "max-h-[60vh]")}>
-        <table className="w-full text-xs">
+        <table
+          className={cn("w-full text-left text-[13px]", full ? "min-w-full" : "min-w-[42rem]")}
+        >
           <thead className="sticky top-0 bg-panel-elevated">
             <tr>
               {header.map((h, i) => (
@@ -144,12 +147,13 @@ export function TableInline({
                     }
                   }}
                   className={cn(
-                    "border-b border-border px-2 py-1 text-left font-medium",
+                    "border-b border-border px-3 py-2 align-bottom font-medium",
+                    i === 0 && "w-0 min-w-16 whitespace-nowrap",
                     full && "cursor-pointer select-none hover:bg-muted",
                   )}
                 >
                   <span className="inline-flex items-center gap-1">
-                    {h}
+                    <MarkdownInline text={h} />
                     {full && sortIdx === i && (
                       <ArrowDownUp
                         className={cn(
@@ -169,9 +173,14 @@ export function TableInline({
                 {header.map((_, ci) => (
                   <td
                     key={`c-${ri}-${ci}-${r[ci] ?? ""}`}
-                    className="border-b border-border/50 px-2 py-1 align-top font-mono"
+                    className={cn(
+                      "border-b border-border/50 px-3 py-2 align-top leading-6",
+                      ci === 0
+                        ? "w-0 min-w-16 whitespace-nowrap font-medium text-muted-foreground"
+                        : "min-w-80 whitespace-normal break-words",
+                    )}
                   >
-                    {r[ci] ?? ""}
+                    <MarkdownInline text={r[ci] ?? ""} />
                   </td>
                 ))}
               </tr>

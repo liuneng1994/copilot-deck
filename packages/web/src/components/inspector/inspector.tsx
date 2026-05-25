@@ -87,7 +87,7 @@ export function Inspector() {
         onValueChange={(v) => setTab(v as typeof tab)}
         className="flex flex-1 flex-col min-h-0"
       >
-        <TabsList className="mx-2 mt-2">
+        <TabsList className="mx-2 mt-2 h-auto flex-wrap overflow-visible">
           <TabsTrigger value="plan" className="gap-1">
             <ListChecks className="h-3 w-3" />
             Plan
@@ -124,7 +124,7 @@ export function Inspector() {
             Perf
           </TabsTrigger>
         </TabsList>
-        <TabsList className="mx-2 mt-1">
+        <TabsList className="mx-2 mt-1 h-auto flex-wrap overflow-visible">
           <TabsTrigger value="config" className="gap-1">
             <Settings2 className="h-3 w-3" />
             Config

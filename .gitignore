@@ -11,6 +11,7 @@ data/
 
 # Local dev server logs
 .dev-logs/
+.dev-work/
 
 # Playwright CLI runtime cache (screenshots/snapshots/console logs)
 .playwright-cli/
@@ -19,6 +20,9 @@ data/
 .copilot/
 
 # transient test/debug artifacts
+.e2e-work/
 e2e-artifacts/
+playwright-report/
+test-results/
 skills-tab.png
 *.pid

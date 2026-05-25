@@ -106,6 +106,12 @@ function selectSession(sessionId: string): void {
   useUIStore.getState().setActiveSession(sessionId);
 }
 
+function defaultSessionTitle(cwd: string): string {
+  const normalized = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
+  const last = normalized.split("/").filter(Boolean).pop();
+  return last ? `Session · ${last}` : "Session";
+}
+
 /** Subscribes to the WS stream and pushes updates into the UI store. */
 export function useWsBridge() {
   useEffect(() => {
@@ -117,7 +123,7 @@ export function useWsBridge() {
           store.upsertSession({
             id: msg.sessionId,
             cwd: msg.cwd,
-            title: msg.title ?? "New session",
+            title: msg.title ?? defaultSessionTitle(msg.cwd),
             status: "idle",
             renderHintMode: "prompt",
           });
@@ -143,13 +149,20 @@ export function useWsBridge() {
           // Some updates (e.g. available_commands_update, config_option_update)
           // arrive BEFORE the session_created reply lands. Ensure a shell exists.
           if (!store.sessions[sid]) {
-            store.upsertSession({ id: sid, cwd: "", title: "New session", status: "idle" });
+            store.upsertSession({ id: sid, cwd: "", title: "Session", status: "idle" });
           }
           switch (u.sessionUpdate) {
             case "agent_message_chunk": {
               const c = u.content;
               if (c && !Array.isArray(c) && c.type === "text" && c.text) {
                 store.appendAgentChunk(sid, c.text);
+              }
+              break;
+            }
+            case "system_message": {
+              const c = u.content;
+              if (c && !Array.isArray(c) && c.type === "text" && c.text) {
+                store.appendSystemMessage(sid, c.text);
               }
               break;
             }
@@ -497,6 +510,14 @@ export function useWsBridge() {
         }
         case "bg_task_removed": {
           store.removeBgTask(msg.taskId);
+          break;
+        }
+        case "agent_task_request": {
+          store.enqueueAgentTaskRequest(msg.request);
+          break;
+        }
+        case "agent_task_resolved": {
+          store.resolveAgentTaskRequest(msg.requestId, msg.outcome);
           break;
         }
       }

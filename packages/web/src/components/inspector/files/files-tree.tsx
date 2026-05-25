@@ -1,7 +1,7 @@
 import type { FileEntry } from "@agent-view/shared";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { type KeyboardEvent, useCallback, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../../lib/cn";
 import { type SessionState, useUIStore } from "../../../stores/ui-store";
 import { FileRow } from "./file-row";
@@ -189,6 +189,11 @@ export function FilesTree({ entries, agentTouched, session }: FilesTreeProps) {
     () => rows.filter((row): row is Extract<VisibleRow, { kind: "file" }> => row.kind === "file"),
     [rows],
   );
+  useEffect(() => {
+    if (!selectedFilePath) return;
+    const selectedVisible = fileRows.some((row) => fileKey(row.entry) === selectedFilePath);
+    if (!selectedVisible) setSelectedFilePath(null);
+  }, [fileRows, selectedFilePath, setSelectedFilePath]);
   const selectedIndex = fileRows.findIndex((row) => fileKey(row.entry) === selectedFilePath);
   const useVirtual = rows.length > 100;
   const virtualizer = useVirtualizer({

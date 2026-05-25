@@ -13,6 +13,10 @@ interface FilesToolbarProps {
 
 const VIEW_MODES: { value: FilesViewMode; label: string }[] = [
   { value: "files", label: "files" },
+  { value: "code", label: "code" },
+  { value: "symbols", label: "symbols" },
+  { value: "tests", label: "tests" },
+  { value: "context", label: "context" },
   { value: "search", label: "search" },
   { value: "timeline", label: "timeline" },
 ];
@@ -41,6 +45,9 @@ export function FilesToolbar({ cwd }: FilesToolbarProps) {
   const filters = useUIStore((s) => s.filters);
   const setFilesViewMode = useUIStore((s) => s.setFilesViewMode);
   const setFilesFilters = useUIStore((s) => s.setFilesFilters);
+  const setSelectedFilePath = useUIStore((s) => s.setSelectedFilePath);
+  const setFilePreviewMaximized = useUIStore((s) => s.setFilePreviewMaximized);
+  const setFilePreviewPath = useUIStore((s) => s.setFilePreviewPath);
   const [query, setQuery] = useState(filters.query);
 
   useEffect(() => {
@@ -57,34 +64,52 @@ export function FilesToolbar({ cwd }: FilesToolbarProps) {
     return () => window.clearTimeout(timeout);
   }, [query, setFilesFilters]);
 
+  const switchViewMode = (mode: FilesViewMode) => {
+    if (mode !== viewMode) {
+      setSelectedFilePath(null);
+      setFilePreviewPath(null);
+      setFilePreviewMaximized(false);
+    }
+    setFilesViewMode(mode);
+  };
+
   return (
     <div
       aria-label={`Files toolbar for ${cwd}`}
-      className="flex items-center gap-2 border-b border-border px-3 py-2 text-xs"
+      className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-xs"
     >
-      <div className="inline-flex shrink-0 rounded-md border border-border bg-panel p-0.5">
-        {VIEW_MODES.map((mode) => (
-          <button
-            key={mode.value}
-            type="button"
-            aria-pressed={viewMode === mode.value}
-            onClick={() => setFilesViewMode(mode.value)}
-            className={cn(
-              "rounded px-2.5 py-1 font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-              viewMode === mode.value && "bg-primary/15 text-primary shadow-sm hover:bg-primary/15",
-            )}
-          >
-            {mode.label}
-          </button>
-        ))}
+      <div className="min-w-0 overflow-x-auto rounded-md border border-border bg-panel p-0.5">
+        <div className="inline-flex min-w-max">
+          {VIEW_MODES.map((mode) => (
+            <button
+              key={mode.value}
+              type="button"
+              aria-pressed={viewMode === mode.value}
+              onClick={() => switchViewMode(mode.value)}
+              className={cn(
+                "rounded px-2.5 py-1 font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                viewMode === mode.value &&
+                  "bg-primary/15 text-primary shadow-sm hover:bg-primary/15",
+              )}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="relative min-w-[12rem] flex-1">
+      <div className="relative min-w-[10rem] flex-1">
         <Search className="-translate-y-1/2 pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 text-muted-foreground" />
         <Input
           value={query}
           onChange={(event) => setQuery(event.currentTarget.value)}
-          placeholder="Search file paths…"
+          placeholder={
+            viewMode === "code"
+              ? "Find project files…"
+              : viewMode === "symbols"
+                ? "Find classes, methods, functions…"
+                : "Search file paths…"
+          }
           className="h-8 bg-background pl-8 text-xs"
           aria-label="Search file paths"
         />
@@ -92,22 +117,24 @@ export function FilesToolbar({ cwd }: FilesToolbarProps) {
 
       {viewMode === "files" && (
         <>
-          <div className="flex shrink-0 items-center gap-1">
-            {SOURCE_FILTERS.map((source) => (
-              <button
-                key={source.value}
-                type="button"
-                aria-pressed={filters.source === source.value}
-                onClick={() => setFilesFilters({ source: source.value })}
-                className={cn(
-                  "rounded-full border border-border px-2.5 py-1 font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-                  filters.source === source.value &&
-                    "border-primary/30 bg-primary/15 text-primary hover:bg-primary/15",
-                )}
-              >
-                {source.label}
-              </button>
-            ))}
+          <div className="flex min-w-0 shrink overflow-x-auto items-center gap-1">
+            <div className="inline-flex min-w-max gap-1">
+              {SOURCE_FILTERS.map((source) => (
+                <button
+                  key={source.value}
+                  type="button"
+                  aria-pressed={filters.source === source.value}
+                  onClick={() => setFilesFilters({ source: source.value })}
+                  className={cn(
+                    "rounded-full border border-border px-2.5 py-1 font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                    filters.source === source.value &&
+                      "border-primary/30 bg-primary/15 text-primary hover:bg-primary/15",
+                  )}
+                >
+                  {source.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <Popover>

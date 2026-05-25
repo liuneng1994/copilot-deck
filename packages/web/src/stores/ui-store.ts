@@ -1,4 +1,6 @@
 import type {
+  AgentTaskDecision,
+  AgentTaskRequest,
   BgTaskSnapshot,
   ExtensionOpDone,
   ExtensionOpProgress,
@@ -292,6 +294,8 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   inspectorWidth: number;
   /** Background long-running tasks keyed by id. */
   bgTasks: Record<string, BgTaskSnapshot>;
+  /** Model-requested background tasks waiting for explicit user approval. */
+  agentTaskRequests: AgentTaskRequest[];
 
   toggleSidebar: () => void;
   toggleInspector: () => void;
@@ -305,6 +309,8 @@ export interface UIState extends ExtensionsSlice, FilesSlice {
   upsertBgTask: (task: BgTaskSnapshot) => void;
   appendBgTaskOutput: (taskId: string, chunk: string) => void;
   removeBgTask: (taskId: string) => void;
+  enqueueAgentTaskRequest: (request: AgentTaskRequest) => void;
+  resolveAgentTaskRequest: (requestId: string, outcome: AgentTaskDecision) => void;
 
   upsertSession: (s: Partial<SessionState> & { id: string }) => void;
   removeSession: (id: string) => void;
@@ -691,6 +697,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
   sidebarWidth: loadPanelWidths().sidebar,
   inspectorWidth: loadPanelWidths().inspector,
   bgTasks: {},
+  agentTaskRequests: [],
 
   setBgTasks: (tasks) =>
     set(() => {
@@ -713,6 +720,14 @@ export const useUIStore = create<UIState>((set, get, api) => ({
       const { [taskId]: _, ...rest } = state.bgTasks;
       return { bgTasks: rest };
     }),
+  enqueueAgentTaskRequest: (request) =>
+    set((state) => ({
+      agentTaskRequests: [...state.agentTaskRequests.filter((r) => r.id !== request.id), request],
+    })),
+  resolveAgentTaskRequest: (requestId) =>
+    set((state) => ({
+      agentTaskRequests: state.agentTaskRequests.filter((r) => r.id !== requestId),
+    })),
 
   loadPlugins: async () => {
     try {
@@ -868,7 +883,7 @@ export const useUIStore = create<UIState>((set, get, api) => ({
       const merged: SessionState = {
         id: s.id,
         cwd: s.cwd ?? existing?.cwd ?? "",
-        title: s.title ?? existing?.title ?? "New session",
+        title: s.title ?? existing?.title ?? "Session",
         status: s.status ?? existing?.status ?? "idle",
         modeName: s.modeName ?? existing?.modeName,
         modeId: s.modeId ?? existing?.modeId,
@@ -1389,7 +1404,17 @@ export const useUIStore = create<UIState>((set, get, api) => ({
       const modelBySession: Record<string, string> = { ...state.modelBySession };
       for (const h of hydrated) {
         // Don't trample an already-live session (e.g. one created in this tab pre-WS-ready).
-        if (sessions[h.id] && sessions[h.id].messages.length > 0) continue;
+        if (sessions[h.id] && sessions[h.id].messages.length > 0) {
+          sessions[h.id] = {
+            ...sessions[h.id],
+            cwd: sessions[h.id].cwd || h.cwd,
+            title: sessions[h.id].title || h.title || "Session",
+            detached: h.detached,
+            renderHintMode: h.renderHintMode,
+            updatedAt: h.updatedAt,
+          };
+          continue;
+        }
         const messages: Message[] = h.messages.map((m) => ({
           id: m.id,
           role: m.role as MessageRole,

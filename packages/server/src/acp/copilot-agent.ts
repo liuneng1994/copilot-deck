@@ -10,6 +10,16 @@ export interface CopilotAgentOptions {
   onExit?: (code: number | null, signal: NodeJS.Signals | null) => void;
 }
 
+function readPrefixArgs(): string[] {
+  const raw = process.env.COPILOT_CLI_PREFIX_ARGS;
+  if (!raw) return [];
+  const parsed = JSON.parse(raw) as unknown;
+  if (!Array.isArray(parsed) || !parsed.every((item): item is string => typeof item === "string")) {
+    throw new Error("COPILOT_CLI_PREFIX_ARGS must be a JSON string array");
+  }
+  return parsed;
+}
+
 /**
  * One CopilotAgent wraps one `copilot --acp --stdio` child process and the
  * matching ACP ClientSideConnection. It can host multiple ACP sessions.
@@ -22,7 +32,7 @@ export class CopilotAgent {
 
   constructor(client: acp.Client, opts: CopilotAgentOptions = {}) {
     const executable = opts.executable ?? process.env.COPILOT_CLI_PATH ?? "copilot";
-    const args = ["--acp", "--stdio", ...(opts.extraArgs ?? [])];
+    const args = [...readPrefixArgs(), "--acp", "--stdio", ...(opts.extraArgs ?? [])];
 
     this.process = spawn(executable, args, {
       stdio: ["pipe", "pipe", "pipe"],

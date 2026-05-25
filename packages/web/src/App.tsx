@@ -8,6 +8,7 @@ import { HistoryPage } from "./components/history/history-page";
 import { Inspector, InspectorRail } from "./components/inspector/inspector";
 import { ResizeHandle } from "./components/layout/resize-handle";
 import { MissionControl } from "./components/mission-control/mission-control";
+import { AgentTaskDialog } from "./components/overlays/agent-task-dialog";
 import { CommandPalette } from "./components/overlays/command-palette";
 import { ConfirmDialogHost } from "./components/overlays/confirm-dialog";
 import { HelpOverlay } from "./components/overlays/help-overlay";
@@ -218,6 +219,7 @@ export function App() {
       )}
       <StatusBar />
       <PermissionDialog />
+      <AgentTaskDialog />
       <TraceDrawer />
       <HelpOverlay />
       <SearchOverlay />

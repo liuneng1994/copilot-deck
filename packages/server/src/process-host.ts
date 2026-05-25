@@ -10,7 +10,7 @@ import {
   unlinkSync,
 } from "node:fs";
 import path from "node:path";
-import type { BgTaskSnapshot, BgTaskStatus } from "@agent-view/shared";
+import type { AgentTaskKind, BgTaskSnapshot, BgTaskStatus } from "@agent-view/shared";
 
 const MAX_TAIL_BYTES = 64 * 1024;
 const MAX_TASKS = 200;
@@ -120,6 +120,29 @@ export class ProcessHost extends EventEmitter {
     });
   }
 
+  /** Model-requested task that was explicitly approved by the user. */
+  startAgentRequest(opts: {
+    cwd: string;
+    command: string;
+    label?: string;
+    sessionId: string;
+    requestId: string;
+    kind: AgentTaskKind;
+    reason?: string;
+  }): BgTaskSnapshot {
+    return this.spawnEntry({
+      cwd: opts.cwd,
+      command: opts.command,
+      label: opts.label,
+      origin: "agent-request",
+      mode: "background",
+      sessionId: opts.sessionId,
+      agentTaskRequestId: opts.requestId,
+      agentTaskKind: opts.kind,
+      agentTaskReason: opts.reason,
+    });
+  }
+
   /**
    * ACP `session/new_terminal` — Copilot spawns a shell. Starts as
    * foreground; user may later flip to background via `moveToBackground`.
@@ -156,10 +179,13 @@ export class ProcessHost extends EventEmitter {
     cwd: string;
     command: string;
     label?: string;
-    origin: "user" | "acp-terminal";
+    origin: "user" | "acp-terminal" | "agent-request";
     mode: "foreground" | "background";
     sessionId?: string;
     acpTerminalId?: string;
+    agentTaskRequestId?: string;
+    agentTaskKind?: AgentTaskKind;
+    agentTaskReason?: string;
     /** For ACP terminals — explicit command + args (no shell wrapping). */
     execCommand?: string;
     execArgs?: string[];
@@ -178,6 +204,9 @@ export class ProcessHost extends EventEmitter {
       mode: opts.mode,
       sessionId: opts.sessionId,
       acpTerminalId: opts.acpTerminalId,
+      agentTaskRequestId: opts.agentTaskRequestId,
+      agentTaskKind: opts.agentTaskKind,
+      agentTaskReason: opts.agentTaskReason,
     };
     const entry: TaskEntry = { snapshot: snap, exitWaiters: [] };
     this.tasks.set(id, entry);

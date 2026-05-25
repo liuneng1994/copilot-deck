@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
 import { highlightToHtml } from "../../lib/shiki";
 import { extractShikiLineHtml } from "../../lib/shiki-lines";
+import { useUserPrefs } from "../../stores/user-prefs-store";
 
 interface DiffRow {
   kind: "add" | "del" | "ctx";
@@ -31,6 +32,15 @@ function langFromPath(p?: string): string {
     yaml: "yaml",
     go: "go",
     rs: "rust",
+    java: "java",
+    c: "c",
+    cc: "cpp",
+    cpp: "cpp",
+    cxx: "cpp",
+    h: "cpp",
+    hh: "cpp",
+    hpp: "cpp",
+    hxx: "cpp",
     html: "html",
     css: "css",
     toml: "toml",
@@ -78,14 +88,35 @@ export function DiffView({
   const adds = rows.filter((r) => r.kind === "add").length;
   const dels = rows.filter((r) => r.kind === "del").length;
   const lang = useMemo(() => langFromPath(path), [path]);
+  const theme = useUserPrefs((s) => s.theme);
+  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">(() =>
+    theme === "system"
+      ? window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light"
+      : theme,
+  );
 
   // Highlight old + new separately so each row maps to one styled <span>.
   const [oldHtml, setOldHtml] = useState<string[] | null>(null);
   const [newHtml, setNewHtml] = useState<string[] | null>(null);
 
   useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () =>
+      setResolvedTheme(theme === "system" ? (media.matches ? "dark" : "light") : theme);
+    apply();
+    if (theme !== "system") return;
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [theme]);
+
+  useEffect(() => {
     let cancelled = false;
-    Promise.all([highlightToHtml(oldText ?? "", lang), highlightToHtml(newText ?? "", lang)])
+    Promise.all([
+      highlightToHtml(oldText ?? "", lang, resolvedTheme),
+      highlightToHtml(newText ?? "", lang, resolvedTheme),
+    ])
       .then(([o, n]) => {
         if (cancelled) return;
         setOldHtml(extractLinesFromHtml(o));
@@ -100,7 +131,7 @@ export function DiffView({
     return () => {
       cancelled = true;
     };
-  }, [oldText, newText, lang]);
+  }, [oldText, newText, lang, resolvedTheme]);
 
   const renderRow = (r: DiffRow, i: number) => {
     const bg = r.kind === "add" ? "bg-success/15" : r.kind === "del" ? "bg-destructive/15" : "";

@@ -36,6 +36,7 @@ This conversation is rendered in a UI that interactively visualises certain cont
 - **Raw datasets** the user may chart (numeric columns over time / category): use a fenced \`\`\`csv block.
 - **Structured data** intended to be parsed: use a fenced \`\`\`json block (well-formed; 2-space indent).
 - **Runnable shell commands** the user might want to copy/run: use a fenced \`\`\`bash block where every command line starts with \`$ \` (one command per line). Pasted output or non-runnable scripts should *not* use the \`$ \` prefix.
+- **Background tasks** that should run independently after user approval: request them with a fenced \`\`\`copilot-deck-task JSON block: \`{"kind":"command","command":"npm test","label":"tests","reason":"why"}\`. Do not use this for ordinary one-off commands.
 - **HTML previews** (small self-contained snippets to display): \`\`\`html. Do not use for code samples.
 - **SVG illustrations**: \`\`\`svg.
 

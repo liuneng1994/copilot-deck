@@ -103,9 +103,9 @@ export function FileRow({
         <span
           className={cn(
             "h-2 w-2 shrink-0 rounded-full",
-            sourceDotClass[entry.source] ?? "bg-muted",
+            agentTouched ? "bg-sky-400" : (sourceDotClass[entry.source] ?? "bg-muted"),
           )}
-          aria-label={`${entry.source} source`}
+          aria-label={agentTouched ? "agent source" : `${entry.source} source`}
         />
         {agentTouched && (
           <span

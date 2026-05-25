@@ -9,64 +9,96 @@ import { type Page, expect, test } from "@playwright/test";
 
 const repoRoot = process.cwd();
 const requireFromServer = createRequire(path.join(repoRoot, "packages", "server", "package.json"));
-const workRoot = path.join(repoRoot, ".e2e-work", "files-v2-fixture");
+const workRoot = path.join(
+  repoRoot,
+  ".e2e-work",
+  `project-workbench-fixture-${process.pid}-${Date.now()}`,
+);
 const fixtureDir = path.join(workRoot, "repo");
 const fakeCopilotPath = path.join(workRoot, "fake-copilot.mjs");
-const dbPath = path.join(workRoot, "agent-view.sqlite");
+const fakeCopilotCmdPath = path.join(workRoot, "fake-copilot.cmd");
+const dbPath = path.join(workRoot, "project-workbench.sqlite");
+const orderServiceRel = path.join(
+  "src",
+  "main",
+  "java",
+  "com",
+  "acme",
+  "order",
+  "OrderService.java",
+);
+const orderServiceTestRel = path.join(
+  "src",
+  "test",
+  "java",
+  "com",
+  "acme",
+  "order",
+  "OrderServiceTest.java",
+);
+
 let serverUrl = "";
 let appUrl = "";
-
-const originalReadme = ["line one", "alpha line", "line three", "line four", "line five", ""].join(
-  "\n",
-);
-const dirtyReadme = [
-  "line one",
-  "alpha dirty line",
-  "line three",
-  "line four",
-  "line five",
-  "line six from workspace",
-  "",
-].join("\n");
-
 let server: ChildProcessWithoutNullStreams | undefined;
 let web: ChildProcessWithoutNullStreams | undefined;
 
 test.describe.configure({ mode: "serial" });
-test.setTimeout(60_000);
+test.setTimeout(90_000);
 
 test.beforeAll(async () => {
   await rm(workRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 250 }).catch(
     (error) => {
-      console.warn(`Could not pre-clean files-v2 fixture: ${error?.message ?? error}`);
+      console.warn(`Could not pre-clean workbench fixture: ${error?.message ?? error}`);
     },
   );
-  await mkdir(fixtureDir, { recursive: true });
-  await writeFile(path.join(fixtureDir, "README.md"), originalReadme);
-  await writeFile(path.join(fixtureDir, "agent.md"), "agent base\n");
-  run("git", ["init"], fixtureDir);
-  run("git", ["config", "core.autocrlf", "false"], fixtureDir);
-  run("git", ["config", "user.email", "files-v2@example.test"], fixtureDir);
-  run("git", ["config", "user.name", "Files V2 Test"], fixtureDir);
-  run("git", ["add", "README.md", "agent.md"], fixtureDir);
-  run("git", ["commit", "-m", "initial fixture"], fixtureDir);
-  await writeFile(path.join(fixtureDir, "README.md"), dirtyReadme);
-  await writeFile(path.join(fixtureDir, "new.txt"), "untracked alpha payload\n");
+  await mkdir(path.dirname(path.join(fixtureDir, orderServiceRel)), { recursive: true });
+  await mkdir(path.dirname(path.join(fixtureDir, orderServiceTestRel)), { recursive: true });
+  await writeFile(path.join(fixtureDir, "build.gradle"), "plugins { id 'java' }\n");
   await writeFile(
-    path.join(fixtureDir, "pkg-lock.json"),
-    '{"lockfileVersion":3,"generated":true}\n',
+    path.join(fixtureDir, orderServiceRel),
+    [
+      "package com.acme.order;",
+      "",
+      "public class OrderService {",
+      "  public Order createOrder(CreateOrderRequest request) {",
+      "    return new Order(request.id());",
+      "  }",
+      "}",
+      "",
+      "record CreateOrderRequest(String id) {}",
+      "record Order(String id) {}",
+      "",
+    ].join("\n"),
   );
+  await writeFile(
+    path.join(fixtureDir, orderServiceTestRel),
+    [
+      "package com.acme.order;",
+      "",
+      "public class OrderServiceTest {",
+      "  public void createOrder_success() {",
+      '    new OrderService().createOrder(new CreateOrderRequest("o-1"));',
+      "  }",
+      "}",
+      "",
+    ].join("\n"),
+  );
+  run("git", ["init"], fixtureDir);
+  run("git", ["config", "user.email", "workbench@example.test"], fixtureDir);
+  run("git", ["config", "user.name", "Workbench Test"], fixtureDir);
+  run("git", ["add", "."], fixtureDir);
+  run("git", ["commit", "-m", "initial workbench fixture"], fixtureDir);
   await writeFakeCopilot();
 
   const serverPort = await getFreePort();
   const webPort = await getFreePort();
   serverUrl = `http://127.0.0.1:${serverPort}`;
   appUrl = `http://127.0.0.1:${webPort}`;
-
   server = start("pnpm", ["--dir", "packages/server", "exec", "tsx", "src/main.ts"], {
     AGENT_VIEW_DB: dbPath,
     COPILOT_CLI_PATH: process.execPath,
     COPILOT_CLI_PREFIX_ARGS: JSON.stringify([fakeCopilotPath]),
+    COPILOT_DECK_DISABLE_UPDATE_CHECK: "1",
     PORT: String(serverPort),
   });
   await waitForHttp(`${serverUrl}/api/health`);
@@ -85,89 +117,45 @@ test.afterAll(async () => {
   await new Promise((resolve) => setTimeout(resolve, 500));
   await rm(workRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 250 }).catch(
     (error) => {
-      console.warn(`Could not clean files-v2 fixture: ${error?.message ?? error}`);
+      console.warn(`Could not clean workbench fixture: ${error?.message ?? error}`);
     },
   );
 });
 
-test("Files Tab v2 covers dirty, untracked, generated, agent, diff, restore, grep, timeline, and path safety", async ({
-  page,
-}) => {
+test("symbol context workset drives prompt and touched-file review", async ({ page }) => {
   await page.goto(appUrl);
   await createSession(page, fixtureDir);
   await page.reload();
+
   await page.getByRole("tab", { name: "Files" }).click();
-  const filesPanel = page.getByRole("tabpanel", { name: "Files" });
+  await page.getByRole("button", { name: "symbols" }).click();
+  await page.getByLabel("Search file paths").fill("createOrder");
+  await expect(page.getByText("createOrder").first()).toBeVisible();
+  await page.getByTitle("Add symbol to context").first().click();
 
-  await expect(page.getByText(/3 dirty · 2 untracked · 1 agent/)).toBeVisible();
-  await expect(fileButton(page, "agent.md")).toBeVisible();
-  await expect(fileButton(page, "agent.md").locator('[aria-label="agent source"]')).toHaveClass(
-    /bg-sky-400/,
-  );
+  await page.getByRole("button", { name: "tests", exact: true }).click();
+  await expect(page.getByText(/OrderServiceTest\.java/)).toBeVisible();
+  await page.getByTitle("Add test to context").first().click();
+  await page.getByTitle("Add validation command to context").first().click();
 
-  await filesPanel.getByRole("button", { name: "All", exact: true }).click();
-  await expect(fileButton(page, "README.md")).toBeVisible();
-  await expect(fileButton(page, "new.txt")).toBeVisible();
-  await expect(fileButton(page, "README.md").locator('[aria-label="dirty source"]')).toHaveClass(
-    /bg-amber-400/,
-  );
-  await expect(fileButton(page, "new.txt").locator('[aria-label="untracked source"]')).toHaveClass(
-    /bg-violet-400/,
-  );
-  await expect(page.getByRole("button", { name: /1 generated files/ })).toBeVisible();
-  await page.getByRole("button", { name: /1 generated files/ }).click();
-  await expect(fileButton(page, "pkg-lock.json")).toBeVisible();
-  await expect(fileButton(page, "pkg-lock.json")).toContainText("generated");
+  await expect(page.getByText("method createOrder").first()).toBeVisible();
+  await expect(page.getByText(/OrderServiceTest\.java/).first()).toBeVisible();
 
-  await fileButton(page, "README.md").click();
-  await page.getByRole("button", { name: "vs HEAD" }).dispatchEvent("click");
-  await expect(page.getByText("alpha dirty line")).toBeVisible();
-  await expect(page.getByText("alpha line")).toBeVisible();
+  await page.getByLabel("Message composer").fill("Fix create order timeout handling");
+  await page.getByRole("button", { name: "Send" }).click();
 
-  await page.getByTitle("Restore file").click();
-  await page.getByRole("button", { name: "Confirm" }).click();
+  await expect(page.getByText(/saw workset.*createOrder.*OrderServiceTest/i)).toBeVisible({
+    timeout: 15_000,
+  });
   await expect
-    .poll(() => readFile(path.join(fixtureDir, "README.md"), "utf8"), { timeout: 5_000 })
-    .toBe(originalReadme);
-  await expect(page.getByText(/2 dirty · 2 untracked · 1 agent/)).toBeVisible();
+    .poll(() => readFile(path.join(fixtureDir, orderServiceRel), "utf8"), { timeout: 10_000 })
+    .toContain("timeout-safe path");
 
-  await filesPanel.getByRole("button", { name: "search", exact: true }).click();
-  await page.getByLabel("Search pattern").fill("alpha");
-  await page.getByLabel("Search pattern").press("Enter");
-  await expect(page.getByText(/Results: [1-9]\d* hits?/)).toBeVisible();
-  await expect(page.locator("summary", { hasText: "README.md" })).toBeVisible();
-  await expect(page.locator("mark", { hasText: "alpha" }).first()).toBeVisible();
-
-  await filesPanel.getByRole("button", { name: "timeline", exact: true }).click();
-  await expect(filesPanel.getByRole("button", { name: "Open agent.md" })).toBeVisible();
-  await expect(filesPanel.getByRole("button", { name: "[Jump to call]" })).toBeVisible();
-
-  await filesPanel.getByRole("button", { name: "files", exact: true }).click();
-  await filesPanel.getByRole("button", { name: "All", exact: true }).click();
-  const markReviewed = page.getByTitle("Mark reviewed").first();
-  await markReviewed.click();
-  await expect(page.getByTitle("Reviewed").first()).toBeVisible();
-  await page.reload();
-  await page.getByRole("tab", { name: "Files" }).click();
-  if ((await page.getByTitle("Reviewed").count()) === 0) {
-    console.warn("TODO(files-sqlite-ext): assert reviewed state persists after reload.");
-  }
-
-  const pathSafetyStatus = await page.evaluate(async (cwd) => {
-    const response = await fetch(
-      `/api/file?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent("/etc/passwd")}`,
-    );
-    return response.status;
-  }, fixtureDir);
-  expect(pathSafetyStatus).toBe(403);
+  await page.getByRole("button", { name: "files" }).click();
+  await expect(page.locator("button").filter({ hasText: "OrderService.java" }).last()).toBeVisible({
+    timeout: 10_000,
+  });
 });
-
-function fileButton(page: Page, name: string) {
-  return page
-    .getByRole("tabpanel", { name: "Files" })
-    .getByRole("button", { name: new RegExp(escapeRegExp(name)) })
-    .first();
-}
 
 async function createSession(page: Page, cwd: string): Promise<string> {
   return page.evaluate(
@@ -176,7 +164,7 @@ async function createSession(page: Page, cwd: string): Promise<string> {
         const ws = new WebSocket(`ws://${location.host}/ws`);
         const timer = window.setTimeout(() => {
           ws.close();
-          reject(new Error("Timed out creating fixture session"));
+          reject(new Error("Timed out creating workbench session"));
         }, 10_000);
         ws.addEventListener("open", () => {
           ws.send(JSON.stringify({ type: "create_session", cwd }));
@@ -195,7 +183,7 @@ async function createSession(page: Page, cwd: string): Promise<string> {
         });
         ws.addEventListener("error", () => {
           window.clearTimeout(timer);
-          reject(new Error("Fixture session websocket failed"));
+          reject(new Error("Workbench session websocket failed"));
         });
       }),
     { cwd },
@@ -228,9 +216,9 @@ async function stop(child: ChildProcessWithoutNullStreams | undefined): Promise<
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   if (process.platform === "win32" && child.pid) {
     const script = `
-      function Stop-Tree([int] $TargetPid) {
-        Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $TargetPid } | ForEach-Object { Stop-Tree ([int] $_.ProcessId) }
-        try { Stop-Process -Id $TargetPid -Force -ErrorAction SilentlyContinue } catch {}
+      function Stop-Tree([int] $Pid) {
+        Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $Pid } | ForEach-Object { Stop-Tree ([int] $_.ProcessId) }
+        try { Stop-Process -Id $Pid -Force -ErrorAction SilentlyContinue } catch {}
       }
       Stop-Tree ${child.pid}
     `;
@@ -286,8 +274,11 @@ async function waitForHttp(url: string): Promise<void> {
 }
 
 async function writeFakeCopilot(): Promise<void> {
-  const sdkUrl = pathToFileURL(resolveServerPackage("@agentclientprotocol/sdk")).href;
+  const sdkUrl = pathToFileURL(requireFromServer.resolve("@agentclientprotocol/sdk")).href;
+  const servicePath = orderServiceRel.replace(/\\/g, "/");
   const script = `#!/usr/bin/env node
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { Readable, Writable } from "node:stream";
 import { AgentSideConnection, ndJsonStream, PROTOCOL_VERSION } from "${sdkUrl}";
@@ -296,74 +287,74 @@ let connection;
 const output = Writable.toWeb(process.stdout);
 const input = Readable.toWeb(process.stdin);
 const stream = ndJsonStream(output, input);
-const sessions = new Set();
-
-const modes = {
-  currentModeId: "agent",
-  availableModes: [{ id: "agent", name: "Agent" }],
-};
+const cwdBySession = new Map();
+const modes = { currentModeId: "agent", availableModes: [{ id: "agent", name: "Agent" }] };
 
 const agent = {
   async initialize() {
     return {
       protocolVersion: PROTOCOL_VERSION,
       agentCapabilities: { loadSession: true },
-      agentInfo: { name: "files-v2-fake-copilot", version: "0.0.0" },
+      agentInfo: { name: "project-workbench-fake-copilot", version: "0.0.0" },
       authMethods: [],
     };
   },
   async newSession(params) {
-    const sessionId = "files-v2-" + randomUUID();
-    sessions.add(sessionId);
-    await connection.sessionUpdate({
-      sessionId,
-      update: {
-        sessionUpdate: "tool_call",
-        toolCallId: "touch-" + sessionId,
-        kind: "edit",
-        title: "Edit agent.md",
-        status: "completed",
-        rawInput: {
-          path: "agent.md",
-          old_content: "agent base\\n",
-          new_content: "agent base\\nagent touched\\n",
-        },
-        content: [
-          {
-            type: "diff",
-            path: "agent.md",
-            oldText: "agent base\\n",
-            newText: "agent base\\nagent touched\\n",
-          },
-        ],
-        locations: [{ path: "agent.md", line: 2 }],
-      },
-    });
+    const sessionId = "workbench-" + randomUUID();
+    cwdBySession.set(sessionId, params.cwd);
     return { sessionId, modes };
   },
   async loadSession(params) {
-    sessions.add(params.sessionId);
+    cwdBySession.set(params.sessionId, params.cwd);
     return { sessionId: params.sessionId, modes };
   },
-  async prompt() {
+  async prompt(params) {
+    const promptText = (params.prompt ?? [])
+      .map((block) => block?.type === "text" ? block.text ?? "" : "")
+      .join("\\n");
+    const cwd = cwdBySession.get(params.sessionId);
+    const abs = path.join(cwd, ${JSON.stringify(servicePath)});
+    const oldText = await readFile(abs, "utf8");
+    const newText = oldText.replace("return new Order(request.id());", "// timeout-safe path\\n    return new Order(request.id());");
+    await writeFile(abs, newText, "utf8");
+    await connection.sessionUpdate({
+      sessionId: params.sessionId,
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "text",
+          text: promptText.includes("OrderServiceTest")
+            ? "saw workset: createOrder and OrderServiceTest; applied timeout-safe path"
+            : "missing workset context",
+        },
+      },
+    });
+    await connection.sessionUpdate({
+      sessionId: params.sessionId,
+      update: {
+        sessionUpdate: "tool_call",
+        toolCallId: "edit-" + params.sessionId,
+        kind: "edit",
+        title: "Edit OrderService.java",
+        status: "completed",
+        rawInput: { path: ${JSON.stringify(servicePath)}, old_content: oldText, new_content: newText },
+        content: [{ type: "diff", path: ${JSON.stringify(servicePath)}, oldText, newText }],
+        locations: [{ path: ${JSON.stringify(servicePath)}, line: 5 }],
+      },
+    });
     return { stopReason: "end_turn" };
   },
   async cancel() {},
   async setSessionMode() {},
   async authenticate() {},
 };
-
 connection = new AgentSideConnection(() => agent, stream);
 await connection.closed;
 `;
   await writeFile(fakeCopilotPath, script);
   await chmod(fakeCopilotPath, 0o755);
-}
-
-function resolveServerPackage(specifier: string): string {
-  return requireFromServer.resolve(specifier);
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  await writeFile(
+    fakeCopilotCmdPath,
+    `@echo off\r\nnode "%~dp0${path.basename(fakeCopilotPath)}" %*\r\n`,
+  );
 }

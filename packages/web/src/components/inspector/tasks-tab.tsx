@@ -1,5 +1,5 @@
-import { Play, Square, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ExternalLink, Play, RefreshCw, Square, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { sendWs } from "../../lib/ws-client";
 import { type SessionState, useUIStore } from "../../stores/ui-store";
 
@@ -32,6 +32,21 @@ function formatDuration(start: number, end?: number): string {
   return `${h}h${m % 60}m`;
 }
 
+interface E2eRunSummary {
+  available: boolean;
+  status: "available" | "missing";
+  reportUrl: string | null;
+  reportPath: string | null;
+  testResultsPath: string | null;
+  workDirPath: string | null;
+  updatedAt: number | null;
+}
+
+function formatTimestamp(value: number | null): string {
+  if (!value) return "not run";
+  return new Date(value).toLocaleString();
+}
+
 export function TasksTab({ session }: { session: SessionState }) {
   const tasks = useUIStore((s) => s.bgTasks);
   const cwdTasks = Object.values(tasks)
@@ -40,6 +55,23 @@ export function TasksTab({ session }: { session: SessionState }) {
 
   const [command, setCommand] = useState("");
   const [label, setLabel] = useState("");
+  const [e2eRun, setE2eRun] = useState<E2eRunSummary | null>(null);
+  const [e2eLoading, setE2eLoading] = useState(false);
+
+  const loadE2eRun = useCallback(async () => {
+    setE2eLoading(true);
+    try {
+      const response = await fetch("/api/e2e-runs/latest");
+      const body = (await response.json()) as E2eRunSummary;
+      setE2eRun(body);
+    } finally {
+      setE2eLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadE2eRun();
+  }, [loadE2eRun]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,6 +89,60 @@ export function TasksTab({ session }: { session: SessionState }) {
 
   return (
     <div className="space-y-3 p-2">
+      <section className="space-y-2 rounded-md border border-border bg-panel-elevated p-2">
+        <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-muted-foreground">
+          <span>Latest e2e run</span>
+          <button
+            type="button"
+            className="ml-auto rounded p-1 hover:bg-muted hover:text-foreground"
+            onClick={() => void loadE2eRun()}
+            title="Refresh e2e run record"
+          >
+            <RefreshCw className={`h-3 w-3 ${e2eLoading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+        {e2eRun?.available ? (
+          <div className="space-y-1 text-[11px]">
+            <div className="flex items-center gap-2">
+              <span className="rounded bg-success/10 px-1.5 py-0.5 font-medium text-success">
+                report available
+              </span>
+              <span className="text-muted-foreground">{formatTimestamp(e2eRun.updatedAt)}</span>
+              {e2eRun.reportUrl ? (
+                <a
+                  href={e2eRun.reportUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-primary hover:bg-primary/10"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Open report
+                </a>
+              ) : null}
+            </div>
+            {e2eRun.reportPath ? (
+              <div className="truncate font-mono text-[10px] text-muted-foreground">
+                report: {e2eRun.reportPath}
+              </div>
+            ) : null}
+            {e2eRun.testResultsPath ? (
+              <div className="truncate font-mono text-[10px] text-muted-foreground">
+                results: {e2eRun.testResultsPath}
+              </div>
+            ) : null}
+            {e2eRun.workDirPath ? (
+              <div className="truncate font-mono text-[10px] text-muted-foreground">
+                fixture: {e2eRun.workDirPath}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="text-[11px] text-muted-foreground">
+            No e2e run record found. Run Playwright tests to populate the report.
+          </div>
+        )}
+      </section>
+
       <form
         onSubmit={submit}
         className="space-y-2 rounded-md border border-border bg-panel-elevated p-2"
@@ -126,7 +212,11 @@ function TaskCard({ taskId }: { taskId: string }) {
   const isRunning = task.status === "running" || task.status === "starting";
 
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-background">
+    <div
+      className="overflow-hidden rounded-md border border-border bg-background"
+      data-bg-task-card={task.id}
+      data-bg-task-origin={task.origin}
+    >
       <div className="flex items-center gap-2 border-b border-border px-2 py-1.5 text-[11px]">
         <span className={`h-2 w-2 rounded-full bg-current ${statusColor(task.status)}`} />
         <span className={`font-medium ${statusColor(task.status)}`}>{task.status}</span>
@@ -136,6 +226,19 @@ function TaskCard({ taskId }: { taskId: string }) {
             title="Spawned by Copilot through the ACP terminal extension"
           >
             from copilot
+          </span>
+        )}
+        {task.origin === "agent-request" && (
+          <span
+            className="rounded-sm border border-primary/40 bg-primary/10 px-1 text-[9px] uppercase tracking-wider text-primary"
+            title="Requested by the model and approved by the user"
+          >
+            agent task
+          </span>
+        )}
+        {task.agentTaskKind && (
+          <span className="rounded-sm bg-muted px-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+            {task.agentTaskKind}
           </span>
         )}
         {task.label && <span className="text-foreground">{task.label}</span>}
@@ -172,6 +275,11 @@ function TaskCard({ taskId }: { taskId: string }) {
       {task.errorMessage && (
         <div className="bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
           {task.errorMessage}
+        </div>
+      )}
+      {task.agentTaskReason && (
+        <div className="border-b border-border bg-primary/5 px-2 py-1 text-[11px] text-muted-foreground">
+          {task.agentTaskReason}
         </div>
       )}
       <pre

@@ -15,6 +15,9 @@ const BUNDLED_LANGS = [
   "python",
   "go",
   "rust",
+  "java",
+  "c",
+  "cpp",
   "html",
   "css",
   "yaml",
@@ -41,13 +44,15 @@ function normalizeLang(raw: string): string {
   if (l === "jsx") return "jsx";
   if (l === "tsx") return "tsx";
   if (l === "rs") return "rust";
+  if (l === "cc" || l === "cxx" || l === "hpp" || l === "hh" || l === "hxx") return "cpp";
+  if (l === "h") return "cpp";
   return l;
 }
 
 function getHighlighter(): Promise<Highlighter> {
   if (!highlighterPromise) {
     highlighterPromise = createHighlighter({
-      themes: ["github-dark", "github-light"],
+      themes: ["dark-plus", "light-plus"],
       langs: ["ts", "tsx", "js", "jsx", "json", "bash", "md", "py", "diff"],
     });
     for (const l of ["ts", "tsx", "js", "jsx", "json", "bash", "md", "py", "diff"]) {
@@ -81,6 +86,6 @@ export async function highlightToHtml(
   const useLang = await ensureLang(hi, String(lang));
   return hi.codeToHtml(code, {
     lang: useLang,
-    theme: theme === "light" ? "github-light" : "github-dark",
+    theme: theme === "light" ? "light-plus" : "dark-plus",
   });
 }

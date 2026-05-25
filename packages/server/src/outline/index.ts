@@ -28,6 +28,15 @@ export function detectOutlineLanguage(absPath: string): string | null {
       return "rust";
     case ".java":
       return "java";
+    case ".c":
+    case ".cc":
+    case ".cpp":
+    case ".cxx":
+    case ".h":
+    case ".hh":
+    case ".hpp":
+    case ".hxx":
+      return "cpp";
     case ".rb":
       return "ruby";
     default:
@@ -72,6 +81,10 @@ function parseHeuristicOutline(source: string, language: string): OutlineNode[] 
       return parseGo(source);
     case "rust":
       return parseRust(source);
+    case "java":
+      return parseJava(source);
+    case "cpp":
+      return parseCpp(source);
     default:
       return null;
   }
@@ -164,6 +177,63 @@ function parseRust(source: string): OutlineNode[] {
     if (!match) continue;
     const name = match[2] ?? "impl";
     nodes.push(makeNode(match[1], name, index, estimateBraceEnd(lines, index)));
+  }
+
+  return nodes;
+}
+
+function parseJava(source: string): OutlineNode[] {
+  const lines = source.split(/\r?\n/);
+  const nodes: OutlineNode[] = [];
+  const typeDecl =
+    /^\s*(?:public|protected|private|abstract|final|sealed|non-sealed|static|\s)*\s*(class|interface|enum|record)\s+([A-Za-z_$][\w$]*)/;
+  const methodDecl =
+    /^\s*(?:@\w+(?:\([^)]*\))?\s*)*(?:public|protected|private|static|final|abstract|synchronized|native|strictfp|\s)+[\w$<>\[\], ?&.]+\s+([A-Za-z_$][\w$]*)\s*\([^;]*\)\s*(?:throws [^{]+)?\{/;
+  const skip = new Set(["if", "for", "while", "switch", "catch", "try", "return", "new"]);
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const typeMatch = typeDecl.exec(line);
+    if (typeMatch) {
+      nodes.push(makeNode(typeMatch[1], typeMatch[2], index, estimateBraceEnd(lines, index)));
+      continue;
+    }
+
+    const methodMatch = methodDecl.exec(line);
+    if (methodMatch && !skip.has(methodMatch[1])) {
+      nodes.push(makeNode("method", methodMatch[1], index, estimateBraceEnd(lines, index)));
+    }
+  }
+
+  return nodes;
+}
+
+function parseCpp(source: string): OutlineNode[] {
+  const lines = source.split(/\r?\n/);
+  const nodes: OutlineNode[] = [];
+  const typeDecl = /^\s*(?:template\s*<[^>]+>\s*)?(class|struct|enum)\s+([A-Za-z_]\w*)/;
+  const namespaceDecl = /^\s*namespace\s+([A-Za-z_]\w*)\s*\{/;
+  const functionDecl =
+    /^\s*(?:template\s*<[^>]+>\s*)?(?:[\w:<>,~*&\s]+\s+)?([A-Za-z_]\w*(?:::[A-Za-z_]\w*)*|operator[^\s(]+)\s*\([^;{}]*\)\s*(?:const\s*)?(?:noexcept\s*)?(?:->\s*[\w:<>,~*&\s]+)?\{/;
+  const skip = new Set(["if", "for", "while", "switch", "catch", "return"]);
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const typeMatch = typeDecl.exec(line);
+    if (typeMatch) {
+      nodes.push(makeNode(typeMatch[1], typeMatch[2], index, estimateBraceEnd(lines, index)));
+      continue;
+    }
+    const namespaceMatch = namespaceDecl.exec(line);
+    if (namespaceMatch) {
+      nodes.push(makeNode("namespace", namespaceMatch[1], index, estimateBraceEnd(lines, index)));
+      continue;
+    }
+    const functionMatch = functionDecl.exec(line);
+    const name = functionMatch?.[1]?.split("::").pop() ?? "";
+    if (functionMatch && name && !skip.has(name)) {
+      nodes.push(makeNode("function", functionMatch[1], index, estimateBraceEnd(lines, index)));
+    }
   }
 
   return nodes;

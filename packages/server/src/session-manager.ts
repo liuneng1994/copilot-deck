@@ -286,7 +286,9 @@ export class SessionManager {
       const recent = this.store.listMessagesPaged(s.id, { limit: HYDRATE_MESSAGE_LIMIT });
       const earliestLoadedTs = recent.length > 0 ? recent[0].ts : null;
       const toolCalls =
-        earliestLoadedTs === null ? [] : this.store.listToolCallsSince(s.id, earliestLoadedTs);
+        earliestLoadedTs === null
+          ? this.store.listToolCalls(s.id)
+          : this.store.listToolCallsSince(s.id, earliestLoadedTs);
       return {
         id: s.id,
         cwd: s.cwd,
@@ -446,6 +448,27 @@ export class SessionManager {
   }
   listStoredToolCalls(sessionId: string) {
     return this.store.listToolCalls(sessionId);
+  }
+
+  recordSystemMessage(sessionId: string, text: string): void {
+    const persisted = this.store.getSession(sessionId);
+    if (!persisted) return;
+    const now = Date.now();
+    this.store.insertMessage({
+      id: randomUUID(),
+      sessionId,
+      role: "system",
+      text,
+      ts: now,
+    });
+    this.store.touchSession(sessionId);
+    this.emit(sessionId, {
+      sessionId,
+      update: {
+        sessionUpdate: "system_message",
+        content: { type: "text", text },
+      },
+    } as unknown as acp.SessionNotification);
   }
 
   private emit(sessionId: string, update: acp.SessionNotification) {

@@ -2,14 +2,16 @@
 // stream the agent reply, exit when prompt_done arrives.
 // Uses Node 22's built-in WebSocket — no extra deps.
 
-const ws = new WebSocket("ws://127.0.0.1:4000/ws");
+const serverPort = process.env.AGENT_VIEW_SERVER_PORT ?? process.env.PORT ?? "4000";
+const smokeCwd = process.env.COPILOT_DECK_SMOKE_CWD ?? process.cwd();
+const ws = new WebSocket(`ws://127.0.0.1:${serverPort}/ws`);
 
 let sessionId = null;
 let buffer = "";
 
 ws.addEventListener("open", () => {
   console.log("[ws] open");
-  ws.send(JSON.stringify({ type: "create_session", cwd: "/root/agents" }));
+  ws.send(JSON.stringify({ type: "create_session", cwd: smokeCwd }));
 });
 
 ws.addEventListener("message", (ev) => {

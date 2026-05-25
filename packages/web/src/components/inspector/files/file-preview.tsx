@@ -5,6 +5,7 @@ import { cn } from "../../../lib/cn";
 import { type SupportedLang, highlightToHtml } from "../../../lib/shiki";
 import { extractShikiLineHtml } from "../../../lib/shiki-lines";
 import { useUIStore } from "../../../stores/ui-store";
+import { useUserPrefs } from "../../../stores/user-prefs-store";
 
 const CHUNK_BYTES = 64 * 1024;
 const HEX_HEADER_BYTES = 256;
@@ -65,6 +66,15 @@ function langFromPath(p?: string): SupportedLang {
     yaml: "yaml",
     go: "go",
     rs: "rust",
+    java: "java",
+    c: "c",
+    cc: "cpp",
+    cpp: "cpp",
+    cxx: "cpp",
+    h: "cpp",
+    hh: "cpp",
+    hpp: "cpp",
+    hxx: "cpp",
     html: "html",
     css: "css",
     toml: "toml",
@@ -164,13 +174,31 @@ function Skeleton() {
 
 function CodePreview({ content, path }: { content: string; path: string }) {
   const lang = useMemo(() => langFromPath(path), [path]);
+  const theme = useUserPrefs((s) => s.theme);
   const plainLines = useMemo(() => content.split(/\r?\n/), [content]);
   const [htmlLines, setHtmlLines] = useState<string[] | null>(null);
+  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">(() =>
+    theme === "system"
+      ? window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light"
+      : theme,
+  );
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () =>
+      setResolvedTheme(theme === "system" ? (media.matches ? "dark" : "light") : theme);
+    apply();
+    if (theme !== "system") return;
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [theme]);
 
   useEffect(() => {
     let cancelled = false;
     setHtmlLines(null);
-    highlightToHtml(content, lang)
+    highlightToHtml(content, lang, resolvedTheme)
       .then((html) => {
         if (cancelled) return;
         const lines = extractLinesFromHtml(html);
@@ -182,10 +210,16 @@ function CodePreview({ content, path }: { content: string; path: string }) {
     return () => {
       cancelled = true;
     };
-  }, [content, lang, plainLines.length]);
+  }, [content, lang, plainLines.length, resolvedTheme]);
 
   return (
-    <div className="min-w-full font-mono text-[12px] leading-5 text-foreground">
+    <div
+      className="min-w-full font-mono text-[12px] leading-5"
+      style={{
+        background: resolvedTheme === "light" ? "#ffffff" : "#1e1e1e",
+        color: resolvedTheme === "light" ? "#000000" : "#d4d4d4",
+      }}
+    >
       {plainLines.map((line, index) => {
         const lineNumber = index + 1;
         const highlighted = htmlLines?.[index];
@@ -196,8 +230,11 @@ function CodePreview({ content, path }: { content: string; path: string }) {
             className="flex min-h-5 scroll-mt-3 hover:bg-muted/30"
           >
             <span
-              className="sticky left-0 select-none border-r border-border/60 bg-background/95 px-2 text-right text-muted-foreground"
-              style={{ minWidth: `${Math.max(3, String(plainLines.length).length) + 2}ch` }}
+              className="sticky left-0 select-none border-r border-border/60 px-2 text-right text-muted-foreground"
+              style={{
+                minWidth: `${Math.max(3, String(plainLines.length).length) + 2}ch`,
+                background: resolvedTheme === "light" ? "#ffffff" : "#1e1e1e",
+              }}
             >
               {lineNumber}
             </span>

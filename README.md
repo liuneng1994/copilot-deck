@@ -215,6 +215,16 @@ pnpm dev   # server :4000 + Vite :5173 (proxies /api and /ws)
 Open <http://localhost:5173> → pick or type a cwd → **Create session** →
 prompt away.
 
+To manually exercise model-requested background tasks with the real `copilot`
+CLI, run:
+
+```bash
+pnpm dev:agent-task
+```
+
+The script prints a fixture cwd and prompts that ask Copilot to emit approved
+background task requests for one long task and two parallel review tasks.
+
 Per-package:
 
 ```bash

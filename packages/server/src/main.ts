@@ -9,7 +9,9 @@ import type { ClientToServer, ServerToClient } from "@agent-view/shared";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import Fastify from "fastify";
+import { AgentTaskRequestController } from "./agent-task-requests.js";
 import { resolveDataDir } from "./data-dir.js";
+import { registerE2eRunRoutes } from "./e2e-runs.js";
 import { invalidateMcpUserCache, registerMcpRoutes } from "./extensions/routes-mcp.js";
 import {
   invalidateMarketplaceCache,
@@ -28,6 +30,7 @@ import { registerRoutes } from "./routes.js";
 import { SessionManager } from "./session-manager.js";
 import { Store } from "./store.js";
 import { UpdateChecker } from "./update-check.js";
+import { registerWorkbenchRoutes } from "./workbench/routes.js";
 import { type WsContext, dispatchWs } from "./ws-handlers.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -67,16 +70,45 @@ async function main() {
   const processHost = new ProcessHost({ dataDir: dataDir.dir });
   const manager = new SessionManager(store, processHost);
   const bgTasks = processHost;
+  const agentTasks = new AgentTaskRequestController();
+  const reportedAgentTaskCompletions = new Set<string>();
   const clients = new Set<(msg: ServerToClient) => void>();
   const broadcast = (msg: ServerToClient) => {
     for (const send of clients) send(msg);
   };
 
-  bgTasks.on("update", (task) => broadcast({ type: "bg_task_update", task }));
+  bgTasks.on("update", (task) => {
+    broadcast({ type: "bg_task_update", task });
+    if (
+      task.origin === "agent-request" &&
+      task.sessionId &&
+      (task.status === "exited" || task.status === "killed" || task.status === "error") &&
+      !reportedAgentTaskCompletions.has(task.id)
+    ) {
+      reportedAgentTaskCompletions.add(task.id);
+      const exit =
+        typeof task.exitCode === "number"
+          ? `exit ${task.exitCode}`
+          : task.signal
+            ? `signal ${task.signal}`
+            : task.status;
+      manager.recordSystemMessage(
+        task.sessionId,
+        `Background task finished: ${task.label ?? task.command} (${exit}).`,
+      );
+    }
+  });
   bgTasks.on("output", (taskId, chunk, stream) =>
     broadcast({ type: "bg_task_output", taskId, chunk, stream }),
   );
   bgTasks.on("removed", (taskId) => broadcast({ type: "bg_task_removed", taskId }));
+  manager.onSessionUpdate((sessionId, update) => {
+    const cwd = manager.sessionCwd(sessionId) ?? manager.getStoredSession(sessionId)?.cwd;
+    if (!cwd) return;
+    for (const request of agentTasks.observe(sessionId, cwd, update.update)) {
+      broadcast({ type: "agent_task_request", request });
+    }
+  });
 
   // ── Install & upgrade infrastructure ────────────────────────────────────────
   const updateChecker = new UpdateChecker({
@@ -143,6 +175,8 @@ async function main() {
   registerGrepRoutes(app, { manager, broadcast });
   registerOutlineRoutes(app, { manager });
   registerFilesOverviewRoutes(app, { manager });
+  registerWorkbenchRoutes(app, { manager });
+  registerE2eRunRoutes(app);
 
   app.register(async (instance) => {
     instance.get("/ws", { websocket: true }, (socket) => {
@@ -247,6 +281,9 @@ async function main() {
         } catch {
           return send({ type: "error", message: "invalid JSON" });
         }
+        if (msg.type === "prompt") {
+          agentTasks.beginTurn(msg.sessionId);
+        }
         if (msg.type === "mark_reviewed") {
           try {
             manager.markReviewed(msg.sessionId, msg.path, msg.diffHash);
@@ -269,6 +306,39 @@ async function main() {
               message: e instanceof Error ? e.message : String(e),
             });
           }
+          return;
+        }
+        if (msg.type === "agent_task_reply") {
+          const request = agentTasks.resolve(msg.requestId, msg.outcome);
+          if (!request) {
+            send({
+              type: "error",
+              message: "Task request is no longer pending.",
+              severity: "warning",
+            });
+            return;
+          }
+          broadcast({ type: "agent_task_resolved", requestId: request.id, outcome: msg.outcome });
+          if (msg.outcome === "deny") {
+            manager.recordSystemMessage(
+              request.sessionId,
+              `Background task denied: ${request.label ?? request.command}.`,
+            );
+            return;
+          }
+          const task = bgTasks.startAgentRequest({
+            cwd: request.cwd,
+            command: request.command,
+            label: request.label,
+            sessionId: request.sessionId,
+            requestId: request.id,
+            kind: request.kind,
+            reason: request.reason,
+          });
+          manager.recordSystemMessage(
+            request.sessionId,
+            `Background task started: ${task.label ?? task.command}.`,
+          );
           return;
         }
         if (msg.type === "bg_task_start") {

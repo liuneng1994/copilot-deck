@@ -2,12 +2,16 @@ import { GitBranch, X } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import type { SessionState, ToolCallState } from "../../../stores/ui-store";
 import { useUIStore } from "../../../stores/ui-store";
+import { CodeBrowser } from "./code-browser";
+import { ContextPanel } from "./context-panel";
 import { FilePreview } from "./file-preview";
 import { FilesToolbar } from "./files-toolbar";
 import { FilesTree } from "./files-tree";
 import { GitBar } from "./git-bar";
 import { GrepPanel } from "./grep-panel";
 import { InlineDiff } from "./inline-diff";
+import { SymbolsBrowser } from "./symbols-browser";
+import { TestsPanel } from "./tests-panel";
 import { TimelinePanel } from "./timeline-panel";
 
 interface FilesTabProps {
@@ -26,9 +30,12 @@ export function FilesTab({ session, toolCalls }: FilesTabProps) {
   const maximized = useUIStore((s) => s.filePreviewMaximized);
   const setMaximized = useUIStore((s) => s.setFilePreviewMaximized);
 
+  const hasCwd = session.cwd.trim().length > 0;
+
   useEffect(() => {
+    if (!hasCwd) return;
     void loadFilesOverview(session.cwd);
-  }, [session.cwd, loadFilesOverview]);
+  }, [session.cwd, hasCwd, loadFilesOverview]);
 
   useEffect(() => {
     if (!externalPath) return;
@@ -51,9 +58,16 @@ export function FilesTab({ session, toolCalls }: FilesTabProps) {
     if (!selectedFilePath && maximized) setMaximized(false);
   }, [selectedFilePath, maximized, setMaximized]);
 
+  const selectedChangedFile = useMemo(() => {
+    if (!selectedFilePath) return false;
+    return (overview?.touched ?? []).some(
+      (entry) => entry.path === selectedFilePath || entry.rel === selectedFilePath,
+    );
+  }, [overview?.touched, selectedFilePath]);
+
   const detail = selectedFilePath ? (
     <>
-      <InlineDiff path={selectedFilePath} session={session} />
+      {selectedChangedFile ? <InlineDiff path={selectedFilePath} session={session} /> : null}
       <FilePreview
         path={selectedFilePath}
         cwd={session.cwd}
@@ -77,6 +91,16 @@ export function FilesTab({ session, toolCalls }: FilesTabProps) {
           <GrepPanel cwd={session.cwd} />
         ) : viewMode === "timeline" ? (
           <TimelinePanel session={session} toolCalls={toolCalls} />
+        ) : viewMode === "code" ? (
+          <CodeBrowser cwd={session.cwd} />
+        ) : viewMode === "symbols" ? (
+          <SymbolsBrowser cwd={session.cwd} />
+        ) : viewMode === "tests" ? (
+          <TestsPanel cwd={session.cwd} />
+        ) : viewMode === "context" ? (
+          <ContextPanel />
+        ) : !hasCwd ? (
+          <MissingCwdState />
         ) : isNonRepo ? (
           <NonRepoEmptyState />
         ) : (
@@ -114,12 +138,25 @@ export function FilesTab({ session, toolCalls }: FilesTabProps) {
               </button>
             </div>
             <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-              <InlineDiff path={selectedFilePath} session={session} />
+              {selectedChangedFile ? (
+                <InlineDiff path={selectedFilePath} session={session} />
+              ) : null}
               <FilePreview path={selectedFilePath} cwd={session.cwd} hideMaximize />
             </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function MissingCwdState() {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2 px-6 py-12 text-center">
+      <div className="text-sm font-medium text-foreground">No workspace folder yet</div>
+      <div className="max-w-xs text-[11px] text-muted-foreground">
+        Create or select a session with a cwd before using Code, Symbols, Tests, or file review.
+      </div>
     </div>
   );
 }

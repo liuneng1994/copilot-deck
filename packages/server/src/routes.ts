@@ -108,6 +108,10 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
 
   app.get("/api/health", async () => ({ ok: true }));
 
+  app.get("/api/default-cwd", async () => ({
+    cwd: process.env.USERPROFILE ?? process.env.HOME ?? process.cwd(),
+  }));
+
   // ─── Install & upgrade diagnostics ──────────────────────────────────────────
   app.get("/api/version", async () => {
     const installed = deps.installedVersion ?? "0.0.0";
@@ -549,11 +553,12 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
   app.get<{ Querystring: { path?: string; q?: string; limit?: string } }>(
     "/api/list-dir",
     async (req, reply) => {
-      const raw = req.query.path?.trim() || process.env.HOME || "/";
+      const home = process.env.USERPROFILE ?? process.env.HOME ?? "/";
+      const raw = req.query.path?.trim() || home;
       const query = (req.query.q ?? "").toLowerCase();
       const limit = Math.min(Number(req.query.limit ?? 50) || 50, 200);
 
-      const expanded = raw.startsWith("~") ? path.join(process.env.HOME ?? "/", raw.slice(1)) : raw;
+      const expanded = raw.startsWith("~") ? path.join(home, raw.slice(1)) : raw;
       let dir = path.isAbsolute(expanded) ? expanded : path.resolve(expanded);
       let prefixFilter = "";
       try {

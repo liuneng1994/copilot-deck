@@ -1,3 +1,4 @@
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { FileEntry, GitStatus } from "@agent-view/shared";
 import type { FastifyInstance, FastifyReply } from "fastify";
@@ -179,9 +180,9 @@ function aggregateTouched(cwd: string, manager: SessionManager): FileTouch[] {
   const resolvedCwd = path.resolve(cwd);
   const map = new Map<string, FileTouch>();
 
-  for (const session of manager.hydrate()) {
+  for (const session of manager.store.listSessions()) {
     if (path.resolve(session.cwd) !== resolvedCwd) continue;
-    for (const call of session.toolCalls as ToolCallLike[]) {
+    for (const call of manager.store.listToolCalls(session.id) as ToolCallLike[]) {
       const seen = new Set<string>();
       const perPathStats = new Map<string, { added: number; removed: number }>();
 
@@ -269,9 +270,6 @@ export async function buildOverview(
 ): Promise<{ gitStatus: GitStatus; touched: FileEntry[]; agentTouched: string[] }> {
   const gitStatus = await getGitStatus(cwd);
 
-  // Files tab is git-driven: the visible list is exactly the working tree
-  // changes. agent-touched paths are computed separately so the client can
-  // overlay a 🤖 badge but the list itself drains on commit.
   const entries: FileEntry[] = gitStatus.files
     .map<FileEntry>((file) => {
       const abs = path.resolve(cwd, file.path);
@@ -286,13 +284,28 @@ export async function buildOverview(
     })
     .sort((a, b) => a.rel.localeCompare(b.rel));
 
-  // Compute the "touched this session" overlay set. We still walk tool_calls
-  // so the UI can show a badge for files the agent edited, but these paths
-  // do not synthesize standalone list rows.
-  const agentTouched =
-    gitStatus.isRepo === false
-      ? []
-      : aggregateTouched(cwd, manager).map((touch) => path.relative(cwd, touch.path));
+  const agentTouches = gitStatus.isRepo === false ? [] : aggregateTouched(cwd, manager);
+  const agentTouched = agentTouches.map((touch) => path.relative(cwd, touch.path));
+  const existingRel = new Set(entries.map((entry) => entry.rel));
+  for (const touch of agentTouches) {
+    const rel = path.relative(cwd, touch.path).replace(/\\/g, "/");
+    if (existingRel.has(rel)) continue;
+    const stat = await fs.stat(touch.path).catch(() => null);
+    entries.push({
+      path: touch.path,
+      rel,
+      source: "staged",
+      gitX: " ",
+      gitY: " ",
+      isGenerated: isGeneratedFile(rel),
+      missing: !stat?.isFile(),
+      lastTouchAt: touch.lastTouchAt,
+      added: touch.added,
+      removed: touch.removed,
+      callCount: touch.callCount,
+    });
+  }
+  entries.sort((a, b) => a.rel.localeCompare(b.rel));
 
   return { gitStatus, touched: entries, agentTouched };
 }

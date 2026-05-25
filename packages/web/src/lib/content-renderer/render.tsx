@@ -1,9 +1,7 @@
 import { type ReactNode, useEffect } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { CodeBlock } from "../../components/conversation/code-block";
-import { LinkifyPaths } from "../../components/conversation/file-link";
 import { useArtifactStore } from "../../stores/artifact-store";
+import { MarkdownText } from "./markdown";
 import { HtmlSandbox } from "./renderers/html-sandbox";
 import { JsonInline } from "./renderers/json-tree";
 import { MathBlock } from "./renderers/katex";
@@ -26,60 +24,6 @@ export function useHoistArtifacts(items: ContentItem[], sessionId: string, msgId
       if (shouldHoist(item)) upsert(sessionId, msgId, item);
     }
   }, [items, sessionId, msgId]);
-}
-
-function linkifyChildren(children: ReactNode): ReactNode {
-  if (typeof children === "string") return <LinkifyPaths>{children}</LinkifyPaths>;
-  if (Array.isArray(children)) {
-    return children.map((c, i) =>
-      typeof c === "string" ? (
-        <LinkifyPaths key={`lp-${i}-${c.slice(0, 12)}`}>{c}</LinkifyPaths>
-      ) : (
-        c
-      ),
-    );
-  }
-  return children;
-}
-
-function MarkdownText({ text }: { text: string }) {
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        code({ className, children }) {
-          const codeStr = String(children ?? "").replace(/\n$/, "");
-          const match = /language-([\w-]+)/.exec(className ?? "");
-          const inline = !match && !codeStr.includes("\n");
-          return <CodeBlock code={codeStr} lang={match?.[1]} inline={inline} />;
-        },
-        pre({ children }) {
-          return <>{children}</>;
-        },
-        a({ href, children }) {
-          const external = typeof href === "string" && /^https?:\/\//i.test(href);
-          return (
-            <a href={href} {...(external ? { target: "_blank", rel: "noreferrer noopener" } : {})}>
-              {children}
-            </a>
-          );
-        },
-        // Suppress GFM table rendering — table items are pulled out by classify()
-        // and rendered with the interactive TableInline component instead.
-        table() {
-          return null;
-        },
-        p({ children }) {
-          return <p>{linkifyChildren(children)}</p>;
-        },
-        li({ children }) {
-          return <li>{linkifyChildren(children)}</li>;
-        },
-      }}
-    >
-      {text}
-    </ReactMarkdown>
-  );
 }
 
 /**
